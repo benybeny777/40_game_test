@@ -11,6 +11,8 @@ __pycache__/
 .playwright-cli/
 # Build products
 /dist/
+/out/
+/.dev-data/
 /build/
 /target/
 # Engine-generated data; keep game source, assets and project settings tracked

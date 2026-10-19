@@ -1,0 +1,5 @@
+:root { color-scheme: dark; font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; color: #e7eaf0; background: #121723; }
+* { box-sizing: border-box; } body { margin: 0; } main { max-width: 840px; margin: auto; padding: 38px 44px; }
+.eyebrow { color: #d8b66f; font-size: 10px; letter-spacing: 3px; } h1 { margin: 12px 0 8px; font-size: 30px; letter-spacing: 4px; } header p { color: #9daec2; font-size: 13px; }
+section { border: 1px solid #3c4556; border-left: 3px solid #d8b66f; background: #1b2231; padding: 24px; margin: 26px 0 18px; } .tag { color: #dfc58c; font-size: 11px; } h2 { font-size: 20px; margin: 12px 0; } section p, footer p { font-size: 13px; line-height: 1.9; color: #b3c0d1; }
+dl { display: flex; flex-wrap: wrap; gap: 12px 32px; border-top: 1px solid #343e50; margin: 20px 0 0; padding-top: 16px; } dt { color: #8d9eb7; font-size: 11px; } dd { margin: 6px 0 0; color: #aad5b8; font-size: 13px; } small { color: #8493a8; font-size: 11px; }

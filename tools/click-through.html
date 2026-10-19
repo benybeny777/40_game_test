@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><title>M0 クリック透過の確認</title>
+<style>
+html { height: 100%; background: #e9edf1; color: #273446; font-family: 'Yu Gothic UI', sans-serif; }
+body { margin: 0; padding: 64px; } h1 { font-size: 26px; } p { line-height: 1.8; }
+button { position: fixed; left: 24px; bottom: 20px; width: 55%; height: 68px; border: 2px dashed #5a8b78; background: #d8e7df; color: #214c3a; font: bold 20px 'Yu Gothic UI', sans-serif; cursor: pointer; }
+</style>
+<h1>クリック透過の確認</h1><p>このページはゲームとは別のブラウザーで動作しています。<br>タスクバー直上の透明な帯を通して下のボタンを押し、回数が増えることを確認します。</p>
+<p>帯の右端の「管理」はゲーム側の操作です。</p>
+<button id="counter">背後のアプリのボタン · クリック 0 回</button>
+<script>let count=0; document.querySelector('button').onclick = (event) => {event.target.textContent = `背後のアプリのボタン · クリック ${++count} 回`}</script></html>
