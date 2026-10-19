@@ -26,3 +26,9 @@
 - xgirlとPicoAgentのコード、設定、認証、生成物、Gitの作業状態は変更していない。
 - GitHub Actionsは全面禁止。ビルド・検証はローカルのみ。
 - 恒久ルールはAGENTS.md、進行中の情報はこのファイルへ更新する。
+## リモート接続の確認（2026-10-20）
+
+- 利用者の「リモートでプロジェクトひらいて」を受け、既存と同じClaude Remote Controlをこのフォルダで起動。
+- 表示名 `GameTest`、`--spawn same-dir --capacity 1 --permission-mode default` で接続成功を確認。
+- 接続を使う間はこのPCとRemote Controlプロセスを動かしておく。接続状態は再開時に確認する。
+- 一時的な接続URLとセッションIDは保存しない。今回、共通のログオン自動起動設定は変更していない。
