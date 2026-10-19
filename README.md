@@ -66,10 +66,11 @@ pnpm build
 | AGENTS.md | 作業ルールの正本 |
 | HANDOFF.md | 進行状況・再開手順・未確認事項 |
 | docs/DESIGN.md | 仕様とマイルストーン |
+| docs/design/ | M1〜M7の詳細設計（型・計算式・画面・受入条件） |
 | docs/CREDITS.md | 素材・フォント・画像の出典 |
 | src/main/ | ウィンドウ・配置・トレイ・保存先 |
 | src/preload/、src/shared/ | sandbox対応の型付きAPI・IPC定義 |
 | src/renderer/ | 帯と仮の管理パネル |
 | tests/ | 配置と開発／利用者プロファイル分離のテスト |
 
-作業再開時はAGENTS.md → HANDOFF.md → README.md → docs/DESIGN.mdの順に読みます。
+作業再開時はAGENTS.md → HANDOFF.md → README.md → docs/DESIGN.md → docs/design/README.mdの順に読みます。
