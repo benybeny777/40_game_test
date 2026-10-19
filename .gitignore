@@ -1,0 +1,26 @@
+# Local secrets
+.env
+.env.*
+!.env.example
+# Regenerable dependencies and caches
+node_modules/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.playwright-cli/
+# Build products
+/dist/
+/build/
+/target/
+# Engine-generated data; keep game source, assets and project settings tracked
+/.godot/
+/Library/
+/Temp/
+/Obj/
+/Logs/
+/UserSettings/
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
