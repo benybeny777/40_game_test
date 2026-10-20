@@ -2,7 +2,7 @@
   "name": "taskbar-hyakkiko",
   "version": "0.0.0",
   "private": true,
-  "description": "タスクバー百鬼行 M0",
+  "description": "タスクバー百鬼行 M1",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
+    "test:shell": "node tools/shell-check.mjs",
+    "sim": "node --experimental-strip-types tools/sim-runner.ts",
     "build": "electron-vite build"
   },
   "devDependencies": {

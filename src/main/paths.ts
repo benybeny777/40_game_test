@@ -9,6 +9,7 @@ export function resolvePaths(projectRoot: string, userData: string, profile: str
     data,
     session: join(data, 'session'),
     logs: join(data, 'logs'),
+    verification: join(data, 'verification'),
     save: join(data, 'save', 'save.json'),
     previousSave: join(data, 'save', 'save.prev.json'),
     preload: join(projectRoot, 'out/preload/index.js'),

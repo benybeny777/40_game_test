@@ -12,9 +12,13 @@ app.setPath('userData', paths.data)
 let strip: BrowserWindow
 let panel: BrowserWindow | undefined
 let tray: Tray | undefined
+let trayMenu: Menu
 let quitting = false
 let interactive = false
 const state: ShellState = { visible: true, paused: false, profile: paths.profile }
+
+// Main-process operation also used by the local acceptance launcher.
+export function getTrayMenu() { return trayMenu }
 
 const locked = app.requestSingleInstanceLock()
 if (!locked) app.quit()
@@ -62,7 +66,7 @@ function pointer(ignore: boolean) {
 
 function publish() {
   for (const win of BrowserWindow.getAllWindows()) win.webContents.send(channels.state, { ...state })
-  tray?.setContextMenu(menu())
+  if (tray) tray.setContextMenu(trayMenu = menu())
 }
 
 function menu() {
@@ -86,7 +90,7 @@ function start() {
     skipTaskbar: true, focusable: false, resizable: false, hasShadow: false, show: false,
     backgroundColor: '#00000000', webPreferences: webPreferences() })
   strip.setIgnoreMouseEvents(true, { forward: true })
-  strip.once('ready-to-show', () => strip.showInactive())
+  strip.once('ready-to-show', () => { strip.setAlwaysOnTop(true, 'screen-saver'); strip.showInactive() })
   strip.on('close', (event) => { if (!quitting) event.preventDefault() })
   strip.webContents.on('render-process-gone', () => app.quit())
   load(strip, 'strip')
@@ -100,7 +104,7 @@ function start() {
   }
   tray = new Tray(nativeImage.createFromBitmap(pixels, { width: 16, height: 16 }))
   tray.setToolTip('タスクバー百鬼行（M0）')
-  tray.setContextMenu(menu())
+  tray.setContextMenu(trayMenu = menu())
   tray.on('double-click', openPanel)
 
   ipcMain.on(channels.pointer, (event, value: unknown) => {
