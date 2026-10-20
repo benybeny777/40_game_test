@@ -3,6 +3,7 @@
 ## 1. 全画面のアプリを使っているときに隠す
 
 - 帯は常に最前面なので、全画面のゲームや動画、プレゼンの上に重なってしまう。M7で自動的に隠す。
+- M1の時点で、帯は `setAlwaysOnTop(true, 'screen-saver')`（最前面の中でも高い段階）になっている。全画面のアプリの上にも出るため、この機能はM7より前に必要になる可能性がある。困った場合は、M7を待たずにトレイの「帯を隠す」で対処し、HANDOFFに記録する。
 - 判定：`koffi`（FFI。ネイティブのビルドが不要）で `shell32.dll` の `SHQueryUserNotificationState` を2秒ごとに呼ぶ。`QUNS_BUSY`・`QUNS_RUNNING_D3D_FULL_SCREEN`・`QUNS_PRESENTATION_MODE` のとき帯を隠す。
 - 補助の判定：前面のウィンドウ（`GetForegroundWindow` → `GetWindowRect`）が、帯のあるモニター全体を覆っているとき。デスクトップ（`Progman`／`WorkerW`）とタスクバー（`Shell_TrayWnd`）は除く。
 - 隠れている間もシミュレーションは進める（一時停止はしない）。設定でオフにできる。
