@@ -4,9 +4,11 @@ import { jobs } from '../data/jobs.ts'
 import { random } from './rng.ts'
 import type { HitPayload, JobId, Stats, Unit, World } from './types.ts'
 export const living = (unit: Unit) => unit.alive && unit.hp > 0
+export const opponents = (world: World, self: Unit) => world.units.filter((unit) => unit.side !== self.side && living(unit))
+export const friends = (world: World, self: Unit) => world.units.filter((unit) => unit.side === self.side && living(unit))
 export function attackDef(unit: Unit) { return unit.side === 'ally' ? jobs[unit.defId as JobId].attack : enemies[unit.defId].attack }
 export function chooseTarget(world: World, self: Unit): Unit | undefined {
-  const candidates = world.units.filter((target) => target.side !== self.side && living(target) && Math.abs(target.x - self.x) <= self.stats.rangeDots)
+  const candidates = opponents(world, self).filter((target) => Math.abs(target.x - self.x) <= self.stats.rangeDots)
   if (!candidates.length) return undefined
   if (self.side === 'enemy') {
     const front = candidates.reduce((best, target) => target.slot < best.slot ? target : best)

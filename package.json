@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:shell": "node tools/shell-check.mjs",
     "sim": "node --experimental-strip-types tools/sim-runner.ts",
+    "sprites:preview": "node --experimental-strip-types tools/sprites-preview.ts",
     "build": "electron-vite build"
   },
   "devDependencies": {

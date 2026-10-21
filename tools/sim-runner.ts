@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { balance, createWorld, snapshot, step } from '../src/core/index.ts'
+import { advance, balance, buildView, createGame, createWorld, newProfile, runCommand, snapshot, stageLabel, step, type DojoKey } from '../src/core/index.ts'
 import { partyOrder } from '../src/core/data/jobs.ts'
 
 export function simulate(options: { stage: number; minutes: number; seed: number; level: number }) {
@@ -51,12 +51,52 @@ export function simulate(options: { stage: number; minutes: number; seed: number
     snapshotHash: createHash('sha256').update(JSON.stringify(snapshot(world, koban))).digest('hex'), elapsedMs: performance.now() - started }
 }
 
+/** --progress: play from a new save with the real progression rules, buying the cheapest dojo upgrade whenever affordable. */
+export function simulateProgress(options: { minutes: number; seed: number }) {
+  const game = createGame(newProfile('sim'), options.seed)
+  const totalTicks = Math.floor(options.minutes * 60000 / balance.tickMs)
+  const firstClear: Record<string, number> = {}
+  const samples = []
+  let ultimates = 0, skills = 0, kakuhenHits = 0, kakuhenTries = 0
+  const started = performance.now()
+  for (let tick = 1; tick <= totalTicks; tick++) {
+    const { events } = advance(game)
+    for (const event of events) {
+      if (event.t === 'phase' && event.phase === 'stageClear' && firstClear[event.stageNo] === undefined) firstClear[event.stageNo] = tick * balance.tickMs / 60000
+      if (event.t === 'ultimate') ultimates++
+      if (event.t === 'skill') skills++
+      if (event.t === 'kakuhen') { kakuhenTries++; if (event.hit) kakuhenHits++ }
+    }
+    if (tick % 100 === 0) {
+      const view = buildView(game.profile, game.world.loop)
+      const cheapest = view.dojo.filter((entry) => entry.affordable).sort((a, z) => a.cost - z.cost)[0]
+      if (cheapest) runCommand(game, { c: 'buyDojo', key: cheapest.key as DojoKey })
+    }
+    if (tick % (600000 / balance.tickMs) === 0) {
+      const p = game.profile
+      samples.push({ 分: tick * balance.tickMs / 60000, ステージ: stageLabel(game.world.stageNo).label, 解放: p.progress.unlockedStage,
+        Lv: Object.values(p.party.members).map((member) => member.lv).join('/'), 小判: Math.floor(p.koban), 道場: Object.values(p.dojo).join('/'),
+        全滅: p.stats.wipes, 撃破: p.stats.kills, 周回: game.world.loop ? 'ON' : '' })
+    }
+  }
+  return { seed: options.seed, minutes: options.minutes, samples, firstClear, stats: game.profile.stats, ultimates, skills,
+    kakuhenRate: kakuhenTries ? kakuhenHits / kakuhenTries : null, elapsedMs: performance.now() - started }
+}
+function printProgress(result: ReturnType<typeof simulateProgress>, json: boolean) {
+  if (json) { console.log(JSON.stringify(result, null, 2)); return }
+  console.log(`新規セーブからの進行（seed ${result.seed}、${result.minutes}分、道場は買える最安を自動購入）`)
+  console.table(result.samples)
+  console.log('初クリア（分）:', Object.entries(result.firstClear).map(([stage, minutes]) => `${stageLabel(Number(stage)).label}=${minutes.toFixed(1)}`).join('  '))
+  console.log(`奥義 ${result.ultimates}回 / スキル ${result.skills}回 / 確変の当たり率 ${result.kakuhenRate === null ? '-' : (result.kakuhenRate * 100).toFixed(1) + '%'}`)
+  console.log(`実行時間: ${result.elapsedMs.toFixed(0)}ms`)
+}
+
 function main() {
   const { values } = parseArgs({ args: process.argv.slice(2).filter((arg) => arg !== '--'), options: {
     stage: { type: 'string', default: '1' }, minutes: { type: 'string', default: '10' },
     seed: { type: 'string', default: '1' }, lv: { type: 'string', default: '1' }, json: { type: 'boolean' }, progress: { type: 'boolean' },
   } })
-  if (values.progress) throw new Error('--progress は育成・装備実装後のM6で対応します')
+  if (values.progress) { printProgress(simulateProgress({ minutes: Number(values.minutes), seed: Number(values.seed) }), values.json === true); return }
   const minutes = Number(values.minutes)
   if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isSafeInteger(minutes * 60000 / balance.tickMs)) throw new RangeError('--minutes は正の100ms刻みの時間を指定してください')
   const result = simulate({ stage: Number(values.stage), minutes, seed: Number(values.seed), level: Number(values.lv) })

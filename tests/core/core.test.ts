@@ -50,7 +50,7 @@ describe('固定ティックと状態', () => {
     expect(state.rng).toBeLessThan(b.rng.divisor)
   })
   it('Snapshotの配列を書き換えてもWorldを変更しない', () => {
-    expect(() => createWorld({ level: 2 })).toThrow('要相談')
+    expect(() => createWorld({ level: 51 })).toThrow('Lv must be')
     const world = createWorld(); const copy = snapshot(world, 42)
     copy.units[0].effects.push('fake'); copy.units[0].x = 999
     expect(world.units[0].effects).toEqual([]); expect(world.units[0].x).toBe(0)
@@ -129,12 +129,13 @@ describe('フェーズ遷移と回復', () => {
     expect(world.wave).toBe(1); expect(world.wipeStreak).toBe(1)
     expect(world.units.every((unit) => unit.alive && unit.hp === unit.stats.maxHp)).toBe(true)
   })
-  it('wave10の前はbossIntro、出現は200msおき', () => {
+  it('wave10の前はbossIntro、護衛2体のあとにボスが200msおきに出る', () => {
     const world = createWorld(); world.wave = 10
     advanceTo(world, 'bossIntro'); const intro = world.tick - 1
     advanceTo(world, 'spawning'); expect(world.tick - 1 - intro).toBe(b.bossIntroMs / b.tickMs)
     expect(world.units.filter((unit) => unit.side === 'enemy')).toHaveLength(1)
-    step(world); expect(world.phase).toBe('spawning')
-    step(world); expect(world.phase).toBe('battle')
+    const first = world.tick - 1; advanceTo(world, 'battle')
+    expect(world.tick - 1 - first).toBe(2 * b.spawnMs / b.tickMs)
+    expect(world.units.filter((unit) => unit.side === 'enemy').map((unit) => unit.defId).at(-1)).toBe('ooni')
   })
 })
