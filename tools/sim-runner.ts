@@ -58,6 +58,7 @@ export function simulateProgress(options: { minutes: number; seed: number }) {
   const firstClear: Record<string, number> = {}
   const samples = []
   let ultimates = 0, skills = 0, kakuhenHits = 0, kakuhenTries = 0
+  const drops = [0, 0, 0, 0, 0]
   const started = performance.now()
   for (let tick = 1; tick <= totalTicks; tick++) {
     const { events } = advance(game)
@@ -66,6 +67,7 @@ export function simulateProgress(options: { minutes: number; seed: number }) {
       if (event.t === 'ultimate') ultimates++
       if (event.t === 'skill') skills++
       if (event.t === 'kakuhen') { kakuhenTries++; if (event.hit) kakuhenHits++ }
+      if (event.t === 'drop') drops[event.rarity]++
     }
     if (tick % 100 === 0) {
       const view = buildView(game.profile, game.world.loop)
@@ -80,7 +82,9 @@ export function simulateProgress(options: { minutes: number; seed: number }) {
     }
   }
   return { seed: options.seed, minutes: options.minutes, samples, firstClear, stats: game.profile.stats, ultimates, skills,
-    kakuhenRate: kakuhenTries ? kakuhenHits / kakuhenTries : null, elapsedMs: performance.now() - started }
+    kakuhenRate: kakuhenTries ? kakuhenHits / kakuhenTries : null, drops, inventory: game.profile.inventory.length,
+    equipped: partyOrder.flatMap((job) => Object.values(game.profile.party.members[job].equip)).filter(Boolean).length,
+    elapsedMs: performance.now() - started }
 }
 function printProgress(result: ReturnType<typeof simulateProgress>, json: boolean) {
   if (json) { console.log(JSON.stringify(result, null, 2)); return }
@@ -88,6 +92,7 @@ function printProgress(result: ReturnType<typeof simulateProgress>, json: boolea
   console.table(result.samples)
   console.log('初クリア（分）:', Object.entries(result.firstClear).map(([stage, minutes]) => `${stageLabel(Number(stage)).label}=${minutes.toFixed(1)}`).join('  '))
   console.log(`奥義 ${result.ultimates}回 / スキル ${result.skills}回 / 確変の当たり率 ${result.kakuhenRate === null ? '-' : (result.kakuhenRate * 100).toFixed(1) + '%'}`)
+  console.log(`ドロップ 並${result.drops[0]} 上${result.drops[1]} 特上${result.drops[2]} 極${result.drops[3]} 伝説${result.drops[4]}（所持 ${result.inventory}、うち装備中 ${result.equipped}）`)
   console.log(`実行時間: ${result.elapsedMs.toFixed(0)}ms`)
 }
 

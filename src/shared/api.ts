@@ -9,12 +9,13 @@ export const channels = {
 } as const
 
 export type DisplaySize = 'small' | 'medium' | 'large'
-export interface Settings { size: DisplaySize; groundBand: boolean; fpsCap: 15 | 30 }
-export const defaultSettings: Settings = { size: 'medium', groundBand: true, fpsCap: 30 }
-export interface ShellState { paused: boolean; visible: boolean; profile: 'dev' | 'user'; settings: Settings }
+export interface Settings { size: DisplaySize; groundBand: boolean; fpsCap: 15 | 30; hideOnFullscreen: boolean; autoStart: boolean }
+export const defaultSettings: Settings = { size: 'medium', groundBand: true, fpsCap: 30, hideOnFullscreen: true, autoStart: false }
+export interface ShellState { paused: boolean; visible: boolean; profile: 'dev' | 'user'; settings: Settings
+  packaged: boolean; fullscreenHidden: boolean; fullscreenSupported: boolean }
 export interface StripLayout { dotPx: number; playDots: number; scaleFactor: number; headroomDip: number }
 export interface Frame { snapshot: Snapshot; events: SimEvent[] }
-export type PanelTab = 'party' | 'dojo' | 'stage' | 'dex' | 'settings'
+export type PanelTab = 'party' | 'gear' | 'dojo' | 'stage' | 'dex' | 'settings'
 export interface PanelTarget { tab?: PanelTab; job?: JobId }
 
 export interface ShellApi {

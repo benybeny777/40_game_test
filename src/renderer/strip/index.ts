@@ -1,6 +1,8 @@
 import { enemies, jobs, stageLabel, type JobId } from '../../core/index.ts'
 import type { ShellState, StripLayout } from '../../shared/api'
 import { Scene, type HitTarget } from './scene'
+import { PLAY_DOTS } from '../../shared/art'
+import { artReady } from './sprites/sheet'
 
 const screen = document.querySelector<HTMLCanvasElement>('#screen')!
 const tooltip = document.querySelector<HTMLElement>('#tooltip')!
@@ -10,7 +12,7 @@ const offscreen = document.createElement('canvas')
 const off = offscreen.getContext('2d')!
 const ctx = screen.getContext('2d')!
 
-let layout: StripLayout = { dotPx: 3, playDots: 32, scaleFactor: window.devicePixelRatio || 1, headroomDip: 72 }
+let layout: StripLayout = { dotPx: 3, playDots: PLAY_DOTS, scaleFactor: window.devicePixelRatio || 1, headroomDip: 72 }
 let state: ShellState | undefined
 let hover: HitTarget | null = null
 let interactive = false
@@ -111,9 +113,12 @@ window.addEventListener('contextmenu', (event) => { event.preventDefault(); if (
 window.addEventListener('resize', resize)
 window.game.onLayout((next) => { layout = next; resize() })
 window.game.onState((next) => { state = next })
-window.game.onFrame((frame) => scene.ingest(frame, performance.now()))
+let artLoaded = false
+window.game.onFrame((frame) => { if (artLoaded) scene.ingest(frame, performance.now()) })
 void Promise.all([window.game.getLayout(), window.game.getState()]).then(([nextLayout, nextState]) => {
   layout = nextLayout; state = nextState; resize()
 })
 resize()
-requestAnimationFrame(loop)
+void artReady.then(() => { artLoaded = true; requestAnimationFrame(loop) }).catch(() => {
+  banner.textContent = '画像を読み込めませんでした。再起動してください。'; banner.className = 'show bad'
+})

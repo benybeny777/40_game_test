@@ -13,7 +13,7 @@ export interface Unit {
   uid: number; side: Side; defId: string; slot: number; x: number; hp: number; lv: number
   stats: Stats; base: Stats; alive: boolean
   action: { kind: 'none' | 'move' | 'windup' | 'cast'; untilTick: number; targetUid?: number; skillId?: string; roll?: number }
-  attackReadyTick: number; skillReadyTick: number; ult: number; gauges: { jonen?: number }
+  attackReadyTick: number; skillReadyTick: number; ult: number; gauges: { jonen?: number; phantoms?: number; split?: number }
   effects: Effect[]; aggro: number
 }
 export interface HitPayload { mul: number; forceCrit?: boolean; aoeDots?: number; tags?: string[] }
@@ -46,8 +46,10 @@ export type SimEvent =
   | { t: 'death' | 'revive' | 'spawn'; uid: number }
   | { t: 'phase'; phase: Phase; stageNo: number; wave: number }
   | { t: 'kakuhen'; uid: number; hit: boolean }
-  | { t: 'reward'; koban: number; exp: number; enemyId: string; x: number }
+  | { t: 'reward'; koban: number; exp: number; enemyId: string; x: number; stageNo?: number }
   | { t: 'explode'; x: number; radius: number }
-  | { t: 'drop'; x: number; rarityHint: number }
+  | { t: 'drop'; x: number; rarity: number; name: string; equippedBy?: JobId }
   | { t: 'levelUp'; job: JobId; lv: number }
 export interface AttackDef { kind: 'melee' | 'ranged'; mul: number; projectile?: string; targeting: Targeting }
+/** What an equipped item contributes to stats (full item metadata lives in progress/items.ts). */
+export interface GearStats { atk: number; hp: number; def: number; affixes: Array<{ k: import('../data/items.ts').AffixKey; v: number }> }

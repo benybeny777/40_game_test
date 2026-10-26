@@ -1,8 +1,8 @@
 {
   "name": "taskbar-hyakkiko",
-  "version": "0.0.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "タスクバー百鬼行 M1",
+  "description": "タスクバー百鬼行：タスクバー直上の和風放置RPG",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
@@ -14,13 +14,16 @@
     "test:shell": "node tools/shell-check.mjs",
     "sim": "node --experimental-strip-types tools/sim-runner.ts",
     "sprites:preview": "node --experimental-strip-types tools/sprites-preview.ts",
-    "build": "electron-vite build"
+    "build": "electron-vite build",
+    "icon": "node --experimental-strip-types tools/make-icon.ts",
+    "dist": "pnpm icon && electron-vite build && electron-builder --win portable"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@swc/core": "1.16.18",
     "@types/node": "24.19.2",
     "electron": "44.9.0",
+    "electron-builder": "26.15.3",
     "electron-vite": "6.0.0",
     "eslint": "10.13.0",
     "typescript": "6.0.3",
@@ -29,6 +32,41 @@
     "vitest": "5.0.5"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@swc/core", "electron", "esbuild"]
+    "onlyBuiltDependencies": [
+      "@swc/core",
+      "electron",
+      "esbuild"
+    ]
+  },
+  "dependencies": {
+    "koffi": "2.16.3"
+  },
+  "build": {
+    "appId": "local.taskbar.hyakkiko",
+    "productName": "タスクバー百鬼行",
+    "executableName": "TaskbarHyakkiko",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**",
+      "package.json",
+      "!node_modules/koffi/build/koffi/!(win32_x64)/**",
+      "!node_modules/koffi/src/**",
+      "!node_modules/koffi/doc/**"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "TaskbarHyakkiko-${version}-portable.exe"
+    }
   }
 }

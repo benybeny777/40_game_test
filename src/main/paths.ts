@@ -1,9 +1,10 @@
 import { join } from 'node:path'
 
 // The sole authority for runtime, renderer and profile paths. No writes on import.
-export function resolvePaths(projectRoot: string, userData: string, profile: string | undefined) {
+// dataDir (env GAME_DATA_DIR) is only for local verification of a packaged build, so testing never writes the real user save.
+export function resolvePaths(projectRoot: string, userData: string, profile: string | undefined, dataDir?: string) {
   const development = profile === 'dev'
-  const data = development ? join(projectRoot, '.dev-data') : userData
+  const data = dataDir || (development ? join(projectRoot, '.dev-data') : userData)
   return {
     profile: development ? 'dev' as const : 'user' as const,
     data,

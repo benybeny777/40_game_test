@@ -13,7 +13,7 @@ describe('テキストのスプライト', () => {
   it('パレットは32色', () => { expect(Object.keys(palette)).toHaveLength(32) })
   it('全ジョブ・全敵・弾のスプライトがあり、必要なアニメを持つ', () => {
     const names = new Set(sprites.map((sprite) => sprite.name))
-    for (const id of [...partyOrder, ...Object.keys(enemies), 'projectiles']) expect(names.has(id), id).toBe(true)
+    for (const id of [...partyOrder, ...Object.values(enemies).map((enemy) => enemy.sprite ?? enemy.id), 'projectiles']) expect(names.has(id), id).toBe(true)
     for (const sprite of sprites.filter((candidate) => (partyOrder as string[]).includes(candidate.name))) {
       expect(Object.keys(sprite.anims)).toEqual(expect.arrayContaining(['idle', 'walk', 'attack']))
     }

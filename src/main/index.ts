@@ -6,12 +6,13 @@ import { addOffline, computeOffline } from '../core/index.ts'
 import { resolvePaths } from './paths'
 import { stripLayout } from './windows/placement'
 import { GameHost } from './loop'
+import { createProbe, FullscreenWatcher } from './fullscreen'
 import { loadProfile, loadSettings, saveProfile, saveSettings } from './saveStore'
 import { channels, type PanelTarget, type Settings, type ShellState, type StripLayout } from '../shared/api'
 import { parseCommand, parseSettings, parseTarget } from '../shared/validate'
 
 app.setName('タスクバー百鬼行')
-const paths = resolvePaths(resolve(__dirname, '../..'), app.getPath('userData'), process.env.GAME_PROFILE)
+const paths = resolvePaths(resolve(__dirname, '../..'), app.getPath('userData'), process.env.GAME_PROFILE, process.env.GAME_DATA_DIR)
 app.setPath('userData', paths.data)
 
 let strip: BrowserWindow
@@ -24,10 +25,13 @@ let quitting = false
 let interactive = false
 let pendingTarget: PanelTarget | undefined
 let viewTimer: ReturnType<typeof setTimeout> | undefined
-const state: ShellState = { visible: true, paused: false, profile: paths.profile, settings: loadSettings(paths) }
+let fullscreenWatcher: FullscreenWatcher | undefined
+const state: ShellState = { visible: true, paused: false, profile: paths.profile, settings: loadSettings(paths),
+  packaged: app.isPackaged, fullscreenHidden: false, fullscreenSupported: false }
 
 // Main-process operation also used by the local acceptance launcher.
 export function getTrayMenu() { return trayMenu }
+export { createProbe } from './fullscreen'
 
 function log(message: string) {
   try { mkdirSync(paths.logs, { recursive: true }); appendFileSync(join(paths.logs, 'main.log'), `${new Date().toISOString()} ${message}\n`) } catch { /* logging must never stop the game */ }
@@ -102,13 +106,24 @@ function menu() {
     { label: state.visible ? '帯を隠す' : '帯を表示', click: () => {
       state.visible = !state.visible
       pointer(true)
-      if (state.visible) { strip.showInactive(); strip.webContents.send(channels.frame, host.frame()) } else strip.hide()
+      applyStripVisibility()
       publish()
     } },
     { label: state.paused ? '再開' : '一時停止', click: () => { state.paused = !state.paused; host.setPaused(state.paused); publish() } },
     { type: 'separator' },
     { label: '終了', click: () => app.quit() },
   ])
+}
+
+/** The strip shows only when the user wants it AND no full-screen app is in front. */
+function applyStripVisibility() {
+  const show = state.visible && !state.fullscreenHidden
+  if (show && !strip.isVisible()) { strip.showInactive(); strip.setAlwaysOnTop(true, 'screen-saver'); strip.webContents.send(channels.frame, host.frame()) }
+  if (!show && strip.isVisible()) { pointer(true); strip.hide() }
+}
+function applyAutoStart() {
+  // Only the packaged exe registers itself; a dev checkout must never add a login item.
+  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: state.settings.autoStart, args: ['--startup'] })
 }
 
 function placeStrip() {
@@ -125,6 +140,9 @@ function applySettings(next: Partial<Settings>) {
   state.settings = { ...state.settings, ...next }
   try { saveSettings(paths, state.settings) } catch (error) { log(`settings save failed: ${String(error)}`) }
   if (sizeChanged) placeStrip()
+  if (next.autoStart !== undefined) applyAutoStart()
+  if (next.hideOnFullscreen === false) fullscreenWatcher?.stop()
+  if (next.hideOnFullscreen === true) fullscreenWatcher?.start()
   publish()
   return { ...state }
 }
@@ -138,7 +156,7 @@ function start() {
   }
   const speed = paths.profile === 'dev' ? Math.min(50, Math.max(1, Number(process.env.GAME_SPEED) || 1)) : 1
   host = new GameHost(loaded.profile, randomInt(0, 2 ** 32 - 1), {
-    frame: (frame) => { if (state.visible && !strip.isDestroyed()) strip.webContents.send(channels.frame, frame) },
+    frame: (frame) => { if (state.visible && !state.fullscreenHidden && !strip.isDestroyed()) strip.webContents.send(channels.frame, frame) },
     viewChanged: sendView,
     save: (profile) => {
       try { mkdirSync(dirname(paths.save), { recursive: true }); saveProfile(paths, profile) } catch (error) { log(`save failed: ${String(error)}`) }
@@ -154,7 +172,7 @@ function start() {
     skipTaskbar: true, focusable: false, resizable: false, hasShadow: false, show: false,
     backgroundColor: '#00000000', webPreferences: webPreferences({ backgroundThrottling: false }) })
   strip.setIgnoreMouseEvents(true, { forward: true })
-  strip.once('ready-to-show', () => { strip.setAlwaysOnTop(true, 'screen-saver'); strip.showInactive() })
+  strip.once('ready-to-show', () => { strip.setAlwaysOnTop(true, 'screen-saver'); applyStripVisibility() })
   strip.on('close', (event) => { if (!quitting) event.preventDefault() })
   strip.webContents.on('render-process-gone', () => app.quit())
   load(strip, 'strip')
@@ -193,14 +211,29 @@ function start() {
   })
   ipcMain.on(channels.openSaveFolder, (event) => { if (fromPanel(event)) void shell.openPath(dirname(paths.save)) })
 
+  const probe = createProbe(log)
+  state.fullscreenSupported = probe !== null
+  if (probe) {
+    fullscreenWatcher = new FullscreenWatcher(probe, () => {
+      const rect = screen.dipToScreenRect(null, screen.getPrimaryDisplay().bounds)
+      return { left: rect.x, top: rect.y, right: rect.x + rect.width, bottom: rect.y + rect.height }
+    }, (hidden) => { state.fullscreenHidden = hidden; applyStripVisibility(); publish() }, log)
+    if (state.settings.hideOnFullscreen) fullscreenWatcher.start()
+  }
+  applyAutoStart()
+
   screen.on('display-metrics-changed', placeStrip)
   screen.on('display-added', placeStrip)
   screen.on('display-removed', placeStrip)
   host.start()
+  // Local smoke test of a packaged exe: quit through the normal path (saves) after N ms. Unset in normal use.
+  const smoke = Number(process.env.GAME_SMOKE_QUIT_MS)
+  if (smoke > 0) setTimeout(() => { log('smoke test: quitting'); app.quit() }, smoke)
 }
 
 app.on('before-quit', () => {
   quitting = true
+  fullscreenWatcher?.stop()
   if (host) { host.stop(); host.saveNow() }
   tray?.destroy()
 })

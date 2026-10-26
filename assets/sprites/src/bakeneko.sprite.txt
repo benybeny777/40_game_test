@@ -1,0 +1,34 @@
+# 化け猫：三毛の四つ足、二股のしっぽ、黄色い目
+name: bakeneko
+size: 24x24
+anchor: 12,23
+anim idle fps=3 loop
+frame
+.................a...a..
+................aza.aza.
+...a............azzzzza.
+..aza..........azxazxaa.
+..aza.a........azzzzzpa.
+..azaaza......azzeeeeea.
+...azazaaaaaaazzzeeeeea.
+....aazzzzzzzzzzzeeea...
+.....azzzezzzzzzzzea....
+.....azzeeezzzzzzeea....
+.....azeeeeeeeeeeeea....
+.....aeea.aea.aea.aeea..
+.....aeea.aea.aea.aeea..
+.....aaaa.aaa.aaa.aaaa..
+frame from idle#0
+13: ...aza.........azxazxaa.
+14: ...aza.a.......azzzzzpa.
+anim walk fps=8 loop
+frame from idle#0
+21: ....aeea..aea..aea.aeea.
+22: ...aeea...aea...aeaaeea.
+23: ...aaaa...aaa...aaaaaaa.
+frame from idle#0
+anim attack fps=10 once
+frame from idle#0
+15: ..azaaza......azzeeeeeaf
+16: ...azazaaaaaaazzzeeeeeaf
+frame from attack#0

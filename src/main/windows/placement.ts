@@ -1,7 +1,8 @@
 import type { DisplaySize, StripLayout } from '../../shared/api'
 export interface Area { x: number; y: number; width: number; height: number }
 
-export const PLAY_DOTS = 32
+import { PLAY_DOTS } from '../../shared/art'
+export { PLAY_DOTS } from '../../shared/art'
 export const HEADROOM_DIP = 72
 const sizeMul: Record<DisplaySize, number> = { small: 0.75, medium: 1, large: 1.25 }
 

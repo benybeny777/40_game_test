@@ -1,11 +1,12 @@
 import paletteText from '../../../../assets/palettes/base32.txt?raw'
 import { parsePalette, parseSprite, type ParsedSprite } from './parse'
+import { loadArtSheets } from './art'
 
 const sources = import.meta.glob('../../../../assets/sprites/src/*.sprite.txt', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 export const palette = parsePalette(paletteText)
 
 export interface Frame { normal: HTMLCanvasElement; flash: HTMLCanvasElement; gray: HTMLCanvasElement }
-export interface Sheet { name: string; width: number; height: number; anchor: [number, number]; top: number
+export interface Sheet { name: string; width: number; height: number; anchor: [number, number]; top: number; portrait?: HTMLCanvasElement
   anims: Record<string, { fps: number; loop: boolean; frames: Frame[] }> }
 
 function canvas(width: number, height: number) {
@@ -39,6 +40,11 @@ export const sheets: Record<string, Sheet> = Object.fromEntries(Object.values(so
   const sheet = build(parseSprite(text, palette))
   return [sheet.name, sheet]
 }))
+/** Rendering starts only after production art is decoded. Broken assets are surfaced instead of silently using placeholders. */
+export const artReady = loadArtSheets().then((art) => {
+  for (const sheet of art) sheets[sheet.name] = sheet
+  document.documentElement.dataset.artSheets = String(art.length)
+})
 export function frameAt(sheet: Sheet, anim: string, elapsedMs: number): Frame {
   const entry = sheet.anims[anim] ?? sheet.anims.idle ?? Object.values(sheet.anims)[0]
   const index = Math.floor(Math.max(0, elapsedMs) / (1000 / entry.fps))

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { win32 } from 'node:path'
 import { resolvePaths } from '../src/main/paths'
-import { dotPxFor, HEADROOM_DIP, stripLayout } from '../src/main/windows/placement'
+import { dotPxFor, HEADROOM_DIP, PLAY_DOTS, stripLayout } from '../src/main/windows/placement'
 
 describe('帯の配置とドット倍率', () => {
   it('1ドットは整数の物理ピクセル（100%→3、125%→3、150%→4、200%→5）', () => {
@@ -11,12 +11,12 @@ describe('帯の配置とドット倍率', () => {
   })
   it('下タスクバーの直上に、遊ぶ領域＋上の余白の高さで置く', () => {
     const { bounds, layout } = stripLayout({ x: 0, y: 0, width: 1920, height: 1032 }, 1)
-    expect(bounds).toEqual({ x: 0, y: 1032 - (96 + HEADROOM_DIP), width: 1920, height: 96 + HEADROOM_DIP })
+    expect(bounds).toEqual({ x: 0, y: 1032 - (PLAY_DOTS * 3 + HEADROOM_DIP), width: 1920, height: PLAY_DOTS * 3 + HEADROOM_DIP })
     expect(layout.dotPx).toBe(3)
   })
   it('150%では端数を切り上げ、下端を作業領域に揃える', () => {
     const { bounds } = stripLayout({ x: 0, y: 0, width: 1707, height: 1000 }, 1.5)
-    expect(bounds.height).toBe(Math.ceil(32 * 4 / 1.5) + HEADROOM_DIP)
+    expect(bounds.height).toBe(Math.ceil(PLAY_DOTS * 4 / 1.5) + HEADROOM_DIP)
     expect(bounds.y + bounds.height).toBe(1000)
   })
   it('負の座標や上側の作業領域を保つ', () => {

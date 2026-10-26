@@ -50,6 +50,7 @@ export function kobanMul(world: World) {
   const allies = world.units.filter((unit) => unit.side === 'ally')
   let mul = 1
   if (allies.some((unit) => passiveOn(unit, 'pachipro'))) mul += jobs.pachipro.passive.params.koban
+  for (const unit of allies) mul += unit.base.kobanMul - 1          // 装備の「獲得小判」
   mul += Math.max(0, ...allies.flatMap((unit) => unit.effects.filter((effect) => effect.kind === 'kobanPct').map((effect) => effect.value)))
   return mul
 }

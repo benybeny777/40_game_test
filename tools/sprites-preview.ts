@@ -1,8 +1,8 @@
 // pnpm sprites:preview — renders every text sprite at 4× into .dev-data/preview/sprites.png for visual review.
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { crc32, deflateSync } from 'node:zlib'
 import { parsePalette, parseSprite } from '../src/renderer/strip/sprites/parse.ts'
+import { encodePng } from './png.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const palette = parsePalette(readFileSync(join(root, 'assets/palettes/base32.txt'), 'utf8'))
@@ -27,17 +27,7 @@ for (const row of rows) {
   }
   top += (row[0].sprite.height + gap) * scale
 }
-const chunk = (type: string, data: Buffer) => {
-  const length = Buffer.alloc(4); length.writeUInt32BE(data.length)
-  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
-  const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(body) >>> 0)
-  return Buffer.concat([length, body, crc])
-}
-const header = Buffer.alloc(13)
-header.writeUInt32BE(width, 0); header.writeUInt32BE(height, 4); header.set([8, 6, 0, 0, 0], 8)
-const raw = Buffer.alloc((width * 4 + 1) * height)
-for (let y = 0; y < height; y++) pixels.copy(raw, y * (width * 4 + 1) + 1, y * width * 4, (y + 1) * width * 4)
 const out = join(root, '.dev-data/preview')
 mkdirSync(out, { recursive: true })
-writeFileSync(join(out, 'sprites.png'), Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]))
+writeFileSync(join(out, 'sprites.png'), encodePng(width, height, pixels))
 console.log(`${sprites.length} sprites → ${join(out, 'sprites.png')} (${width}×${height})`)

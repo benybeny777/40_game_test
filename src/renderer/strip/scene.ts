@@ -1,16 +1,27 @@
-import { balance, enemies, jobs, type JobId, type SimEvent, type Snapshot, type SnapshotUnit } from '../../core/index.ts'
+import { balance, enemies, jobs, rarities, type JobId, type SimEvent, type Snapshot, type SnapshotUnit } from '../../core/index.ts'
 import type { Frame as SimFrame } from '../../shared/api'
 import { drawText, textWidth } from './font'
 import { animDuration, frameAt, sheets, type Sheet } from './sprites/sheet'
+import { PARTY_SPACING_SCALE, PLAY_DOTS } from '../../shared/art'
 
 /** Vertical layout inside the 32-dot play area (02-strip.md §3). Everything above it is headroom. */
-const PLAY = 32, FOOT_FROM_TOP = 29
-const FLOATING = new Set(['chochin', 'onibi'])
+const PLAY = PLAY_DOTS, FOOT_FROM_TOP = PLAY_DOTS - 3
+const FLOATING = new Set(['chochin', 'onibi', 'bugsei', 'bugsei_child'])
+const HOPPING = new Set(['karakasa'])
+const PHANTOMS = new Set(['kyubi_phantom'])
+/** Derived enemies (split pieces, phantoms) reuse another enemy's sprite. */
+const sheetOf = (defId: string): Sheet | undefined => sheets[defId] ?? sheets[enemies[defId]?.sprite ?? '']
 const MAX_NUMBERS = 30
 const ENEMY_DRAW_OFFSET = 4
 const colors = { hp: '#63b93b', hpLow: '#e8483e', enemyHp: '#e8483e', bar: '#15131c', ult: '#ffe27a', jonen: '#ff6fb0',
   dmg: '#ffffff', crit: '#ffe27a', heal: '#9df07a', miss: '#8d8ea6', gold: '#ffe27a', hudBg: 'rgba(21,24,36,0.88)', hudLine: '#d9a52c' }
 
+// 夜の街道（土と草）／シャッター商店街（灰のタイルと自販機の光）／電脳街（黒地に青い線）
+const GROUNDS = [
+  { band: 'rgba(14,16,26,0.38)', line: 'rgba(157,186,172,0.55)', dotA: 'rgba(110,130,90,0.8)', dotB: 'rgba(120,110,100,0.7)', prop: 'rgba(99,185,59,0.7)', propHeight: 1 },
+  { band: 'rgba(22,22,28,0.42)', line: 'rgba(170,170,180,0.6)', dotA: 'rgba(140,140,150,0.8)', dotB: 'rgba(110,110,120,0.7)', prop: 'rgba(255,226,122,0.75)', propHeight: 3 },
+  { band: 'rgba(6,10,26,0.5)', line: 'rgba(47,143,255,0.7)', dotA: 'rgba(159,228,255,0.8)', dotB: 'rgba(47,143,255,0.6)', prop: 'rgba(180,255,90,0.75)', propHeight: 2 },
+]
 interface Visual { uid: number; defId: string; side: SnapshotUnit['side']; sheet: Sheet; anim?: string; animAt: number
   flashUntil: number; knockUntil: number; deadAt?: number; spawnAt: number }
 interface Floater { uid: number; text: string; x: number; y: number; color: string; start: number; dur: number; big?: boolean }
@@ -30,6 +41,7 @@ export class Scene {
   private numbers: Floater[] = []
   private fx: Fx[] = []
   private coins: Coin[] = []
+  private loot: Array<{ x: number; y: number; start: number; color: string }> = []
   private ground = 0
   private lastDraw = 0
   private hud = { x: 0, y: 0, w: 0, h: 0 }
@@ -37,9 +49,9 @@ export class Scene {
   constructor(private readonly hooks: SceneHooks) {}
 
   get footY() { return this.H - PLAY + FOOT_FROM_TOP }
-  get baseX() { return Math.floor(this.W * 0.15) + 72 }
+  get baseX() { return Math.floor(this.W * 0.12) + 72 * PARTY_SPACING_SCALE }
   // Enemies are drawn a few dots further right so melee contact (14 dots in the sim) does not overlap sprites.
-  private screenX(x: number, enemy = false) { return this.baseX + x + (enemy ? ENEMY_DRAW_OFFSET : 0) }
+  private screenX(x: number, enemy = false) { return this.baseX + x * PARTY_SPACING_SCALE + (enemy ? ENEMY_DRAW_OFFSET : 0) }
 
   ingest(frame: SimFrame, now: number) {
     const first = !this.cur
@@ -47,7 +59,7 @@ export class Scene {
     if (this.cur) this.gap = Math.min(300, Math.max(50, now - this.curAt))
     this.cur = frame.snapshot; this.curAt = now
     for (const unit of frame.snapshot.units) if (!this.visuals.has(unit.uid)) {
-      const sheet = sheets[unit.defId] ?? sheets.chochin
+      const sheet = sheetOf(unit.defId) ?? sheets.chochin
       this.visuals.set(unit.uid, { uid: unit.uid, defId: unit.defId, side: unit.side, sheet, animAt: 0, flashUntil: 0, knockUntil: 0,
         spawnAt: unit.side === 'enemy' && !first ? now : 0, deadAt: unit.alive ? undefined : now - 1000 })
     }
@@ -63,8 +75,8 @@ export class Scene {
     const before = this.prev?.units.find((unit) => unit.uid === uid) ?? now
     return this.screenX(before.x + (now.x - before.x) * alpha, now.side === 'enemy')
   }
-  private chestY(unit: SnapshotUnit) { const sheet = sheets[unit.defId]; return this.footY - Math.floor((sheet ? sheet.height - sheet.top : 20) * 0.55) }
-  private headY(unit: SnapshotUnit) { const sheet = sheets[unit.defId]; return this.footY - (sheet ? sheet.height - sheet.top : 20) }
+  private chestY(unit: SnapshotUnit) { const sheet = sheetOf(unit.defId); return this.footY - Math.floor((sheet ? sheet.height - sheet.top : 20) * 0.55) }
+  private headY(unit: SnapshotUnit) { const sheet = sheetOf(unit.defId); return this.footY - (sheet ? sheet.height - sheet.top : 20) }
   private number(text: string, uid: number, color: string, now: number, big = false) {
     const unit = this.unit(uid), x = this.posX(uid, 1)
     if (!unit || x === undefined) return
@@ -94,7 +106,7 @@ export class Scene {
         if (vis && vis.side === 'ally') { vis.anim = 'attack'; vis.animAt = now }
         if (vis && vis.side === 'enemy') { vis.anim = 'attack'; vis.animAt = now }
         const unit = this.unit(event.uid), x = this.posX(event.uid, 1)
-        const name = unit?.side === 'ally' ? jobs[unit.defId as JobId].skill.name : enemies[unit?.defId ?? '']?.boss?.skill.name
+        const name = unit?.side === 'ally' ? jobs[unit.defId as JobId].skill.name : event.skillId === 'phantom' ? '幻影分身' : enemies[unit?.defId ?? '']?.boss?.skill.name
         if (unit && x !== undefined && name && event.skillId !== 'kakuhen') this.hooks.label(name, x, this.headY(unit) - 6, unit.side === 'ally' ? jobs[unit.defId as JobId].color : '#ff8a6a')
         break
       }
@@ -138,6 +150,17 @@ export class Scene {
         break
       }
       case 'explode': this.fx.push({ kind: 'boom', x: this.screenX(event.x, true), y: this.footY - 6, start: now, dur: 380, radius: Math.min(16, event.radius), color: '#ffe27a' }); break
+      case 'drop': {
+        const rarity = rarities[event.rarity]
+        this.loot.push({ x: this.screenX(event.x, true), y: this.footY - 10, start: now, color: rarity.color })
+        if (event.rarity >= 2) this.hooks.label(`${rarity.name}「${event.name}」`, this.screenX(event.x, true), this.footY - 26, rarity.color)
+        if (event.rarity >= 3) this.hooks.banner(`${rarity.name}の装備！ ${event.name}`, 'good')
+        if (event.equippedBy) {
+          const ally = this.cur?.units.find((unit) => unit.side === 'ally' && unit.defId === event.equippedBy)
+          if (ally) this.number('EQUIP', ally.uid, rarity.color, now)
+        }
+        break
+      }
       case 'levelUp': {
         const ally = this.cur?.units.find((unit) => unit.side === 'ally' && unit.defId === event.job)
         if (ally) this.number(`LV${event.lv}`, ally.uid, colors.gold, now, true)
@@ -155,7 +178,7 @@ export class Scene {
     const alpha = Math.min(1, Math.max(0, (now - this.curAt) / this.gap))
     const renderTick = (this.prev?.tick ?? snap.tick) + alpha * (snap.tick - (this.prev?.tick ?? snap.tick))
     if (snap.phase === 'walking') this.ground = (this.ground + dt * 0.02) % 4096
-    this.drawGround(ctx)
+    this.drawGround(ctx, Math.floor((snap.stageNo - 1) / 5))
     for (const mine of snap.mines) {
       const blink = mine.explodeTick - renderTick < 10 ? Math.floor(now / 80) % 2 : Math.floor(now / 250) % 2
       this.sprite(ctx, sheets.projectiles, 'mine', blink * 250, this.screenX(mine.x, true), this.footY, false)
@@ -174,20 +197,22 @@ export class Scene {
     }
     this.drawFx(ctx, now)
     this.drawCoins(ctx, now)
+    this.drawLoot(ctx, now)
     this.drawNumbers(ctx, now)
     this.drawHud(ctx, snap)
   }
 
-  private drawGround(ctx: CanvasRenderingContext2D) {
+  private drawGround(ctx: CanvasRenderingContext2D, area: number) {
     const y = this.footY + 1
-    if (this.groundBand) { ctx.fillStyle = 'rgba(14,16,26,0.38)'; ctx.fillRect(0, y - 7, this.W, 9) }
-    ctx.fillStyle = 'rgba(157,186,172,0.55)'; ctx.fillRect(0, y, this.W, 1)
+    const theme = GROUNDS[Math.min(area, GROUNDS.length - 1)]
+    if (this.groundBand) { ctx.fillStyle = theme.band; ctx.fillRect(0, y - 7, this.W, 9) }
+    ctx.fillStyle = theme.line; ctx.fillRect(0, y, this.W, 1)
     const offset = Math.floor(this.ground)
     for (let i = -1; i < this.W / 13 + 1; i++) {
       const x = ((i * 13 - offset) % this.W + this.W) % this.W
-      ctx.fillStyle = i % 3 === 0 ? 'rgba(110,130,90,0.8)' : 'rgba(120,110,100,0.7)'
+      ctx.fillStyle = i % 3 === 0 ? theme.dotA : theme.dotB
       ctx.fillRect(x, y + 1, i % 3 === 0 ? 2 : 1, 1)
-      if (i % 5 === 0) { ctx.fillStyle = 'rgba(99,185,59,0.7)'; ctx.fillRect(x + 4, y - 1, 1, 1); ctx.fillRect(x + 6, y - 1, 1, 1) }
+      if (i % 5 === 0) { ctx.fillStyle = theme.prop; ctx.fillRect(x + 4, y - 1, 1, 1); ctx.fillRect(x + 6, y - theme.propHeight, 1, theme.propHeight) }
     }
   }
 
@@ -227,6 +252,7 @@ export class Scene {
     if (anim === 'attack' && now - vis.animAt < 160) dx = unit.side === 'enemy' ? -2 : 1
     if (now < vis.knockUntil) dx += unit.side === 'enemy' ? 1 : -1
     if (FLOATING.has(unit.defId)) dy = Math.round(Math.sin(now / 280 + unit.uid) * 1.5) - 1
+    if (HOPPING.has(unit.defId)) dy = -Math.round(Math.abs(Math.sin(now / 220 + unit.uid)) * 3)
     if (unit.action === 'cast') {
       const job = jobs[unit.defId as JobId]
       ctx.fillStyle = job ? job.color + '55' : '#ffffff55'
@@ -239,7 +265,7 @@ export class Scene {
       ctx.globalAlpha = 0.18; this.sprite(ctx, vis.sheet, anim, elapsed, x - 13, this.footY + dy, flip)
     }
     const blink = unit.effects.includes('mijin') && Math.floor(now / 70) % 2 === 0
-    ctx.globalAlpha = spawnFade * (blink ? 0.45 : 1)
+    ctx.globalAlpha = spawnFade * (blink ? 0.45 : 1) * (PHANTOMS.has(unit.defId) ? 0.55 : 1)
     this.sprite(ctx, vis.sheet, anim, elapsed, x + dx, this.footY + dy, flip, now < vis.flashUntil ? 'flash' : 'normal')
     ctx.globalAlpha = 1
     const head = this.headY(unit) + dy
@@ -317,6 +343,19 @@ export class Scene {
     }
   }
 
+  /** Item drops: a chest pops up, flashes its rarity colour and flies into the HUD. */
+  private drawLoot(ctx: CanvasRenderingContext2D, now: number) {
+    this.loot = this.loot.filter((drop) => now - drop.start < 1400)
+    for (const drop of this.loot) {
+      const t = (now - drop.start) / 1000
+      let x = drop.x, y = drop.y - Math.sin(Math.min(1, t / 0.5) * Math.PI) * 14
+      if (t > 0.7) { const k = Math.min(1, (t - 0.7) / 0.7); x += (this.hud.x + 8 - x) * k * k; y += (this.hud.y + 4 - y) * k * k }
+      ctx.fillStyle = drop.color
+      for (const [ox, oy] of [[-4, -1], [4, -1], [0, -5], [0, 3]]) if (Math.floor(now / 90) % 2) ctx.fillRect(Math.round(x) + ox, Math.round(y) + oy, 1, 1)
+      this.sprite(ctx, sheets.projectiles, 'chest', now, x, y + 3, false)
+    }
+  }
+
   private drawNumbers(ctx: CanvasRenderingContext2D, now: number) {
     this.numbers = this.numbers.filter((number) => now - number.start < number.dur)
     for (const number of this.numbers) {
@@ -350,7 +389,7 @@ export class Scene {
     let best: { unit: SnapshotUnit; distance: number } | undefined
     for (const unit of snap.units) {
       if (unit.side === 'enemy' && !unit.alive) continue
-      const x = this.screenX(unit.x, unit.side === 'enemy'), sheet = sheets[unit.defId]
+      const x = this.screenX(unit.x, unit.side === 'enemy'), sheet = sheetOf(unit.defId)
       const half = sheet ? Math.ceil(sheet.width / 3) : 8, top = this.headY(unit) - 4
       if (dotX < x - half || dotX > x + half || dotY < top || dotY > this.footY + 1) continue
       const distance = Math.abs(dotX - x)
@@ -363,5 +402,5 @@ export class Scene {
     if (target.kind === 'hud') return { x: this.hud.x + this.hud.w / 2, y: this.hud.y - 8 }
     return { x: this.screenX(target.unit.x, target.unit.side === 'enemy'), y: this.headY(target.unit) - 5 }
   }
-  busy(now: number) { return this.fx.length > 0 || this.numbers.length > 0 || this.coins.length > 0 || now - this.curAt < 1000 }
+  busy(now: number) { return this.fx.length > 0 || this.numbers.length > 0 || this.coins.length > 0 || this.loot.length > 0 || now - this.curAt < 1000 }
 }

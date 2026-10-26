@@ -1,7 +1,7 @@
 import { balance as b } from '../data/balance.ts'
 import { enemies } from '../data/enemies.ts'
 import { jobs } from '../data/jobs.ts'
-import { addEffect, aoe, healUnit, passiveOn, strike } from './actions.ts'
+import { addEffect, aoe, healUnit, passiveOn } from './actions.ts'
 import { friends, living, opponents } from './combat.ts'
 import { random } from './rng.ts'
 import { sumEffects, withEffects } from './stats.ts'
@@ -86,18 +86,6 @@ export const ultimates: Record<string, (ctx: SkillContext, roll?: number) => voi
     aoe(world, self, roll, events, ['oatari'])
     if (roll === q.max) events.push({ t: 'reward', koban: consolation(world, q.bonus), exp: 0, enemyId: 'oatari', x: self.x })
   },
-}
-
-/** Boss skills fire instead of a normal attack when ready. Returns false when nothing is in reach. */
-export function bossSkill({ world, self, events }: SkillContext): boolean {
-  const boss = enemies[self.defId].boss
-  if (!boss) return false
-  const targets = opponents(world, self).filter((unit) => Math.abs(unit.x - self.x) <= self.stats.rangeDots + b.formationGap)
-    .sort((a, z) => a.slot - z.slot).slice(0, boss.skill.targets)
-  if (!targets.length) return false
-  events.push({ t: 'skill', uid: self.uid, skillId: boss.skill.id })
-  for (const target of targets) strike(world, self, target, { mul: boss.skill.mul, tags: [boss.skill.id] }, events)
-  return true
 }
 
 export function onBattleStart(world: World, events: SimEvent[]) {

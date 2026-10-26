@@ -11,6 +11,8 @@ export function chooseTarget(world: World, self: Unit): Unit | undefined {
   const candidates = opponents(world, self).filter((target) => Math.abs(target.x - self.x) <= self.stats.rangeDots)
   if (!candidates.length) return undefined
   if (self.side === 'enemy') {
+    // 呪いのフィギュア: always the rearmost ally it can reach.
+    if (enemies[self.defId].traits.backline) return candidates.reduce((best, target) => target.slot > best.slot ? target : best)
     const front = candidates.reduce((best, target) => target.slot < best.slot ? target : best)
     const others = candidates.filter((target) => target !== front)
     if (!others.length || random(world) < balance.frontTargetChance) return front
