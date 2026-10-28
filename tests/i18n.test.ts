@@ -43,7 +43,7 @@ describe('locale and UI translations', () => {
   })
   it('covers store product text and critical recovery labels', () => {
     setLocale('en')
-    for (const source of ['桜色の足元', '試着を取り消す', '保存を再試行', 'セーブを書き出す', '販売準備中']) {
+    for (const source of ['桜色の足元', '試着を取り消す', '保存を再試行', 'セーブを書き出す', '販売準備中', '控え・経験値なし（育成と装備を保持）', '戦闘参加で経験値']) {
       expect(translatedLabel(source)).not.toBe(source)
       expect(translatedLabel(source)).not.toMatch(/[ぁ-んァ-ヶ一-龥]/u)
     }

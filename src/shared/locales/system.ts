@@ -17,6 +17,8 @@ registerTranslations({
   '冒険の様子': 'Adventure', '戦闘の読み込み中': 'Loading battle',
 })
 registerTranslationTemplates([
+  { ja: 'このセーブは新しいバージョン（形式{version}）で保存されています。対応する最新版で開いてください。セーブは変更していません。\n{path}', en: 'This save was created by a newer version (format {version}). Open it with a compatible latest version. Your save has not been changed.\n{path}' },
+  { ja: 'セーブを安全に読み込めませんでした。ファイルを変更せず起動を中止しました。セーブのフォルダを確認してください。\n{path}', en: 'The save could not be loaded safely. Startup was stopped without changing the file. Check your save folder.\n{path}' },
   { ja: '出撃中：{names}', en: 'Deployed: {names}' },
   { ja: '{seconds}秒', en: '{seconds}s' },
   { ja: 'ウェーブ {wave}/10', en: 'Wave {wave}/10' },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { advance, applyRewards, attributeBalance, attributeDefs, availablePoints, buildView, computeStats, createGame, equipCheck, expToNext, jobs, newProfile, partyOrder, runCommand, validateProfile } from '../../src/core/index.ts'
+import { advance, applyRewards, attributeBalance, attributeDefs, availablePoints, buildView, computeStats, createGame, deployedJobs, equipCheck, expToNext, jobs, newProfile, partyOrder, runCommand, validateProfile } from '../../src/core/index.ts'
 import { rollItem, type Item } from '../../src/core/progress/items.ts'
 import { rarities, uniqueDefs } from '../../src/core/data/items.ts'
 import { emptyAttributes } from '../../src/core/data/attributes.ts'
@@ -16,13 +16,18 @@ const dexWeapon = (): Item => ({ id: 'gale', slot: 'weapon', job: 'ninja', ilvl:
   atk: 100, hp: 0, def: 0, locked: false, isNew: false, baseRoll: 1, affixes: [] })
 
 describe('4能力・自由なビルド', () => {
-  it('レベルアップで全17名が3ptを得て、autoは職ごとの方針へ振る', () => {
+  it('レベルアップした出撃3名だけが3ptを得て、控えへは自動配分しない', () => {
     const profile = newProfile('t')
     applyRewards(profile, [{ t: 'reward', koban: 0, exp: expToNext(1), enemyId: '', x: 0 }])
     for (const job of partyOrder) {
       const member = profile.party.members[job]
-      expect(Object.values(member.allocated).reduce((sum, value) => sum + value, 0)).toBe(attributeBalance.pointsPerLevel)
-      expect(member.allocated[attributeDefs[job].main]).toBeGreaterThan(0)
+      if (deployedJobs(profile.party.order).includes(job)) {
+        expect(Object.values(member.allocated).reduce((sum, value) => sum + value, 0)).toBe(attributeBalance.pointsPerLevel)
+        expect(member.allocated[attributeDefs[job].main]).toBeGreaterThan(0)
+      } else {
+        expect(member.lv).toBe(1); expect(member.exp).toBe(0)
+        expect(Object.values(member.allocated).every(points => points === 0)).toBe(true)
+      }
       expect(availablePoints(member)).toBe(0)
     }
   })

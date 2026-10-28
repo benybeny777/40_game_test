@@ -6,7 +6,7 @@ import { defaultFormation, jobs, partyOrder, partySize } from '../data/jobs.ts'
 import { dojo as dojoDefs } from '../data/progress.ts'
 import { areaOf, areas, previousAreaShare, stagesPerArea, waveSizes } from '../data/stages.ts'
 import { healUnit, kobanMul, passiveOn, strike } from './actions.ts'
-import { attackDef, chooseTarget, living, opponents } from './combat.ts'
+import { attackDef, chooseTarget, living, normalAttackInRange, opponents } from './combat.ts'
 import { random } from './rng.ts'
 import { onBattleStart, refreshStats, rollOatari, skills, ultimates } from './skills.ts'
 import { computeStats, type DojoLevels } from './stats.ts'
@@ -283,7 +283,7 @@ function finishActions(world: World, events: SimEvent[]) {
     const attack = attackDef(unit)
     const iai = unit.effects.find((effect) => effect.kind === 'nextCrit')
     if (attack.kind === 'melee') {
-      if (Math.abs(unit.x - target.x) > unit.stats.rangeDots) continue
+      if (!normalAttackInRange(world, unit, target)) continue
       if (iai) { unit.effects = unit.effects.filter((effect) => effect !== iai); events.push({ t: 'effect', uid: unit.uid, tag: iai.tag, on: false }) }
       if (unit.side === 'enemy' && enemies[unit.defId].traits.double) {
         // 化け猫: two half-strength swipes.

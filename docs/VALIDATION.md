@@ -1,4 +1,23 @@
-# 0.5.0 ローカル検証記録
+# ローカル検証記録
+
+## 0.5.1（2026-10-29）
+
+| 対象 | 結果と根拠 |
+|---|---|
+| 型・Lint・単体 | typecheck/lint成功、24ファイル278テスト。参加者限定EXP、オフライン獲得先の固定、入替待ち、後列近接の射程と前衛死亡時、攻撃動作を含む |
+| ビルド・配布 | web:build/dist成功、release:check116ファイルPASS。portable SHA256 `d401372cfb0ac5ec585b79cf5932c04948ece1838b9a1afd5ee849bba18996f0` |
+| 実exe | 最終buildの初回起動→保存→終了→再起動PASS、renderer例外0、観測した子プロセスとCDP終了。短期検査であり旧版の30分記録とは別。report `.dev-data/packaged-acceptance/2026-10-28T23-06-51-436Z-33000/report.json` |
+| 実Chrome | 375×812・812×375・768×1024、全8タブ。英語残留/横overflowなし、focus/scroll/言語切替/保存reload PASS |
+| 背景 | 専用browser save fixtureでB1/6/11を実選択し、地下墓地/市場/禁書庫を撮影・目視。背景ON/OFFの不透明画素率0.939/0.066、元のONへ復帰 |
+| 実アクション | サムライ/番長/力士の通常攻撃イベントを3人分観測。実canvasを0/45/90/135/190/250/330/430msで撮影し、踏込・命中・帰位を目視。`tools/action-preview.pw.txt`、画像`images/action-frames.png` |
+| 保存障害 | `node tools/save-failure-check.mjs`成功。専用実I/O失敗/retry、settings rollback、起動race。dialog選択のみstub。user saveは未変更 |
+| 進行sim | 変更後120分の高速core sim: B32、出撃Lv16/16/16、控え全員Lv1、1110撃破、全滅0。実時間のプレイ実績ではない |
+
+画像: [地下墓地](images/background-catacombs.png)・[地下市場](images/background-market.png)・[禁書庫](images/background-archive.png)・[実戦アクション](images/action-frames.png)。素材生成は画像生成ツール、検証画像は実際の描画から採取。ブラウザーのCanvas読み戻し性能warningは検証用getImageData由来で、ゲーム例外とは区別する。
+
+以下は旧版の履歴。0.5.1で同じ長時間/全画面/クリーンPC受入を行った証拠にはしない。
+
+## 0.5.0 ローカル検証記録
 
 2026-10-29、Windows 11 / 表示倍率150%。すべてローカルで実施し、GitHub Actionsは無効のまま。実データと検証用セーブを分離した。
 

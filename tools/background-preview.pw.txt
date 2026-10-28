@@ -1,0 +1,23 @@
+async (page) => {
+  // Synthetic browser-save fixture only. Never touches the native user profile.
+  await page.route('**/qa-background', route => route.fulfill({ contentType: 'text/html', body: '<html><body>background verification fixture</body></html>' }));
+  await page.goto('http://127.0.0.1:5174/qa-background');
+  await page.evaluate(() => {
+    const key = 'hyakkiko.web.save', save = JSON.parse(localStorage.getItem(key));
+    save.profile.progress.unlockedStage = 11; save.profile.progress.unlockedDepths[0] = 11;
+    save.profile.progress.currentStage = 1; save.profile.progress.depthRank = 0;
+    save.profile.progress.inTown = false; save.profile.dungeonRecords.yomi = save.profile.progress;
+    save.state.paused = true; save.settings.groundBand = true; save.profile.savedAt = new Date().toISOString();
+    save.profile.pendingOffline = null; localStorage.setItem(key, JSON.stringify(save));
+  });
+  await page.goto('http://127.0.0.1:5174/mobile/'); await page.locator('.card').first().waitFor();
+  await page.setViewportSize({ width: 375, height: 812 });
+  for (const [floor, name] of [[1, 'catacombs'], [6, 'market'], [11, 'archive']]) {
+    const result = await page.evaluate(async floor => window.game.command({ c: 'selectStage', stageNo: floor, depthRank: 0 }), floor);
+    if (!result.ok) throw Error('Could not select background floor ' + floor);
+    await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await page.screenshot({ path: `.dev-data/preview/background-${name}.png`, scale: 'css' });
+  }
+  const errors = await page.evaluate(() => document.querySelector('.browser-load-error,.storage-error')?.textContent);
+  if (errors) throw Error(errors);
+}

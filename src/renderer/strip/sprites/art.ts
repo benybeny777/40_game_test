@@ -4,8 +4,10 @@ import extraBUrl from '../../../../assets/sprites/art/party-extra-b.png'
 import tonoUrl from '../../../../assets/sprites/art/tono.png'
 import garibenUrl from '../../../../assets/sprites/art/gariben.png'
 import enemyUrl from '../../../../assets/sprites/art/enemy-atlas.png'
+import enemyAttackUrl from '../../../../assets/sprites/art/enemy-attack.png'
 import { enemyArt, partyArt, partyArtGroups } from '../../../shared/art'
 import type { Frame, Sheet } from './sheet'
+import { actionTiming } from '../actionPresentation'
 
 function canvas(w: number, h: number) {
   const c = document.createElement('canvas'); c.width = w; c.height = h
@@ -63,32 +65,42 @@ function crop(image: HTMLImageElement, left: number, top: number, right: number,
   out.getContext('2d')!.drawImage(cell, x0, y0, out.width, out.height, 0, 0, out.width, out.height)
   return out
 }
-function frame(source: HTMLCanvasElement, size: number, height: number): Frame {
-  const normal = canvas(size, size), ctx = normal.getContext('2d')!
-  const scale = Math.min(height / source.height, (size - 2) / source.width)
+function frame(source: HTMLCanvasElement, size: number, height: number, attackKey = false): Frame {
+  let anchorX = source.width / 2
+  if (attackKey) {
+    const pixels = source.getContext('2d')!.getImageData(0, 0, source.width, source.height).data
+    let sum = 0, count = 0
+    for (let y = Math.floor(source.height * .85); y < source.height; y++) for (let x = 0; x < source.width; x++) if (pixels[(y * source.width + x) * 4 + 3] >= 64) { sum += x; count++ }
+    if (count) anchorX = sum / count
+  }
+  const scale = attackKey ? height / source.height : Math.min(height / source.height, (size - 2) / source.width)
+  // Wide swings keep their body scale and stay anchored at the feet instead of shrinking the whole enemy.
+  const width = attackKey ? Math.max(size, 2 * Math.ceil(Math.max(anchorX, source.width - anchorX) * scale) + 2) : size
+  const normal = canvas(width, size), ctx = normal.getContext('2d')!
   const w = Math.round(source.width * scale), h = Math.round(source.height * scale)
   ctx.imageSmoothingEnabled = false
-  ctx.drawImage(source, Math.floor((size - w) / 2), size - h, w, h)
-  const flash = canvas(size, size), gray = canvas(size, size)
+  ctx.drawImage(source, attackKey ? Math.round(width / 2 - anchorX * scale) : Math.floor((size - w) / 2), size - h, w, h)
+  const flash = canvas(width, size), gray = canvas(width, size)
   const f = flash.getContext('2d')!, g = gray.getContext('2d')!
-  f.drawImage(normal, 0, 0); f.globalCompositeOperation = 'source-atop'; f.fillStyle = '#fff'; f.fillRect(0, 0, size, size)
+  f.drawImage(normal, 0, 0); f.globalCompositeOperation = 'source-atop'; f.fillStyle = '#fff'; f.fillRect(0, 0, width, size)
   g.filter = 'grayscale(1) brightness(.65)'; g.drawImage(normal, 0, 0)
   return { normal, flash, gray }
 }
 function sheet(name: string, sources: HTMLCanvasElement[], boss: boolean): Sheet {
   const size = boss ? 60 : 48, height = boss ? 52 : (partyArt as readonly string[]).includes(name) ? 40 : 32
-  const frames = sources.map((source) => frame(source, size, height))
+  const hero = (partyArt as readonly string[]).includes(name)
+  const frames = sources.map((source, index) => frame(source, size, height, !hero && index === 2))
   return { name, width: size, height: size, anchor: [size / 2, size], top: size - height,
     portrait: sources[0], anims: {
       idle: { fps: 2, loop: true, frames: [frames[0]] },
-      walk: { fps: 6, loop: true, frames: sources.length > 1 ? [frames[1], frames[0], frames[3], frames[0]] : frames },
-      attack: { fps: 6, loop: false, frames: [frames[0], frames[2] ?? frames[0], frames[0]] },
+      walk: { fps: actionTiming.walkFps, loop: true, frames: sources.length > 1 ? [frames[1], frames[3]] : frames },
+      attack: { fps: actionTiming.attackFps, loop: false, frames: [frames[2] ?? frames[0], frames[2] ?? frames[0], frames[0]] },
     } }
 }
 
 export async function loadArtSheets(): Promise<Sheet[]> {
-  const images = await Promise.all([partyUrl, extraAUrl, extraBUrl, tonoUrl, garibenUrl, enemyUrl].map(load))
-  const enemy = images[images.length - 1]
+  const images = await Promise.all([partyUrl, extraAUrl, extraBUrl, tonoUrl, garibenUrl, enemyUrl, enemyAttackUrl].map(load))
+  const enemy = images[5], enemyAttack = images[6]
   const heroes = partyArtGroups.flatMap((ids, group) => {
     const image = images[group], single = ids.length === 1
     const columns = single ? 2 : ids.length, rows = single ? 2 : 4
@@ -104,11 +116,18 @@ export async function loadArtSheets(): Promise<Sheet[]> {
   // Reviewed transparent gutters in the selected 1448x1086 source atlas, including the bosses' full silhouettes.
   const enemyColumns = [[0, 330, 715, 1010, 1448], [0, 330, 745, 1000, 1448], [0, 360, 695, 985, 1448]]
   const ey = [0, 375 / 1086, 720 / 1086, 1]
+  const attackBounds = [[13,86,338,349],[338,129,723,350],[713,125,1016,333],[1023,87,1439,349],
+    [25,405,352,705],[326,452,760,699],[775,520,1057,697],[1059,401,1443,697],
+    [10,741,378,1043],[382,764,714,1048],[730,812,1027,1056],[1023,720,1446,1060]]
   const monsters = enemyArt.map((id, i) => {
     const col = i % 4, row = Math.floor(i / 4)
     const ex = enemyColumns[row]
-    return sheet(id, [crop(enemy, ex[col] / 1448 * enemy.width, ey[row] * enemy.height,
-      ex[col + 1] / 1448 * enemy.width, ey[row + 1] * enemy.height)], col === 3)
+    const idle = crop(enemy, ex[col] / 1448 * enemy.width, ey[row] * enemy.height,
+      ex[col + 1] / 1448 * enemy.width, ey[row + 1] * enemy.height)
+    const [left, top, right, bottom] = attackBounds[i]
+    const attack = crop(enemyAttack, left / 1448 * enemyAttack.width, top / 1086 * enemyAttack.height,
+      right / 1448 * enemyAttack.width, bottom / 1086 * enemyAttack.height, true)
+    return sheet(id, [idle, idle, attack, idle], col === 3)
   })
   return [...heroes, ...monsters]
 }

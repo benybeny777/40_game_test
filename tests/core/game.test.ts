@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   addOffline, advance, applyRewards, balance as b, buyDojo, claimOffline, computeOffline, createGame, createWorld, dojoCost,
-  expToNext, newProfile, partyOrder, runCommand, step, validateProfile, type SimEvent, type World,
+  deployedJobs, expToNext, newProfile, partyOrder, runCommand, step, validateProfile, type SimEvent, type World,
 } from '../../src/core/index.ts'
 import { skills, ultimates } from '../../src/core/sim/skills.ts'
 import { loadProfile, saveProfile } from '../../src/main/saveStore.ts'
@@ -80,7 +80,7 @@ describe('育成と進行（M4の一部）', () => {
     const profile = newProfile('t')
     const out = applyRewards(profile, [{ t: 'reward', koban: 5, exp: expToNext(1), enemyId: 'chochin', x: 0 }])
     expect(profile.party.members.samurai.lv).toBe(2)
-    expect(out.events.filter((event) => event.t === 'levelUp')).toHaveLength(partyOrder.length)
+    expect(out.events.filter((event) => event.t === 'levelUp').map(event => event.t === 'levelUp' ? event.job : '')).toEqual(deployedJobs(profile.party.order))
     expect(profile.koban).toBe(5); expect(profile.stats.kills).toBe(1); expect(profile.seenEnemies).toEqual(['chochin'])
   })
   it('道場：値段は1.5倍ずつ、小判が足りなければ買えない', () => {

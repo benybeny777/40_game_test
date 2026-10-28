@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  advance, applyRewards, buildView, createGame, createWorld, defaultFormation, deployedJobs,
-  expToNext, newProfile, partyOrder, partySize, refreshParty, requestOrder, snapshot, step, validateProfile,
+  advance, applyRewards, balance, buildView, createGame, createWorld, defaultFormation, deployedJobs,
+  expToNext, levels, newProfile, partyOrder, partySize, refreshParty, requestOrder, snapshot, step, validateProfile,
 } from '../../src/core/index.ts'
 import { dropChance, partyLuk } from '../../src/core/progress/items.ts'
 
@@ -48,19 +48,24 @@ describe('3人出撃と控え', () => {
     step(world)
     expect(world.units.map((unit) => unit.defId)).toEqual(order.slice(0, partySize))
     expect(world.units[0]).toBe(reserve)
-    expect(reserve.hp).toBeCloseTo(37 + reserve.stats.maxHp * 0.002)
+    expect(reserve.hp).toBeCloseTo(37 + reserve.stats.maxHp * balance.walkHealPerSecond * balance.tickMs / 1000)
     expect(world.reserves).toContain(samurai)
     expect(samurai.hp).toBe(41)
     expect(world.units.map((unit) => unit.slot)).toEqual([0, 1, 2])
   })
-  it('控えも経験値・装備・HP割合を維持して能力値を更新する', () => {
+  it('出撃だけが育ち、控えの経験値・能力配分・HP割合は変化しない', () => {
     const profile = newProfile('t'), game = createGame(profile, 1)
     const reserve = game.world.reserves[0]
     reserve.hp = reserve.base.maxHp / 2
     applyRewards(profile, [{ t: 'reward', koban: 0, exp: expToNext(1), enemyId: '', x: 0 }])
-    expect(partyOrder.every((job) => profile.party.members[job].lv === 2)).toBe(true)
-    refreshParty(game.world, Object.fromEntries(partyOrder.map((job) => [job, 2])))
-    expect(reserve.lv).toBe(2)
+    expect(deployedJobs(profile.party.order).every(job => profile.party.members[job].lv === 2)).toBe(true)
+    for (const job of profile.party.order.slice(partySize)) {
+      expect(profile.party.members[job].lv).toBe(1)
+      expect(profile.party.members[job].exp).toBe(0)
+      expect(Object.values(profile.party.members[job].allocated).every(points => points === 0)).toBe(true)
+    }
+    refreshParty(game.world, levels(profile))
+    expect(reserve.lv).toBe(1)
     expect(reserve.hp / reserve.base.maxHp).toBeCloseTo(0.5)
   })
   it('控えの運・ドロップ装備・パチプロ補正を入手判定に加えない', () => {

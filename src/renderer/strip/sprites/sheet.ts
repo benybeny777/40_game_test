@@ -1,6 +1,7 @@
 import paletteText from '../../../../assets/palettes/base32.txt?raw'
 import { parsePalette, parseSprite, type ParsedSprite } from './parse'
 import { loadArtSheets } from './art'
+import { backgroundReady } from '../background'
 
 const sources = import.meta.glob('../../../../assets/sprites/src/*.sprite.txt', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 export const palette = parsePalette(paletteText)
@@ -41,7 +42,7 @@ export const sheets: Record<string, Sheet> = Object.fromEntries(Object.values(so
   return [sheet.name, sheet]
 }))
 /** Rendering starts only after production art is decoded. Broken assets are surfaced instead of silently using placeholders. */
-export const artReady = loadArtSheets().then((art) => {
+export const artReady = Promise.all([loadArtSheets(), backgroundReady]).then(([art]) => {
   for (const sheet of art) sheets[sheet.name] = sheet
   document.documentElement.dataset.artSheets = String(art.length)
 })

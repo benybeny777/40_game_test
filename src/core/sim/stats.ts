@@ -17,7 +17,7 @@ export function computeStats(job: JobDef, lv: number, dojo: DojoLevels = {}, gea
     maxHp: (s.maxHp * (1 + g.hp * n) + allocated.vit * ab.vitHp + flat('hp')) * (1 + affix('hpPct')) * (1 + dojoDefs.hp.per * (dojo.hp ?? 0)),
     atk: (s.atk * (1 + g.atk * n) + flat('atk')) * (1 + main * ab.mainAtk) * (1 + affix('atkPct')) * (1 + dojoDefs.atk.per * (dojo.atk ?? 0)),
     def: (s.def * (1 + g.def * n) + allocated.vit * ab.vitDef + allocated.str * ab.strDef + flat('def')) * (1 + affix('defPct')),
-    intervalMs: s.intervalMs * Math.max(balance.minIntervalMul, 1 + affix('intervalPct') - allocated.dex * ab.dexInterval),
+    intervalMs: s.intervalMs * balance.allyAttackIntervalMul * Math.max(balance.minIntervalMul, 1 + affix('intervalPct') - allocated.dex * ab.dexInterval),
     cri: s.cri + g.cri * n + affix('cri') + allocated.dex * ab.dexCri, criMul: s.criMul + affix('criMul'),
     eva: Math.min(balance.maxEva, s.eva + g.eva * n + affix('eva') + allocated.dex * ab.dexEva), luk: s.luk + g.luk * n + affix('luk'),
     dmgTakenMul: Math.max(balance.minIntervalMul, 1 + affix('dmgTakenPct')), kobanMul: 1 + affix('kobanPct'), dropMul: 1 + affix('dropPct'), cooldownMul: Math.max(balance.minIntervalMul, 1 + affix('cooldownPct')) }

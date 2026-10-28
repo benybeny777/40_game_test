@@ -12,11 +12,13 @@ Normal and Nightmare each have 100 floors. Only the highest difficulty, Abyss, c
 
 [All 17 companions](docs/images/characters.png) · [12 enemies](docs/images/enemies.png) · [English phone layout](docs/images/mobile-en.png)
 
+[Catacombs](docs/images/background-catacombs.png) · [Market](docs/images/background-market.png) · [Archive](docs/images/background-archive.png) · [Combat motion](docs/images/action-frames.png)
+
 These are captures of the game's own windows. Current character and enemy artwork uses AI-generated transparent PNGs; provenance and prompts are recorded in [Credits](docs/CREDITS.md). See [HANDOFF](HANDOFF.md) for verification results and remaining acceptance checks. Detailed project documents are currently written in Japanese.
 
 ## Playing
 
-- Deploy three companions; the other 14 retain their equipment and receive the same experience. Party changes take effect at the next wave.
+- Only the three companions actually fighting gain experience. Reserves retain their existing levels and equipment, but gain no experience. Party changes take effect at the next wave. Previously earned levels are preserved.
 - Combine attackers, tanks, healers, buffers, and debuffers. The roster includes Samurai, Ninja, Jirai Girl, Otaku, Pachinko Pro, Shrine Maiden, Bancho, Gyaru, Sukeban, Farmer, Maid, Jiangshi, Vagabond, Sumo Wrestler, Sister, Goofy Lord, and Bookworm.
 - Allocate STR, DEX, VIT, and INT manually or automatically. Reset allocations for free. Equipment requires suitable jobs and attributes, with no character-level requirement.
 - Find weapons, armor, and charms with random base values and modifiers, including Mythic equipment for specialized builds.

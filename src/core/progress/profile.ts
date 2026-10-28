@@ -12,7 +12,7 @@ import { random } from '../sim/rng.ts'
 
 export const PROFILE_VERSION = 3
 export interface Gain { koban: number; exp: number }
-export interface OfflineResult { ms: number; koban: number; exp: number; items?: number }
+export interface OfflineResult { ms: number; koban: number; exp: number; items?: number; expByJob?: Partial<Record<JobId, number>> }
 export interface Member { lv: number; exp: number; allocated: Attributes; autoStats: boolean; equip: Record<SlotId, string | null> }
 export interface DungeonProgress { unlockedStage: number; currentStage: number; loop: boolean; inTown: boolean; depthRank: Difficulty; unlockedDepths: [number, number, number]; eventDepths: [number, number, number] }
 export interface Profile {
@@ -33,6 +33,7 @@ export interface Profile {
   rates: { current: Gain; minutes: Gain[] }        // Last 10 closed minutes, for offline rewards.
   seenEnemies: string[]
   seenItems: string[]
+  offlineJobs: JobId[]                              // Actually deployed, not a queued formation change.
   pendingOffline: OfflineResult | null
 }
 const emptyEquip = (): Record<SlotId, string | null> => ({ weapon: null, armor: null, charm: null })
@@ -44,13 +45,13 @@ export function newProfile(savedAt: string, seed = 1): Profile {
     koban: 0, dojo: { atk: 0, hp: 0, walk: 0, drop: 0, offline: 0 }, inventory: [], nextItemId: 1,
     options: { autoSellMaxRarity: null, autoEquip: true },
     stats: { kills: 0, wipes: 0, bossKills: 0, stageClears: 0, playMs: 0, totalKoban: 0, drops: 0 },
-    rates: { current: { koban: 0, exp: 0 }, minutes: [] }, seenEnemies: [], seenItems: [], pendingOffline: null }
+    rates: { current: { koban: 0, exp: 0 }, minutes: [] }, seenEnemies: [], seenItems: [], offlineJobs: deployedJobs(defaultFormation), pendingOffline: null }
 }
 export const expToNext = (lv: number) => Math.floor(b.expBase * lv ** b.expPow)
 export const levels = (profile: Profile) => Object.fromEntries(partyOrder.map((id) => [id, profile.party.members[id].lv])) as Record<JobId, number>
 
-function grantExp(profile: Profile, exp: number, out: SimEvent[]) {
-  for (const job of partyOrder) {
+function grantExp(profile: Profile, exp: number, out: SimEvent[], recipientJobs: readonly JobId[]) {
+  for (const job of new Set(recipientJobs)) {
     const member = profile.party.members[job]
     if (member.lv >= b.maxLevel) continue
     member.exp += exp
@@ -82,7 +83,7 @@ export function applyRewards(profile: Profile, events: readonly SimEvent[], acti
   for (const event of events) {
     if (event.t === 'reward') {
       addKoban(profile, event.koban)
-      if (event.exp) grantExp(profile, event.exp, out)
+      if (event.exp) grantExp(profile, event.exp, out, activeJobs)
       profile.rates.current.koban = cappedAmount(profile.rates.current.koban + event.koban); profile.rates.current.exp = cappedAmount(profile.rates.current.exp + event.exp)
       const enemy = enemies[event.enemyId]
       if (enemy) {
@@ -127,6 +128,16 @@ export function perMinute(profile: Profile): Gain {
   if (!minutes.length) return { koban: 0, exp: 0 }
   return { koban: minutes.reduce((sum, gain) => sum + gain.koban, 0) / minutes.length, exp: minutes.reduce((sum, gain) => sum + gain.exp, 0) / minutes.length }
 }
+const offlineRecipients = (profile: Profile) => [...(profile.offlineJobs ?? deployedJobs(profile.party.order))]
+function withOfflineRecipients(profile: Profile, result: OfflineResult): OfflineResult {
+  return { ...result, expByJob: result.expByJob ? { ...result.expByJob }
+    : Object.fromEntries(offlineRecipients(profile).map(job => [job, result.exp])) }
+}
+/** Upgrade a legacy pending reward before a formation edit can change its recipients. */
+export function freezePendingOffline(profile: Profile) {
+  if (profile.pendingOffline && !profile.pendingOffline.expByJob) profile.pendingOffline = withOfflineRecipients(profile, profile.pendingOffline)
+}
+
 /** Offline rewards: average × elapsed minutes × 0.5, capped at 8 hours plus dojo; one 並/上 roll per 10 minutes. */
 export function computeOffline(profile: Profile, elapsedMs: number): OfflineResult | null {
   if (!Number.isFinite(elapsedMs) || elapsedMs < pb.offlineMinMs) return null
@@ -134,18 +145,23 @@ export function computeOffline(profile: Profile, elapsedMs: number): OfflineResu
   const rate = perMinute(profile), minutes = ms / pb.minuteMs
   const result = { ms, koban: Math.floor(cappedAmount(rate.koban * minutes * pb.offlineRate)), exp: Math.floor(cappedAmount(rate.exp * minutes * pb.offlineRate)),
     items: rate.koban ? Math.floor(ms / ib.offlineDropEveryMs) : 0 }
-  return result.koban || result.exp ? result : null
+  return result.koban || result.exp ? withOfflineRecipients(profile, result) : null
 }
 export function addOffline(profile: Profile, result: OfflineResult) {
-  const pending = profile.pendingOffline
+  freezePendingOffline(profile)
+  const incoming = withOfflineRecipients(profile, result), pending = profile.pendingOffline
+  const expByJob = { ...pending?.expByJob }
+  for (const [job, exp] of Object.entries(incoming.expByJob ?? {})) expByJob[job as JobId] = cappedAmount((expByJob[job as JobId] ?? 0) + (exp ?? 0))
   profile.pendingOffline = pending
-    ? { ms: pending.ms + result.ms, koban: cappedAmount(pending.koban + result.koban), exp: cappedAmount(pending.exp + result.exp), items: (pending.items ?? 0) + (result.items ?? 0) }
-    : result
+    ? { ms: pending.ms + incoming.ms, koban: cappedAmount(pending.koban + incoming.koban), exp: cappedAmount(pending.exp + incoming.exp), items: (pending.items ?? 0) + (incoming.items ?? 0), expByJob }
+    : { ...incoming, expByJob }
 }
 export function claimOffline(profile: Profile): SimEvent[] {
+  freezePendingOffline(profile)
   const pending = profile.pendingOffline, out: SimEvent[] = []
   if (!pending) return out
-  addKoban(profile, pending.koban); grantExp(profile, pending.exp, out)
+  addKoban(profile, pending.koban)
+  for (const [job, exp] of Object.entries(pending.expByJob ?? {})) if (exp) grantExp(profile, exp, out, [job as JobId])
   for (let index = 0; index < (pending.items ?? 0); index++) {
     dropItem(profile, profile.progress.currentStage, 0, out, { max: ib.offlineMaxRarity })
   }
@@ -273,6 +289,11 @@ export function validateProfile(input: unknown): Profile {
   if (!Object.values(profile.stats).every((value) => count(value))) throw new Error('bad statistics')
   if (!isObject(profile.rates.current) || !count(profile.rates.current.koban) || !count(profile.rates.current.exp) || !profile.rates.minutes.every((gain) => isObject(gain) && count(gain.koban) && count(gain.exp))) throw new Error('bad earnings')
   if (profile.pendingOffline && (profile.pendingOffline.items !== undefined && (!Number.isSafeInteger(profile.pendingOffline.items) || !count(profile.pendingOffline.items)))) throw new Error('bad offline items')
+  const recordedJobs = raw.offlineJobs
+  if (recordedJobs !== undefined && (!Array.isArray(recordedJobs) || recordedJobs.length !== deployedJobs(profile.party.order).length || new Set(recordedJobs).size !== recordedJobs.length || !recordedJobs.every(job => typeof job === 'string' && Object.hasOwn(jobs, job)))) throw new Error('bad offline recipients')
+  profile.offlineJobs = recordedJobs === undefined ? deployedJobs(profile.party.order) : [...recordedJobs as JobId[]]
+  if (profile.pendingOffline?.expByJob !== undefined && (!isObject(profile.pendingOffline.expByJob) || !Object.entries(profile.pendingOffline.expByJob).every(([job, exp]) => Object.hasOwn(jobs, job) && count(exp)))) throw new Error('bad offline experience')
+  freezePendingOffline(profile)
   reconcileEquipment(profile)
   return profile
 }

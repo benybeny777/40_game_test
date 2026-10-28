@@ -1,0 +1,47 @@
+async (page) => {
+  // Dedicated verification browser only: capture real renderer frames from three melee companions.
+  await page.goto('http://127.0.0.1:5174/mobile/'); await page.locator('.card').first().waitFor();
+  await page.setViewportSize({ width: 1100, height: 1200 });
+  await page.evaluate(async () => {
+    const api = window.game, before = await api.getView();
+    window.__actionOriginalOrder = before.party.map(member => member.job);
+    await api.command({ c: 'returnTown' });
+    const active = ['samurai', 'bancho', 'rikishi'];
+    await api.command({ c: 'reorderParty', order: [...active, ...before.party.map(member => member.job).filter(job => !active.includes(job))] });
+    window.__meleeActors = new Set(); window.__actionFrames = []; window.__captureStarted = false;
+    window.__removeActionObserver = api.onFrame(frame => {
+      for (const event of frame.events) if (event.t === 'attack') {
+        const source = frame.snapshot.units.find(unit => unit.uid === event.uid);
+        if (source?.side === 'ally') window.__meleeActors.add(source.defId);
+        if (source?.side !== 'ally' || window.__captureStarted) continue;
+        window.__captureStarted = true;
+        for (const delay of [0, 45, 90, 135, 190, 250, 330, 430]) setTimeout(() => {
+          const source = document.querySelector('#mobile-screen'), crop = document.createElement('canvas');
+          crop.width = Math.min(source.width, Math.round(450 * source.width / source.getBoundingClientRect().width)); crop.height = source.height;
+          crop.getContext('2d').drawImage(source, 0, 0, crop.width, crop.height, 0, 0, crop.width, crop.height);
+          window.__actionFrames.push({ delay, image: crop.toDataURL() });
+        }, delay);
+      }
+    });
+    await api.command({ c: 'selectStage', stageNo: 1, depthRank: 0 });
+    if ((await api.getState()).paused) api.openMenu();
+  });
+  await page.waitForFunction(() => window.__actionFrames.length === 8 && ['samurai', 'bancho', 'rikishi'].every(job => window.__meleeActors.has(job)), { timeout: 20000 });
+  await page.evaluate(async () => {
+    window.__removeActionObserver(); if (!(await window.game.getState()).paused) window.game.openMenu();
+    window.__actionVerified = [...window.__meleeActors];
+    const frames = await Promise.all(window.__actionFrames.map(async entry => { const image = new Image(); image.src = entry.image; await image.decode(); return { ...entry, image }; }));
+    const gallery = document.createElement('main'); gallery.style.cssText = 'background:#161621;padding:18px;color:#eee;font:14px sans-serif;height:100vh;overflow:auto';
+    const title = document.createElement('h1'); title.textContent = 'Real combat frames — 3 melee companions';
+    const caption = document.createElement('p'); caption.textContent = 'Samurai / Bancho / Sumo: all three issue real attacks. Captured from the game canvas, without changing simulation speed.';
+    const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px';
+    for (const frame of frames) {
+      const card = document.createElement('figure'); card.style.cssText = 'margin:0;background:#252532;border:1px solid #4a4350;padding:8px';
+      frame.image.style.cssText = 'display:block;width:100%;height:200px;object-fit:contain;image-rendering:pixelated';
+      const label = document.createElement('figcaption'); label.textContent = `+${frame.delay} ms`;
+      card.append(frame.image, label); grid.append(card);
+    }
+    gallery.append(title, caption, grid); document.body.replaceChildren(gallery);
+  });
+  await page.screenshot({ path: '.dev-data/preview/action-frames.png', scale: 'css' });
+}

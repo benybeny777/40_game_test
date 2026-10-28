@@ -30,7 +30,7 @@ export interface Item { id: string; base: string; ilvl: number; rarity: Rarity; 
 
 `applyRewards(profile, events, data): SimEvent[]`（`levelUp` などの追加イベントを返す）
 
-- `reward`：小判 ＝ 基本値 × 獲得小判の倍率（パチプロのパッシブ・確変・装備）。経験値は全員に同じ量（戦闘不能でも）。
+- `reward`：小判 ＝ 基本値 × 獲得小判の倍率（パチプロのパッシブ・確変・装備）。経験値は報酬発生時の実World出撃3人だけに同じ量を付与する（出撃中の戦闘不能者も対象）。控えは獲得せず、既存のレベル・経験値・装備は維持する。次ウェーブ待ちの編成変更を先行適用しない。
 - 経験値が `20 × lv^1.6`（切り捨て）に達したらLvを上げ、`levelUp` を出す。上限50。上限に達した分の経験値は捨てる。
 - Lvや装備が変わったら、World側のユニットの `base` を作り直す（HPの割合を保つ）。これはmainの `loop.ts` が `refreshParty(world, profile)` を呼んで行う。
 - `drop`：§3で装備を作り、所持品に入れる。図鑑に載っていない敵を倒した場合、オタクのパッシブでドロップ率を上げる（図鑑の更新はドロップの判定の後）。
@@ -112,6 +112,7 @@ export interface Item { id: string; base: string; ilvl: number; rarity: Rarity; 
 - mainが、前回の `savedAt` と起動時刻の差を求めて `computeOffline(profile, elapsedMs, data)` に渡す（coreは時刻を読まない）。
 - PCのスリープ（`powerMonitor` の `suspend`→`resume`）で60秒以上空いた場合も同じ扱いにする。一時停止していた時間は含めない（一時停止中は `savedAt` を更新し続ける）。
 - 計算：時間 ＝ min(経過, 8時間 + 道場offline)。小判・経験値 ＝ 直近10分の1分あたりの平均 × 分数 × 0.5。装備 ＝ 10分ごとに1回、並か上だけを判定（自動売却・自動装備を適用）。
+- 経験値の付与先は`offlineJobs`の実出撃3人で固定し、未受取分は`expByJob`へジョブ別に積算する。受け取り時の編成変更で振り替えない。旧データは保存時の実出撃情報、情報がない場合は旧編成先頭3人へ一度固定し、既存レベルは下げない。
 - 1分未満なら何もしない。`rates` が空（新規）なら0。
 - 結果は「おかえり」画面のために `pendingOffline` として持ち、受け取る操作（M5の `claimOffline`）で反映する。受け取る前に終了した場合も、次回の起動時に再び出す（二重に足さないよう、計算時点で `savedAt` を進める）。
 

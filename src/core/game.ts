@@ -6,7 +6,7 @@ import { rarities, type Rarity, type SlotId } from './data/items.ts'
 import { partyOrder } from './data/jobs.ts'
 import { dojo as dojoDefs, progressBalance as pb, type DojoKey } from './data/progress.ts'
 import { equipItem, gearMap, ownerOf, reconcileEquipment, sellItems } from './progress/items.ts'
-import { applyRewards, buyDojo, claimOffline, closeMinute, levels, type Profile } from './progress/profile.ts'
+import { applyRewards, buyDojo, claimOffline, closeMinute, freezePendingOffline, levels, type Profile } from './progress/profile.ts'
 import type { JobId, SimEvent, World } from './sim/types.ts'
 import { createWorld, refreshParty, requestOrder, requestStage, returnToTown, step } from './sim/world.ts'
 
@@ -30,19 +30,23 @@ export type Command =
   | { c: 'setOptions'; autoEquip?: boolean; autoSellMaxRarity?: Rarity | null }
 export type CommandResult = { ok: true } | { ok: false; reason: string }
 
+const actualJobs = (world: World): JobId[] => world.units.filter(unit => unit.side === 'ally').map(unit => unit.defId as JobId)
 const allocationMap = (profile: Profile) => Object.fromEntries(partyOrder.map((job) => [job, profile.party.members[job].allocated]))
 const refresh = (game: Game) => { reconcileEquipment(game.profile); refreshParty(game.world, levels(game.profile), game.profile.dojo, gearMap(game.profile), allocationMap(game.profile)) }
 
 export function createGame(profile: Profile, seed: number): Game {
+  freezePendingOffline(profile)
   const world = createWorld({ seed, stageNo: profile.progress.currentStage, levels: levels(profile), order: profile.party.order,
     dojo: profile.dojo, gear: gearMap(profile), allocated: allocationMap(profile), loop: profile.progress.loop, depthRank: profile.progress.depthRank, dungeonSeed: profile.dungeonSeed, eventDepths: profile.progress.eventDepths })
   if (profile.progress.inTown) returnToTown(world)
+  profile.offlineJobs = actualJobs(world)
   return { world, profile, autoFarmClears: 0, minuteTicks: 0 }
 }
 export function advance(game: Game): { events: SimEvent[]; changed: boolean; stageCleared: boolean } {
   const { world, profile } = game
   const events = step(world)
-  const result = applyRewards(profile, events, world.units.filter((unit) => unit.side === 'ally').map((unit) => unit.defId as JobId))
+  profile.offlineJobs = actualJobs(world)
+  const result = applyRewards(profile, events, profile.offlineJobs)
   if (result.levelsChanged) refresh(game)
   // 3 wipes in a row turn on world.loop; step back to the last cleared stage to farm, then retry.
   const autoLoop = world.loop && !profile.progress.loop
@@ -62,7 +66,8 @@ export function runCommand(game: Game, command: Command): CommandResult & { even
       return { ok: true }
     case 'returnTown': {
       const events = returnToTown(world)
-      applyRewards(profile, events); game.autoFarmClears = 0
+      profile.offlineJobs = actualJobs(world)
+      applyRewards(profile, events, profile.offlineJobs); game.autoFarmClears = 0
       return { ok: true, events }
     }
     case 'selectStage': {
@@ -76,7 +81,9 @@ export function runCommand(game: Game, command: Command): CommandResult & { even
     }
     case 'reorderParty':
       if (command.order.length !== partyOrder.length || !partyOrder.every((id) => command.order.includes(id))) return { ok: false, reason: '隊列が正しくありません' }
+      freezePendingOffline(profile)
       profile.party.order = [...command.order]; requestOrder(world, command.order)
+      profile.offlineJobs = actualJobs(world)
       return { ok: true }
     case 'buyDojo': {
       if (!(command.key in dojoDefs)) return { ok: false, reason: '不明な強化です' }

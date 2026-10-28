@@ -41,7 +41,8 @@ function renderEnglishHelp(): HTMLElement {
   }
   root.append(section('Party and roles', paragraph(`Deploy ${partySize} companions. The first member is the front line. Swaps and order changes apply next wave; they do not reset the enemies or HP mid battle.`), roles,
     paragraph('Try a tank, an attacker and a healer or support. This is a suggestion, not a requirement; other combinations are welcome.'),
-    paragraph('Reserves gain the same experience and retain their gear. Reserve skills, luck and equipment effects do not contribute to active combat or loot bonuses.')))
+    paragraph('Only the three companions actually deployed in battle gain experience. Reserves gain no experience and retain their existing levels, growth and equipment. This change affects future earnings; previously earned levels are not reduced. Reserve skills, luck and equipment effects do not contribute to active combat or loot bonuses.'),
+    paragraph('Offline experience is assigned to the companions deployed during the absence. Changing the party before claiming rewards does not transfer that experience to other companions.')))
   root.append(section('Attribute points and focused builds', paragraph(`Each level grants ${attributeBalance.pointsPerLevel} points. Assign them manually or automatically in Party. Check the job’s main attribute and equipment requirements.`),
     list(['STR improves attack for STR based jobs, defense and equipment eligibility.', 'DEX affects attack interval, critical chance and evasion. DEX based jobs also gain attack.', 'VIT improves maximum HP and defense. Use it when your party falls too quickly.', 'INT improves attack for INT based jobs and equipment eligibility. Some healing skills also scale with attack.',
       'Turn auto allocation off to assign points yourself. Use all spends every unspent point on one attribute. Focused builds may sacrifice survival or equipment options.',
@@ -103,7 +104,8 @@ export function renderHelp(): HTMLElement {
     paragraph(`出撃は${partySize}人です。先頭が前衛で、並び替え・控えとの交代は次のウェーブから反映されます。戦闘中の変更で、その場の敵やHPをリセットすることはありません。`),
     roles,
     paragraph('基本は「タンク＋アタッカー＋回復か支援」。必須ではなく、攻撃重視や妨害重視の編成も試せます。'),
-    paragraph('控えも同じ経験値で育ち、装備を保持します。控えのスキル・運・装備効果は、出撃中の戦闘やドロップ補正に加算されません。')))
+    paragraph('経験値は実際に戦う出撃3人だけが獲得します。控えは経験値を獲得せず、現在のレベル・育成状態・装備を保持します。変更はこれからの獲得に適用し、過去に上がったレベルは下げません。控えのスキル・運・装備効果は、出撃中の戦闘やドロップ補正に加算されません。'),
+    paragraph('オフライン経験値の対象は不在時の出撃メンバーです。受け取る前に編成を変更しても、経験値を別の仲間へ移すことはできません。')))
 
   const attributes = node('dl', 'help-attributes')
   const attributeDescriptions: Record<AttributeKey, string> = {

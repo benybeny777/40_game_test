@@ -34,7 +34,17 @@ describe('English panel component text', () => {
     expect(result).toContain('How to play')
     expect(result).toContain('Saving and recovery')
     expect(result).toContain('Steam')
+    expect(result).toContain('Reserves gain no experience')
+    expect(result).toContain('previously earned levels are not reduced')
+    expect(result).toContain('Changing the party before claiming rewards does not transfer')
     expect(result).not.toMatch(/[ぁ-んァ-ヶ一-龥]/u)
+  })
+  it('explains active-only experience and preservation of old levels in Japanese too', () => {
+    setLocale('ja')
+    const result = text(asNode(renderHelp()))
+    expect(result).toContain('控えは経験値を獲得せず')
+    expect(result).toContain('過去に上がったレベルは下げません')
+    expect(result).not.toContain('控えも同じ経験値')
   })
   it('renders unavailable store products, warnings and controls in English', () => {
     const view: StoreView = { mode: 'unavailable', message: '外観を試着できます。ブラウザー版では購入・Steam取引は利用できません。',

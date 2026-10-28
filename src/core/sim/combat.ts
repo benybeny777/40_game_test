@@ -7,8 +7,18 @@ export const living = (unit: Unit) => unit.alive && unit.hp > 0
 export const opponents = (world: World, self: Unit) => world.units.filter((unit) => unit.side !== self.side && living(unit))
 export const friends = (world: World, self: Unit) => world.units.filter((unit) => unit.side === self.side && living(unit))
 export function attackDef(unit: Unit) { return unit.side === 'ally' ? jobs[unit.defId as JobId].attack : enemies[unit.defId].attack }
+/** Allies keep formation homes; normal melee strikes can step forward from the living front line. */
+export function normalAttackInRange(world: World, self: Unit, target: Unit): boolean {
+  let origin = self.x
+  if (self.side === 'ally' && attackDef(self).kind === 'melee') {
+    const front = world.units.filter(unit => unit.side === 'ally' && living(unit)).sort((a, z) => a.slot - z.slot)[0]
+    if (!front) return false
+    origin = front.x
+  }
+  return Math.abs(target.x - origin) <= self.stats.rangeDots
+}
 export function chooseTarget(world: World, self: Unit): Unit | undefined {
-  const candidates = opponents(world, self).filter((target) => Math.abs(target.x - self.x) <= self.stats.rangeDots)
+  const candidates = opponents(world, self).filter((target) => normalAttackInRange(world, self, target))
   if (!candidates.length) return undefined
   if (self.side === 'enemy') {
     // 呪いのフィギュア: always the rearmost ally it can reach.

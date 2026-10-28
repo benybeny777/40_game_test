@@ -1,6 +1,6 @@
 {
   "name": "taskbar-hyakkiko",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "タスクバー百鬼行：タスクバー直上の和風放置RPG",
   "main": "./out/main/index.js",

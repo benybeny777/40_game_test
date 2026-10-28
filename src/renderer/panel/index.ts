@@ -70,10 +70,11 @@ function memberCard(member: MemberView, index: number, order: JobId[]) {
     h('div', { class: 'card-head' },
       spriteImage(member.job, 2),
       h('div', {},
-        h('div', { class: 'slot' }, member.active ? index === 0 ? '出撃・前衛（先頭）' : `出撃・${index + 1}番手` : '控え・育成と装備を保持'),
+        h('div', { class: 'slot' }, member.active ? index === 0 ? '出撃・前衛（先頭）' : `出撃・${index + 1}番手` : '控え・経験値なし（育成と装備を保持）'),
         h('h3', {}, member.name, h('span', { class: 'lv' }, `Lv ${member.lv}`)),
         h('span', { class: `role-badge role-${member.roleId}` }, member.role),
         h('div', { class: 'exp' }, h('i', { style: `width:${Math.min(100, member.exp / member.expNext * 100)}%` })),
+        h('small', {}, member.active ? '戦闘参加で経験値' : '控えでは経験値を獲得しません'),
         h('small', {}, `次のLvまで ${fmt(member.expNext - member.exp)}`))),
     h(member.active ? 'div' : 'details', { class: 'member-details' },
     member.active ? null : h('summary', {}, '能力・スキルを見る'),
@@ -116,7 +117,7 @@ function partyTab(v: ProfileView) {
       h('button', { class: 'journey-link', onclick: () => { tab = 'gear'; render() } }, '装備を整える →')),
     h('div', { class: 'roster deployed-roster' }, ...v.party.filter(member => member.active).map((member) => h('button', { 'data-focus-key': `portrait-${member.job}`, style: `--job:${member.color}`, onclick: () => root.querySelector(`[data-job="${member.job}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }) },
       spriteImage(member.job, 2), h('b', {}, member.name), h('small', {}, `Lv ${member.lv}`)))),
-    h('p', { class: 'hint' }, '先頭が前衛です。出撃は3人。入れ替え・並び替えは次のウェーブから反映されます。控えも同じ経験値で育ち、装備を保持します。'),
+    h('p', { class: 'hint' }, '先頭が前衛です。経験値は実際に戦う出撃3人だけが獲得します。入れ替え・並び替えは次のウェーブから反映されます。控えは現在のレベルと装備を保持します。'),
     h('div', { class: 'cards deployed-cards' }, ...v.party.filter(member => member.active).map((member) => memberCard(member, order.indexOf(member.job), order))),
     h('h2', { class: 'reserve-title' }, `控え ${v.party.length - v.partySize}人`),
     h('p', { class: 'hint' }, '交代する相手を選ぶと、出撃メンバーと入れ替わります。控えの能力・スキル・運による効果は戦闘に加算されません。'),
@@ -216,7 +217,7 @@ function settingsTab() {
       h('option', { value: 'ja', selected: getLocale() === 'ja' }, '日本語'), h('option', { value: 'en', selected: getLocale() === 'en' }, 'English'))),
     h('label', {}, h('span', {}, '表示サイズ'), h('select', { onchange: (event: Event) => void update({ size: (event.target as HTMLSelectElement).value as 'small' }) },
       ...(['small', 'medium', 'large'] as const).map((size) => h('option', { value: size, selected: settings.size === size }, { small: '小', medium: '中', large: '大' }[size])))),
-    h('label', {}, h('span', {}, '地面の帯（明るい画面で見やすく）'), h('input', { type: 'checkbox', checked: settings.groundBand, onchange: (event: Event) => void update({ groundBand: (event.target as HTMLInputElement).checked }) })),
+    h('label', {}, h('span', {}, '背景と地面を表示'), h('input', { type: 'checkbox', checked: settings.groundBand, onchange: (event: Event) => void update({ groundBand: (event.target as HTMLInputElement).checked }) })),
     state?.platform !== 'browser' ? h('label', {}, h('span', {}, `全画面のアプリ（ゲーム・動画・プレゼン）を使っている間は帯を隠す${state?.fullscreenSupported === false ? '（この環境では使えません）' : ''}`),
       h('input', { type: 'checkbox', checked: settings.hideOnFullscreen, disabled: state?.fullscreenSupported === false, onchange: (event: Event) => void update({ hideOnFullscreen: (event.target as HTMLInputElement).checked }) }))
       : null,
@@ -235,6 +236,7 @@ function offlineModal(v: ProfileView) {
   return h('div', { class: 'modal' }, h('div', { class: 'dialog' },
     h('h2', {}, 'おかえりなさい'),
     h('p', {}, `留守の${minutes >= 60 ? `${Math.floor(minutes / 60)}時間${minutes % 60}分` : `${minutes}分`}の間も、一行は旅を続けていました。`),
+    h('p', {}, '経験値は不在時の出撃メンバーに付与します。受取時の入れ替えでは対象は変わりません。'),
     h('dl', {}, h('div', {}, h('dt', {}, '小判'), h('dd', {}, `+${fmt(pending.koban)}`)), h('div', {}, h('dt', {}, '経験値'), h('dd', {}, `+${fmt(pending.exp)}`))),
     h('button', { class: 'buy', onclick: () => void command({ c: 'claimOffline' }) }, '受け取る')))
 }

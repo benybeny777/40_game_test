@@ -16,7 +16,7 @@ describe('テキストのスプライト', () => {
     const names = new Set(sprites.map((sprite) => sprite.name))
     expect(new Set(partyArt)).toEqual(new Set(partyOrder))
     for (const id of [...Object.values(enemies).map((enemy) => enemy.sprite ?? enemy.id), 'projectiles']) expect(names.has(id) || (enemyArt as readonly string[]).includes(id), id).toBe(true)
-    for (const sheet of ['party-atlas.png', 'party-extra-a.png', 'party-extra-b.png', 'tono.png', 'gariben.png']) {
+    for (const sheet of ['party-atlas.png', 'party-extra-a.png', 'party-extra-b.png', 'tono.png', 'gariben.png', 'enemy-atlas.png', 'enemy-attack.png', 'dungeon-backgrounds.png']) {
       const bytes = readFileSync(join(root, 'assets/sprites/art', sheet))
       expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
     }

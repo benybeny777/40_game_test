@@ -1,10 +1,12 @@
 import { balance, enemies, jobs, partySize, rarities, stageLabel, type JobId, type SimEvent, type Snapshot, type SnapshotUnit } from '../../core/index.ts'
 import type { Frame as SimFrame } from '../../shared/api'
 import { drawText, textWidth } from './font'
-import { animDuration, frameAt, sheets, type Sheet } from './sprites/sheet'
+import { frameAt, sheets, type Sheet } from './sprites/sheet'
 import { PARTY_SPACING_SCALE, PLAY_DOTS } from '../../shared/art'
 import type { ThemeDefinition } from '../../shared/commerce'
 import { damageText, enemyMotion, enemyRank, enemyScale } from './enemyPresentation'
+import { drawDungeonBackground } from './background'
+import { actionPose, actionTiming, hitRecoil, meleeDashDistance, normalWindupMs } from './actionPresentation'
 
 /** Vertical layout inside the 32-dot play area (02-strip.md §3). Everything above it is headroom. */
 const PLAY = PLAY_DOTS, FOOT_FROM_TOP = PLAY_DOTS - 3
@@ -23,9 +25,11 @@ const GROUNDS = [
   { band: 'rgba(6,10,26,0.5)', line: 'rgba(47,143,255,0.7)', dotA: 'rgba(159,228,255,0.8)', dotB: 'rgba(47,143,255,0.6)', prop: 'rgba(180,255,90,0.75)', propHeight: 2 },
 ]
 interface Visual { uid: number; defId: string; side: SnapshotUnit['side']; sheet: Sheet; anim?: string; animAt: number
-  flashUntil: number; knockUntil: number; deadAt?: number; spawnAt: number; targetUid?: number }
+  flashUntil: number; knockUntil: number; deadAt?: number; spawnAt: number; targetUid?: number
+  windupMs?: number; ranged?: boolean; hitAt?: number; hitX?: number; critical?: boolean
+  normalMelee?: boolean; dashTargetX?: number; drawX?: number; drawY?: number }
 interface Floater { uid: number; text: string; x: number; y: number; color: string; start: number; dur: number; big?: boolean }
-interface Fx { kind: 'smoke' | 'boom' | 'slash' | 'flash' | 'sparkle'; x: number; y: number; start: number; dur: number; radius: number; color: string }
+interface Fx { kind: 'smoke' | 'boom' | 'slash' | 'flash' | 'sparkle' | 'impact'; x: number; y: number; start: number; dur: number; radius: number; color: string }
 interface Coin { x: number; y: number; vx: number; vy: number; start: number }
 export type HitTarget = { kind: 'unit'; unit: SnapshotUnit } | { kind: 'hud' }
 export interface SceneHooks { banner(text: string, tone: 'info' | 'boss' | 'good' | 'bad'): void; label(text: string, dotX: number, dotY: number, color: string): void }
@@ -85,18 +89,27 @@ export class Scene {
     const jitter = ((uid * 7 + this.numbers.length * 5) % 7) - 3
     // Recent numbers on the same target stack upward instead of overprinting each other.
     const stacked = this.numbers.filter((number) => number.uid === uid && now - number.start < 350).length % 4
-    this.numbers.push({ uid, text, x: x + jitter, y: this.headY(unit) - 3 - stacked * 7, color, start: now, dur: big ? 900 : 650, big })
+    this.numbers.push({ uid, text, x: x + jitter, y: this.headY(unit) - 3 - stacked * 7, color, start: now, dur: big ? 650 : 440, big })
   }
 
   private event(event: SimEvent, now: number) {
     const vis = 'uid' in event ? this.visuals.get(event.uid) : undefined
     switch (event.t) {
       case 'attack':
-        if (vis) { vis.anim = 'attack'; vis.animAt = now; vis.targetUid = event.targetUid }
-        if (vis?.defId === 'samurai') { const x = this.posX(event.uid, 1); if (x !== undefined) this.fx.push({ kind: 'slash', x: x + 8, y: this.footY - 12, start: now + 120, dur: 220, radius: 9, color: '#ffffff' }) }
+        if (vis) { vis.anim = 'attack'; vis.animAt = now; vis.targetUid = event.targetUid; vis.windupMs = normalWindupMs(); vis.ranged = event.kind === 'ranged'
+          vis.normalMelee = vis.side === 'ally' && event.kind === 'melee'; vis.dashTargetX = this.posX(event.targetUid, 1) }
         break
       case 'damage': {
-        if (vis) { vis.flashUntil = now + 110; vis.knockUntil = now + 110 }
+        if (vis && event.amount > 0) {
+          const repeat = vis.hitAt === now
+          vis.flashUntil = now + actionTiming.flashMs; vis.knockUntil = now + actionTiming.knockMs
+          vis.hitAt = now; vis.hitX = this.posX(event.uid, 1); vis.critical = event.crit
+          const unit = this.unit(event.uid)
+          if (!repeat && unit && vis.hitX !== undefined && this.fx.filter(fx => fx.kind === 'impact').length < 12) this.fx.push({ kind: 'impact', x: vis.hitX, y: this.chestY(unit), start: now, dur: actionTiming.sparkMs, radius: event.crit ? 7 : 4, color: event.crit ? '#ffe27a' : '#fff0d9' })
+          const source = this.visuals.get(event.sourceUid)
+          // A melee hit is authoritative; ranged impact must not replay the earlier throwing motion.
+          if (source?.anim === 'attack' && !source.ranged && source.windupMs && Math.abs(now - source.animAt - source.windupMs) <= balance.tickMs * 2) source.animAt = now - source.windupMs
+        }
         const big = event.crit || Boolean(event.tags?.length)
         this.number(damageText(event.amount), event.uid, event.crit ? colors.crit : colors.dmg, now, big)
         break
@@ -104,8 +117,7 @@ export class Scene {
       case 'miss': this.number('MISS', event.uid, colors.miss, now); break
       case 'heal': if (event.sourceUid !== event.uid && event.amount >= 1) this.number(`+${Math.round(event.amount)}`, event.uid, colors.heal, now); break
       case 'skill': {
-        if (vis && vis.side === 'ally') { vis.anim = 'attack'; vis.animAt = now }
-        if (vis && vis.side === 'enemy') { vis.anim = 'attack'; vis.animAt = now }
+        if (vis) { vis.anim = 'attack'; vis.animAt = now; vis.windupMs = 0; vis.normalMelee = false }
         const unit = this.unit(event.uid), x = this.posX(event.uid, 1)
         const name = unit?.side === 'ally' ? jobs[unit.defId as JobId].skill.name : event.skillId === 'phantom' ? '幻影分身' : enemies[unit?.defId ?? '']?.boss?.skill.name
         if (unit && x !== undefined && name && event.skillId !== 'kakuhen') this.hooks.label(name, x, this.headY(unit) - 6, unit.side === 'ally' ? jobs[unit.defId as JobId].color : '#ff8a6a')
@@ -113,7 +125,7 @@ export class Scene {
       }
       case 'ultimate': {
         const unit = this.unit(event.uid)
-        if (vis) { vis.anim = 'attack'; vis.animAt = now }
+        if (vis) { vis.anim = 'attack'; vis.animAt = now; vis.windupMs = balance.ultCastMs; vis.normalMelee = false }
         if (unit) {
           const job = jobs[unit.defId as JobId]
           this.hooks.banner(event.skillId === 'oatari' ? `${job.ultimate.name} ${event.roll ?? '?'}${event.roll === 7 ? '！！' : ''}` : job.ultimate.name, event.roll === 7 ? 'good' : 'info')
@@ -180,8 +192,11 @@ export class Scene {
     if (!snap) return
     const alpha = Math.min(1, Math.max(0, (now - this.curAt) / this.gap))
     const renderTick = (this.prev?.tick ?? snap.tick) + alpha * (snap.tick - (this.prev?.tick ?? snap.tick))
-    if (snap.phase === 'walking') this.ground = (this.ground + dt * 0.02) % 4096
-    this.drawGround(ctx, Math.floor((snap.stageNo - 1) / 5))
+    if (snap.phase === 'walking') this.ground = (this.ground + dt * 0.05) % 4096
+    if (this.groundBand) {
+      drawDungeonBackground(ctx, { width: this.W, height: this.H, footY: this.footY, baseX: this.baseX, depth: snap.stageNo, town: snap.phase === 'town', walkOffset: this.ground })
+      this.drawGround(ctx, Math.floor((snap.stageNo - 1) / 5))
+    }
     this.drawThreats(ctx, snap, alpha)
     for (const mine of snap.mines) {
       const blink = mine.explodeTick - renderTick < 10 ? Math.floor(now / 80) % 2 : Math.floor(now / 250) % 2
@@ -220,18 +235,18 @@ export class Scene {
     }
   }
 
-  private sprite(ctx: CanvasRenderingContext2D, sheet: Sheet | undefined, anim: string, elapsed: number, x: number, footY: number, flip: boolean, mode: 'normal' | 'flash' | 'gray' = 'normal', scale = 1) {
+  private sprite(ctx: CanvasRenderingContext2D, sheet: Sheet | undefined, anim: string, elapsed: number, x: number, footY: number, flip: boolean, mode: 'normal' | 'flash' | 'gray' = 'normal', scale = 1, deform = { width: 0, height: 0 }) {
     if (!sheet) return
     const frame = frameAt(sheet, anim, elapsed)[mode]
-    const width = Math.max(1, Math.round(sheet.width * scale)), height = Math.max(1, Math.round(sheet.height * scale))
-    const left = Math.round(x), top = Math.round(footY - sheet.anchor[1] * scale), anchor = Math.round(sheet.anchor[0] * scale)
+    const width = Math.max(1, Math.round(frame.width * scale) + deform.width), height = Math.max(1, Math.round(frame.height * scale) + deform.height)
+    const left = Math.round(x), top = Math.round(footY - height * sheet.anchor[1] / sheet.height), anchor = Math.round(width * sheet.anchor[0] / sheet.width)
     if (!flip) { ctx.drawImage(frame, left - anchor, top, width, height); return }
     ctx.save(); ctx.translate(left, 0); ctx.scale(-1, 1); ctx.drawImage(frame, -anchor, top, width, height); ctx.restore()
   }
 
   private drawUnit(ctx: CanvasRenderingContext2D, unit: SnapshotUnit, now: number, alpha: number, snap: Snapshot) {
     const vis = this.visuals.get(unit.uid)
-    const x = this.posX(unit.uid, alpha)
+    let x = this.posX(unit.uid, alpha)
     if (!vis || x === undefined) return
     // Production heroes face right and the enemy atlas already faces left.
     const flip = false
@@ -251,34 +266,40 @@ export class Scene {
       ctx.drawImage(frame, -vis.sheet.anchor[0], -vis.sheet.anchor[1] + 12); ctx.restore()
       return
     }
-    let anim = 'idle', elapsed = now + unit.uid * 137
-    if (vis.anim && now - vis.animAt < animDuration(vis.sheet, vis.anim)) { anim = vis.anim; elapsed = now - vis.animAt }
-    else if (unit.side === 'ally' && snap.phase === 'walking') anim = 'walk'
-    else if (unit.action === 'move') anim = vis.sheet.anims.walk ? 'walk' : 'idle'
-    let dx = 0, dy = 0
-    if (anim === 'attack' && now - vis.animAt < 160) dx = unit.side === 'enemy' ? -2 : 1
-    if (now < vis.knockUntil) dx += unit.side === 'enemy' ? 1 : -1
+    const localNow = unit.side === 'enemy' && vis.hitAt !== undefined && now - vis.hitAt < actionTiming.hitStopMs ? vis.hitAt : now
+    if (localNow !== now && vis.hitX !== undefined) x = vis.hitX
+    const age = vis.anim ? localNow - vis.animAt : -1
+    // Cache the approach point before contact so a killed/removed enemy cannot snap the attacker home.
+    if (vis.normalMelee && age < (vis.windupMs ?? 0) && vis.targetUid !== undefined) vis.dashTargetX = this.posX(vis.targetUid, alpha) ?? vis.dashTargetX
+    const distance = vis.normalMelee && vis.dashTargetX !== undefined ? meleeDashDistance(unit.defId, x, vis.dashTargetX, unit.slot) : undefined
+    const pose = actionPose(unit.defId, unit.side, age, vis.windupMs ?? 0, vis.ranged, distance)
+    let anim = 'idle', elapsed = localNow + unit.uid * 137
+    if (pose.active) { anim = pose.attack ? 'attack' : vis.normalMelee && age < (vis.windupMs ?? 0) && pose.power > 0 ? 'walk' : 'idle'; elapsed = anim === 'walk' ? localNow - vis.animAt : 0 }
+    else if ((unit.side === 'ally' && snap.phase === 'walking') || unit.action === 'move') anim = vis.sheet.anims.walk ? 'walk' : 'idle'
+    let dx = pose.dx, dy = pose.dy
+    if (vis.hitAt !== undefined) dx += hitRecoil(localNow - vis.hitAt, unit.side === 'enemy', vis.critical)
     if (unit.side === 'enemy') {
-      const motion = enemyMotion(unit.defId, unit.action, now, unit.uid)
-      dx += motion.dx; dy = motion.dy
-      if (unit.action === 'windup') dx += 2
+      const motion = enemyMotion(unit.defId, unit.action, localNow, unit.uid)
+      dx += motion.dx; dy += motion.dy
       ctx.fillStyle = '#11121a88'; ctx.fillRect(Math.round(x) - 6, this.footY, 12, 1)
-    } else if (unit.defId === 'jiangshi') dy = -Math.round(Math.abs(Math.sin(now / 220 + unit.uid)) * 3)
+    } else if (!pose.active && anim === 'walk') dy = unit.defId === 'jiangshi' ? -Math.round(Math.abs(Math.sin(localNow / 120 + unit.uid)) * 4) : -(Math.floor(elapsed / (1000 / actionTiming.walkFps)) % 2)
     if (unit.action === 'cast') {
       const job = jobs[unit.defId as JobId]
       ctx.fillStyle = job ? job.color + '55' : '#ffffff55'
       const r = 9 + Math.floor(now / 60) % 3
       ctx.fillRect(Math.round(x) - r, this.footY - 22, r * 2, 22)
     }
-    const spawnFade = vis.spawnAt ? Math.min(1, (now - vis.spawnAt) / 400) : 1
+    const spawnFade = vis.spawnAt ? Math.min(1, (now - vis.spawnAt) / 160) : 1
     if (unit.effects.includes('kage')) {
       ctx.globalAlpha = 0.3; this.sprite(ctx, vis.sheet, anim, elapsed, x - 7, this.footY + dy, flip)
       ctx.globalAlpha = 0.18; this.sprite(ctx, vis.sheet, anim, elapsed, x - 13, this.footY + dy, flip)
     }
     const blink = unit.effects.includes('mijin') && Math.floor(now / 70) % 2 === 0
     ctx.globalAlpha = spawnFade * (blink ? 0.45 : 1) * (PHANTOMS.has(unit.defId) ? 0.55 : 1)
-    this.sprite(ctx, vis.sheet, anim, elapsed, x + dx, this.footY + dy, flip, now < vis.flashUntil ? 'flash' : 'normal', scale)
+    this.sprite(ctx, vis.sheet, anim, elapsed, x + dx, this.footY + dy, flip, now < vis.flashUntil ? 'flash' : 'normal', scale, pose)
+    vis.drawX = x + dx; vis.drawY = dy
     ctx.globalAlpha = 1
+    if (pose.attack && unit.side === 'ally') this.drawActionStroke(ctx, pose.style, x + dx, this.footY + dy, vis.normalMelee ? vis.dashTargetX : undefined)
     const head = this.headY(unit) + dy
     if (unit.effects.includes('iai') && Math.floor(now / 200) % 2 === 0) { ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(x) + 7, this.footY - 9, 1, 1) }
     if (unit.effects.includes('obsession')) this.sprite(ctx, sheets.projectiles, 'heart', now, x, head - 1, false)
@@ -286,6 +307,21 @@ export class Scene {
       const hue = Math.floor(now / 60) % 6, rainbow = ['#ff6fb0', '#ffe27a', '#9df07a', '#9fe4ff', '#6f8fd6', '#c58cff']
       ctx.fillStyle = rainbow[hue]; ctx.fillRect(Math.round(x) - 1, head - 7, 3, 1); ctx.fillRect(Math.round(x), head - 8, 1, 3)
     }
+  }
+
+  private drawActionStroke(ctx: CanvasRenderingContext2D, style: string, x: number, foot: number, targetX?: number) {
+    const left = Math.round(x), y = Math.round(foot - 16)
+    const end = targetX === undefined ? Infinity : Math.floor(targetX) - 1
+    const stroke = (offset: number, row: number, width: number, height: number) => {
+      const visible = Math.max(0, Math.min(width, end - left - offset + 1))
+      if (visible) ctx.fillRect(left + offset, row, visible, height)
+    }
+    ctx.fillStyle = '#f0dbac'
+    if (style === 'thrust') { stroke(15, y, 9, 1); stroke(22, y - 1, 3, 1) }
+    else if (style === 'slash') { for (let i = 0; i < 5; i++) stroke(12 + i, y - 5 + i * 2, 2, 1) }
+    else if (style === 'palm' || style === 'fist') { stroke(17, y, 4, 2); stroke(19, y - 3, 2, 1) }
+    else if (style === 'fan') { stroke(13, y - 3, 4, 1); stroke(15, y, 4, 1) }
+    else if (style === 'book') { stroke(8, y - 6, 1, 3); stroke(10, y - 5, 2, 1) }
   }
 
   /** Normal-attack windups come from the simulation. Boss specials need a core cast before showing a forecast. */
@@ -308,10 +344,10 @@ export class Scene {
   }
 
   private drawBars(ctx: CanvasRenderingContext2D, unit: SnapshotUnit, alpha: number, now: number, snap: Snapshot) {
-    const x = this.posX(unit.uid, alpha)
+    const x = this.visuals.get(unit.uid)?.drawX ?? this.posX(unit.uid, alpha)
     if (x === undefined) return
     const rank = enemyRank(unit, snap), boss = rank === 'boss', elite = rank === 'elite'
-    const width = boss ? 30 : elite ? 18 : 14, left = Math.round(x) - Math.floor(width / 2), y = this.headY(unit) - 3
+    const width = boss ? 30 : elite ? 18 : 14, left = Math.round(x) - Math.floor(width / 2), y = this.headY(unit) - 3 + (this.visuals.get(unit.uid)?.drawY ?? 0)
     const vis = this.visuals.get(unit.uid)
     if (vis?.spawnAt && now - vis.spawnAt < 300) return
     ctx.fillStyle = colors.bar; ctx.fillRect(left - 1, y - 1, width + 2, 3)
@@ -343,6 +379,13 @@ export class Scene {
     for (const fx of this.fx) {
       const t = (now - fx.start) / fx.dur
       if (t < 0) continue
+      if (fx.kind === 'impact') {
+        ctx.fillStyle = fx.color
+        const radius = Math.round(2 + t * fx.radius), x = Math.round(fx.x), y = Math.round(fx.y)
+        for (const [sx, sy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) ctx.fillRect(x + sx * radius, y + sy * radius, t < 0.45 ? 2 : 1, 1)
+        if (t < 0.45) { ctx.fillRect(x - 2, y, 5, 1); ctx.fillRect(x, y - 2, 1, 5) }
+        continue
+      }
       if (fx.kind === 'flash') { ctx.fillStyle = `rgba(255,255,255,${0.45 * (1 - t)})`; ctx.fillRect(0, this.H - PLAY, this.W, PLAY); continue }
       if (fx.kind === 'slash') {
         ctx.fillStyle = fx.color
@@ -428,7 +471,7 @@ export class Scene {
     let best: { unit: SnapshotUnit; distance: number } | undefined
     for (const unit of snap.units) {
       if (unit.side === 'enemy' && !unit.alive) continue
-      const x = this.screenX(unit.x, unit.side === 'enemy'), sheet = sheetOf(unit.defId)
+      const x = this.visuals.get(unit.uid)?.drawX ?? this.screenX(unit.x, unit.side === 'enemy'), sheet = sheetOf(unit.defId)
       const half = sheet ? Math.ceil(sheet.width * (unit.side === 'enemy' ? enemyScale(unit.defId) : 1) / 3) : 8, top = this.headY(unit) - 4
       if (dotX < x - half || dotX > x + half || dotY < top || dotY > this.footY + 1) continue
       const distance = Math.abs(dotX - x)
@@ -439,7 +482,8 @@ export class Scene {
   /** Dot position for DOM overlays (tooltips) anchored above a target. */
   anchorOf(target: HitTarget): { x: number; y: number } {
     if (target.kind === 'hud') return { x: this.hud.x + this.hud.w / 2, y: this.hud.y - 8 }
-    return { x: this.screenX(target.unit.x, target.unit.side === 'enemy'), y: this.headY(target.unit) - 5 }
+    const vis = this.visuals.get(target.unit.uid)
+    return { x: vis?.drawX ?? this.screenX(target.unit.x, target.unit.side === 'enemy'), y: this.headY(target.unit) - 5 + (vis?.drawY ?? 0) }
   }
   busy(now: number) { return this.fx.length > 0 || this.numbers.length > 0 || this.coins.length > 0 || this.loot.length > 0 || now - this.curAt < 1000 }
 }
