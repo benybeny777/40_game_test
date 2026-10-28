@@ -53,7 +53,7 @@ Steam契約/審査/登録費用/正式署名/実決済/実Market/公開は未実
 - 今回拒否：`release/builder-debug.yml`、`build/icon.ico`。現行配布exeや原本の削除ではない。初回作業でのdebug削除後に再buildで作られたもの。
 - 旧 `.claude/worktrees/continuation-work-37789e` はGit登録なし、一部ファイル残存。登録済みworktreeはmainだけ。`.playwright-cli` と実測report/画面もignoredで残る。
 
-最終確認時のC空き459,512,426,496 bytes（約427.95GiB）。ソース/素材/仕様/検証ツールは本節と同じコミットに保存しorigin/mainへpushする。公開/配布先アップロードは行わない。今後はAGENTS→この節→README→GAME_SPEC/TECH_SPECで再開し、追加依頼が来たら現行版を基準に進める。
+最終確認時のC空き459,512,426,496 bytes（約427.95GiB）。実装/素材/仕様/検証ツールは `a4a4f9e` に保存しorigin/mainへpush済み。追跡差分なし、登録worktreeはmainのみ、自分のゲーム/exe/開発サーバー/検証プロセスは0。最終の受入reportは `.dev-data/packaged-acceptance/2026-10-28T19-49-08-620Z-12292/report.json`、初回/再起動とも表示frameを取得し3人・例外0・exit0・残存子0を確認した。公開/配布先アップロードは行っていない。ローカル作業終了後は継続heartbeatを削除する。今後はAGENTS→この節→README→GAME_SPEC/TECH_SPECで再開し、追加依頼が来たら現行版を基準に進める。
 
 ## 現在の状態（2026-10-27、Codex）
 
