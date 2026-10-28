@@ -25,8 +25,9 @@ export function covers(rect: Rect, display: Rect, tolerance = TOLERANCE) {
 }
 /** Pure decision, so it can be tested without Windows. `display` is in physical pixels. */
 export function shouldHideStrip(sample: Sample, display: Rect): boolean {
+  if (SHELL_CLASSES.includes(sample.className)) return false
   if (ALWAYS_HIDE.includes(sample.state)) return true
-  if (!sample.rect || SHELL_CLASSES.includes(sample.className)) return false
+  if (!sample.rect) return false
   return covers(sample.rect, display)
 }
 

@@ -1,27 +1,34 @@
+import { attributeDefs, attributeKeys, attributeLabels, type Attributes, type AttributeKey } from '../data/attributes.ts'
+import { attributesOf, availablePoints } from './attributes.ts'
 import { balance as b } from '../data/balance.ts'
+import { difficulties, dungeonBalance as db, dungeons, floorFeature, floorLimit, type Difficulty, type FloorFeature } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
 import { rarities, slots, type Rarity, type SlotId } from '../data/items.ts'
-import { jobs, partyOrder } from '../data/jobs.ts'
+import { deployedJobs, jobs, partyOrder, partySize, roleLabels, type JobRole } from '../data/jobs.ts'
 import { dojo as dojoDefs, type DojoKey } from '../data/progress.ts'
 import { stageLabel } from '../data/stages.ts'
 import type { JobId } from '../sim/types.ts'
-import { describe, ownerOf, scoreDelta, sellPrice, statsOf, type Item } from './items.ts'
+import { describe, equipCheck, ownerOf, requirementsOf, scoreDelta, sellPrice, statsOf, type Item } from './items.ts'
 import { dojoCost, expToNext, perMinute, type OfflineResult, type Profile } from './profile.ts'
 
 export interface ItemView {
   id: string; name: string; slot: SlotId; slotName: string; job?: JobId; jobName?: string; ilvl: number
   rarity: Rarity; rarityName: string; color: string; lines: string[]; sellPrice: number; locked: boolean; isNew: boolean
+  requirements: string[]; rollLabel: string; marketEligible: false; equipable: Record<JobId, { ok: true } | { ok: false; reason: string }>
   owner?: JobId; delta: Partial<Record<JobId, number>>                 // Power change if that job equipped it (null = cannot).
 }
 export interface MemberView {
-  job: JobId; name: string; role: string; color: string; lv: number; exp: number; expNext: number
+  active: boolean; job: JobId; name: string; role: string; roleId: JobRole; color: string; lv: number; exp: number; expNext: number
+  attributes: Attributes; baseAttributes: Attributes; allocated: Attributes; availablePoints: number; autoStats: boolean; mainAttribute: AttributeKey; autoWeights: Attributes
   stats: { hp: number; atk: number; def: number; interval: number; cri: number; eva: number; luk: number; range: string }
   skills: Array<{ kind: '通常' | 'スキル' | 'パッシブ' | '奥義'; name: string; desc: string; unlockLv: number; unlocked: boolean }>
   equip: Record<SlotId, ItemView | null>
 }
 export interface ProfileView {
+  dungeon: { id: string; name: string; depth: number; best: number; difficulty: Difficulty; difficultyLabel: string; unlockedDifficulty: number; floorLimit: number | null; town: boolean; theme: string; floorEvent: { kind: FloorFeature; claimed: boolean } }
   koban: number; totalKoban: number
   stage: { current: number; unlocked: number; label: string; areaName: string; loop: boolean; max: number }
+  partySize: number
   party: MemberView[]
   inventory: ItemView[]
   inventoryMax: number
@@ -40,7 +47,7 @@ function itemView(profile: Profile, item: Item): ItemView {
   const rarity = rarities[item.rarity]
   return { id: item.id, name: item.name, slot: item.slot, slotName: slots[item.slot].name, job: item.job, jobName: item.job ? jobs[item.job].name : undefined,
     ilvl: item.ilvl, rarity: item.rarity, rarityName: rarity.name, color: rarity.color, lines: describe(item), sellPrice: sellPrice(item),
-    locked: item.locked, isNew: item.isNew, owner: ownerOf(profile, item.id),
+    locked: item.locked, isNew: item.isNew, requirements: attributeKeys.filter((key) => requirementsOf(item)[key] > 0).map((key) => attributeLabels[key] + requirementsOf(item)[key]), rollLabel: `基礎性能${Math.round((item.baseRoll ?? 1) * 100)}%（85〜115%）`, marketEligible: false, equipable: Object.fromEntries(partyOrder.map((job) => [job, equipCheck(profile, job, item)])) as ItemView['equipable'], owner: ownerOf(profile, item.id),
     delta: Object.fromEntries(partyOrder.map((job) => [job, scoreDelta(profile, job, item)]).filter(([, delta]) => delta !== null).map(([job, delta]) => [job, round(delta as number, 1)])) }
 }
 
@@ -48,12 +55,20 @@ export function buildView(profile: Profile, loop: boolean): ProfileView {
   const current = stageLabel(profile.progress.currentStage)
   const rate = perMinute(profile)
   const views = new Map(profile.inventory.map((item) => [item.id, itemView(profile, item)]))
+  const rank = profile.progress.depthRank, limit = floorLimit(rank), best = profile.progress.unlockedDepths[rank]
+  const visibleFloors = limit === null ? [...new Set([1, best, ...Array.from({ length: db.stageWindow * 2 + 1 }, (_, index) => profile.progress.currentStage - db.stageWindow + index)])].filter((depth) => Number.isSafeInteger(depth) && depth >= 1 && depth <= best).sort((a, z) => a - z)
+    : Array.from({ length: limit }, (_, index) => index + 1)
   return {
+    dungeon: { id: profile.dungeonId, name: dungeons[profile.dungeonId].name, depth: profile.progress.currentStage, best, difficulty: rank,
+      difficultyLabel: difficulties[rank].name, unlockedDifficulty: profile.progress.unlockedDepths.reduce((highest, depth, index) => depth > 0 ? index : highest, 0),
+      floorLimit: limit, town: profile.progress.inTown, theme: current.areaName,
+      floorEvent: { kind: floorFeature(profile.progress.currentStage, profile.dungeonSeed, rank), claimed: profile.progress.currentStage <= profile.progress.eventDepths[rank] } },
     koban: profile.koban, totalKoban: profile.stats.totalKoban,
-    stage: { current: profile.progress.currentStage, unlocked: profile.progress.unlockedStage, label: current.label, areaName: current.areaName, loop, max: b.maxStage },
+    stage: { current: profile.progress.currentStage, unlocked: profile.progress.unlockedStage, label: current.label, areaName: current.areaName, loop, max: limit ?? db.maxDepth },
+    partySize,
     party: profile.party.order.map((id) => {
       const job = jobs[id], member = profile.party.members[id], stats = statsOf(profile, id)
-      return { job: id, name: job.name, role: job.role, color: job.color, lv: member.lv, exp: member.exp, expNext: expToNext(member.lv),
+      return { active: deployedJobs(profile.party.order).includes(id), job: id, name: job.name, role: roleLabels[job.role], roleId: job.role, color: job.color, lv: member.lv, exp: member.exp, expNext: expToNext(member.lv), attributes: attributesOf(id, member.allocated), baseAttributes: { ...attributeDefs[id].base }, allocated: { ...member.allocated }, availablePoints: availablePoints(member), autoStats: member.autoStats, mainAttribute: attributeDefs[id].main, autoWeights: { ...attributeDefs[id].auto },
         stats: { hp: round(stats.maxHp), atk: round(stats.atk, 1), def: round(stats.def, 1), interval: round(stats.intervalMs / 1000, 2),
           cri: round(stats.cri * 100, 1), eva: round(stats.eva * 100, 1), luk: round(stats.luk, 1), range: job.attack.kind === 'melee' ? '近接' : '遠隔' },
         skills: [
@@ -71,8 +86,8 @@ export function buildView(profile: Profile, loop: boolean): ProfileView {
       const maxed = def.max !== null && level >= def.max
       return { key, name: def.name, desc: def.desc, level, max: def.max, cost, affordable: !maxed && profile.koban >= cost }
     }),
-    stages: Array.from({ length: b.maxStage }, (_, index) => {
-      const no = index + 1, label = stageLabel(no)
+    stages: visibleFloors.map((no) => {
+      const label = stageLabel(no)
       return { no, label: label.label, areaName: label.areaName, unlocked: no <= profile.progress.unlockedStage, current: no === profile.progress.currentStage }
     }),
     rates: { kobanPerMin: round(rate.koban, 1), expPerMin: round(rate.exp, 1) },

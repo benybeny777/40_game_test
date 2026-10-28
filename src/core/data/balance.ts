@@ -1,14 +1,13 @@
+import { dungeons } from './dungeon.ts'
 export const balance = {
   tickMs: 100, walkMs: 4000, waveClearMs: 1000, stageClearMs: 2000, wipeMs: 3000,
   bossIntroMs: 1500, spawnMs: 200, windupMs: 200, projectileDotsPerSecond: 240,
   // spawnX was 160 in the first draft; ranged allies (220) then killed everything before melee contact.
   formationGap: 18, spawnX: 40, enemyStop: 14, enemyGap: 10,
-  meleeRange: 16, rangedRange: 220, waves: 10, maxStage: 15, maxLevel: 60,
+  meleeRange: 16, rangedRange: 220, waves: 10, maxStage: dungeons.yomi.floorCount, maxLevel: 60,
   walkHealPerSecond: 0.02, clearHeal: 0.3, frontTargetChance: 0.7, wipeLoopThreshold: 3,
   criMulBase: 1.5, defBase: 100, defK: 2, variance: 0.1,
   ultFromDealt: 5, ultFromTaken: 50, maxGauge: 100, minIntervalMul: 0.3, maxEva: 0.75,
-  // Growth per stage step, by the area the step starts in (tuned with `pnpm sim -- --progress`).
-  stageHpGrowth: [1.5, 1.25, 1.2], stageAtkGrowth: [1.3, 1.18, 1.15], stageDefGrowth: 1.10, rewardGrowth: 1.15,
   waveGrowth: 0.03, armorCritBonusMul: 0.5, obsessionMul: 1.15, obsessionMs: 5000,
   shotsMin: 1, shotsMax: 3,
   skillLv: 1, passiveLv: 5, ultLv: 10, ultCastMs: 600,

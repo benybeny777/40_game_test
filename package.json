@@ -1,6 +1,6 @@
 {
   "name": "taskbar-hyakkiko",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "タスクバー百鬼行：タスクバー直上の和風放置RPG",
   "main": "./out/main/index.js",
@@ -16,7 +16,11 @@
     "sprites:preview": "node --experimental-strip-types tools/sprites-preview.ts",
     "build": "electron-vite build",
     "icon": "node --experimental-strip-types tools/make-icon.ts",
-    "dist": "pnpm icon && electron-vite build && electron-builder --win portable"
+    "dist": "pnpm icon && electron-vite build && electron-builder --win portable",
+    "release:check": "node tools/release-check.mjs",
+    "web:dev": "vite --config vite.web.config.ts",
+    "web:build": "vite build --config vite.web.config.ts",
+    "web:preview": "vite preview --config vite.web.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

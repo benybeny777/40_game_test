@@ -1,7 +1,8 @@
 import { balance as b } from '../data/balance.ts'
+import { depthScale } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
 import { jobs } from '../data/jobs.ts'
-import { addEffect, aoe, healUnit, passiveOn } from './actions.ts'
+import { addEffect, aoe, healUnit, passiveOn, strike } from './actions.ts'
 import { friends, living, opponents } from './combat.ts'
 import { random } from './rng.ts'
 import { sumEffects, withEffects } from './stats.ts'
@@ -12,9 +13,100 @@ export interface SkillContext { world: World; self: Unit; events: SimEvent[] }
 const p = (job: JobId, kind: 'skill' | 'passive' | 'ultimate') => jobs[job][kind].params
 const lowestRatio = (units: Unit[]) => units.reduce((best, unit) => unit.hp / unit.stats.maxHp < best.hp / best.stats.maxHp ? unit : best)
 const hasFoes = ({ world, self }: SkillContext) => opponents(world, self).length > 0
-const consolation = (world: World, amount: number) => Math.floor(amount * b.rewardGrowth ** (world.stageNo - 1))
+const consolation = (world: World, amount: number) => Math.floor(amount * depthScale(world.stageNo, world.depthRank).reward)
 
+/** Existing negative effects are the game's curses; cleansing removes only harmful modifiers. */
+const cleanse = (unit: Unit, events: SimEvent[]) => {
+  const harmful = unit.effects.filter((effect) => effect.kind === 'obsession'
+    || (effect.value < 0 && ['atkPct', 'evaAdd', 'criAdd'].includes(effect.kind))
+    || (effect.value > 0 && ['dmgTakenPct', 'intervalPct'].includes(effect.kind)))
+  unit.effects = unit.effects.filter((effect) => !harmful.includes(effect))
+  for (const effect of harmful) events.push({ t: 'effect', uid: unit.uid, tag: effect.tag, on: false })
+}
+const mikoWard = ({ world, self, events }: SkillContext, kind: 'skill' | 'ultimate') => {
+  const q = p('miko', kind)
+  for (const ally of friends(world, self)) {
+    cleanse(ally, events)
+    healUnit(ally, self.stats.atk * (q.healAtk ?? 0) + ally.stats.maxHp * q.healHp, self.uid, events)
+    addEffect(ally, { kind: 'dmgTakenPct', tag: kind === 'skill' ? 'kekkai' : 'misogi', value: q.dmgTaken,
+      untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
+  }
+}
+const intimidate = ({ world, self, events }: SkillContext, kind: 'skill' | 'ultimate') => {
+  const q = p('sukeban', kind)
+  for (const enemy of opponents(world, self)) addEffect(enemy, { kind: 'atkPct', tag: kind === 'skill' ? 'ikaku' : 'kyouka',
+    value: q.atk, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
+}
+const salvage = ({ world, self, events }: SkillContext, kind: 'skill' | 'ultimate') => {
+  const q = p('vagabond', kind), untilTick = world.tick + ticks(q.ms)
+  aoe(world, self, q.mul, events, [kind === 'skill' ? 'salvage' : 'junkstorm'])
+  for (const enemy of opponents(world, self)) addEffect(enemy, { kind: 'atkPct', tag: 'junkWeakness', value: q.atk, untilTick, sourceUid: self.uid }, events)
+  for (const ally of friends(world, self)) addEffect(ally, { kind: 'kobanPct', tag: 'salvageKoban', value: q.koban, untilTick, sourceUid: self.uid }, events)
+}
+const tonoCheer = ({ world, self, events }: SkillContext, kind: 'skill' | 'ultimate') => {
+  const q = p('tono', kind), untilTick = world.tick + ticks(q.ms), tag = kind === 'skill' ? 'saihai' : 'onari'
+  for (const ally of friends(world, self)) {
+    addEffect(ally, { kind: 'atkPct', tag, value: q.atk, untilTick, sourceUid: self.uid }, events)
+    if (q.interval) addEffect(ally, { kind: 'intervalPct', tag: 'onariSpeed', value: q.interval, untilTick, sourceUid: self.uid }, events)
+  }
+}
+const examDebuff = ({ world, self, events }: SkillContext, kind: 'skill' | 'ultimate') => {
+  const q = p('gariben', kind), untilTick = world.tick + ticks(q.ms)
+  for (const enemy of opponents(world, self)) addEffect(enemy, { kind: 'intervalPct', tag: kind === 'skill' ? 'nanmon' : 'tetsuya', value: q.interval, untilTick, sourceUid: self.uid }, events)
+  if (q.cri) for (const ally of friends(world, self)) addEffect(ally, { kind: 'criAdd', tag: 'examAnswer', value: q.cri, untilTick, sourceUid: self.uid }, events)
+}
 export const skills: Record<string, { canUse(ctx: SkillContext): boolean; use(ctx: SkillContext): void }> = {
+  nanmon: { canUse: hasFoes, use: (ctx) => examDebuff(ctx, 'skill') },
+  saihai: { canUse: hasFoes, use: (ctx) => tonoCheer(ctx, 'skill') },
+  harite: { canUse: ({ world, self }) => opponents(world, self).some((target) => target.x >= self.x && target.x - self.x <= p('rikishi', 'skill').range),
+    use: ({ world, self, events }) => {
+      const q = p('rikishi', 'skill'), target = opponents(world, self).filter((enemy) => enemy.x >= self.x && enemy.x - self.x <= q.range).sort((a, z) => a.x - z.x)[0]
+      if (!target) return
+      strike(world, self, target, { mul: q.mul, aoeDots: q.range, tags: ['harite'] }, events)
+      if (living(target)) target.x += q.push
+      addEffect(self, { kind: 'dmgTakenPct', tag: 'harite', value: q.dmgTaken, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
+    } },
+  prayer: { canUse: ({ world, self }) => friends(world, self).some((unit) => unit.hp / unit.stats.maxHp < p('sister', 'skill').below),
+    use: ({ world, self, events }) => {
+      const target = lowestRatio(friends(world, self)), q = p('sister', 'skill')
+      healUnit(target, self.stats.atk * q.mul + target.stats.maxHp * q.maxHp, self.uid, events)
+    } },
+  salvage: { canUse: hasFoes, use: (ctx) => salvage(ctx, 'skill') },
+  kushizashi: { canUse: ({ world, self }) => opponents(world, self).some((target) => target.x >= self.x && target.x - self.x <= p('farmer', 'skill').range),
+    use: ({ world, self, events }) => {
+      const q = p('farmer', 'skill')
+      for (const target of opponents(world, self).filter((target) => target.x >= self.x && target.x - self.x <= q.range).sort((a, z) => a.x - z.x).slice(0, q.targets)) {
+        strike(world, self, target, { mul: q.mul, aoeDots: q.range, tags: ['kushizashi'] }, events)
+      }
+    } },
+  knifevolley: { canUse: hasFoes, use: ({ world, self, events }) => {
+    const q = p('maid', 'skill')
+    for (let hit = 0; hit < q.hits; hit++) {
+      const target = opponents(world, self).sort((a, z) => Math.abs(a.x - self.x) - Math.abs(z.x - self.x))[0]
+      if (!target) break
+      strike(world, self, target, { mul: q.mul, tags: ['knifevolley'] }, events)
+    }
+  } },
+  hoppalm: { canUse: ({ world, self }) => opponents(world, self).some((target) => Math.abs(target.x - self.x) <= p('jiangshi', 'skill').range),
+    use: ({ world, self, events }) => {
+      const q = p('jiangshi', 'skill'), target = opponents(world, self).filter((enemy) => Math.abs(enemy.x - self.x) <= q.range).sort((a, z) => Math.abs(a.x - self.x) - Math.abs(z.x - self.x))[0]
+      if (!target) return
+      strike(world, self, target, { mul: q.mul, aoeDots: q.range, tags: ['hoppalm'] }, events)
+      addEffect(self, { kind: 'evaAdd', tag: 'hoppalm', value: q.eva, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
+    } },
+  kekkai: { canUse: hasFoes, use: (ctx) => mikoWard(ctx, 'skill') },
+  tanka: { canUse: hasFoes, use: ({ world, self, events }) => {
+    const q = p('bancho', 'skill'), untilTick = world.tick + ticks(q.ms)
+    addEffect(self, { kind: 'aggroAdd', tag: 'tanka', value: q.aggro, untilTick, sourceUid: self.uid }, events)
+    addEffect(self, { kind: 'dmgTakenPct', tag: 'tankaGuard', value: q.dmgTaken, untilTick, sourceUid: self.uid }, events)
+  } },
+  decosnap: { canUse: hasFoes, use: ({ world, self, events }) => {
+    const target = opponents(world, self).sort((a, z) => Math.abs(a.x - self.x) - Math.abs(z.x - self.x))[0]
+    if (!target) return
+    const q = p('gyaru', 'skill')
+    addEffect(target, { kind: 'dmgTakenPct', tag: 'attention', value: q.dmgTaken, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
+  } },
+  ikaku: { canUse: hasFoes, use: (ctx) => intimidate(ctx, 'skill') },
   iai: {
     canUse: (ctx) => hasFoes(ctx) && !ctx.self.effects.some((effect) => effect.kind === 'nextCrit'),
     use: ({ self, events }) => addEffect(self, { kind: 'nextCrit', tag: 'iai', value: p('samurai', 'skill').mul, untilTick: FOREVER, sourceUid: self.uid }, events),
@@ -64,6 +156,45 @@ export function rollOatari(world: World, self: Unit) {
   return q.max
 }
 export const ultimates: Record<string, (ctx: SkillContext, roll?: number) => void> = {
+  tetsuya: (ctx) => examDebuff(ctx, 'ultimate'),
+  onari: (ctx) => tonoCheer(ctx, 'ultimate'),
+  ooichiban: ({ world, self, events }) => {
+    const q = p('rikishi', 'ultimate')
+    aoe(world, self, q.mul, events, ['ooichiban'])
+    for (const enemy of opponents(world, self)) enemy.x += q.push
+    addEffect(self, { kind: 'dmgTakenPct', tag: 'ooichiban', value: q.dmgTaken, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
+  },
+  sanctuary: ({ world, self, events }) => {
+    const q = p('sister', 'ultimate')
+    for (const ally of friends(world, self)) {
+      healUnit(ally, ally.stats.maxHp * q.heal, self.uid, events)
+      addEffect(ally, { kind: 'invuln', tag: 'sanctuary', value: 1, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
+    }
+  },
+  junkstorm: (ctx) => salvage(ctx, 'ultimate'),
+  houjou: ({ world, self, events }) => {
+    const q = p('farmer', 'ultimate'); aoe(world, self, q.mul, events, ['houjou']); healUnit(self, self.stats.maxHp * q.heal, self.uid, events)
+  },
+  knifecurtain: ({ world, self, events }) => {
+    const q = p('maid', 'ultimate')
+    aoe(world, self, q.mul, events, ['knifecurtain'])
+    addEffect(self, { kind: 'intervalPct', tag: 'knifecurtain', value: q.interval, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
+  },
+  hyakki: ({ world, self, events }) => {
+    const q = p('jiangshi', 'ultimate'); aoe(world, self, q.mul, events, ['hyakki']); healUnit(self, self.stats.maxHp * q.heal, self.uid, events)
+  },
+  misogi: (ctx) => mikoWard(ctx, 'ultimate'),
+  souchou: ({ world, self, events }) => {
+    const q = p('bancho', 'ultimate')
+    aoe(world, self, q.mul, events, ['souchou'])
+    addEffect(self, { kind: 'dmgTakenPct', tag: 'souchou', value: q.dmgTaken, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
+  },
+  buzzlive: ({ world, self, events }) => {
+    const q = p('gyaru', 'ultimate'), untilTick = world.tick + ticks(q.ms)
+    for (const enemy of opponents(world, self)) addEffect(enemy, { kind: 'dmgTakenPct', tag: 'attention', value: q.dmgTaken, untilTick, sourceUid: self.uid }, events)
+    for (const ally of friends(world, self)) addEffect(ally, { kind: 'intervalPct', tag: 'buzzlive', value: q.interval, untilTick, sourceUid: self.uid }, events)
+  },
+  kyouka: (ctx) => { aoe(ctx.world, ctx.self, p('sukeban', 'ultimate').mul, ctx.events, ['kyouka']); intimidate(ctx, 'ultimate') },
   issen: ({ world, self, events }) => aoe(world, self, p('samurai', 'ultimate').mul, events, ['issen']),
   mijin: ({ world, self, events }) => {
     aoe(world, self, p('ninja', 'ultimate').mul, events, ['mijin'])
@@ -89,6 +220,20 @@ export const ultimates: Record<string, (ctx: SkillContext, roll?: number) => voi
 }
 
 export function onBattleStart(world: World, events: SimEvent[]) {
+  for (const gariben of world.units.filter((unit) => living(unit) && passiveOn(unit, 'gariben'))) {
+    for (const enemy of opponents(world, gariben)) addEffect(enemy, { kind: 'dmgTakenPct', tag: 'bunseki', value: p('gariben', 'passive').dmgTaken, untilTick: FOREVER, sourceUid: gariben.uid }, events)
+  }
+  for (const tono of world.units.filter((unit) => living(unit) && passiveOn(unit, 'tono'))) {
+    for (const ally of friends(world, tono)) addEffect(ally, { kind: 'intervalPct', tag: 'osumitsuki', value: p('tono', 'passive').interval, untilTick: FOREVER, sourceUid: tono.uid }, events)
+  }
+  for (const sister of world.units.filter((unit) => living(unit) && passiveOn(unit, 'sister'))) {
+    for (const ally of friends(world, sister)) addEffect(ally, { kind: 'deathWard', tag: 'deathward', value: 1, untilTick: FOREVER, sourceUid: sister.uid }, events)
+  }
+  for (const source of world.units.filter((unit) => living(unit) && (passiveOn(unit, 'miko') || passiveOn(unit, 'gyaru')))) {
+    const miko = source.defId === 'miko'
+    for (const ally of friends(world, source)) addEffect(ally, { kind: miko ? 'dmgTakenPct' : 'atkPct', tag: miko ? 'ofuda' : 'agemood',
+      value: miko ? p('miko', 'passive').dmgTaken : p('gyaru', 'passive').atk, untilTick: FOREVER, sourceUid: source.uid }, events)
+  }
   for (const otaku of world.units.filter((unit) => living(unit) && passiveOn(unit, 'otaku'))) {
     for (const ally of friends(world, otaku)) {
       addEffect(ally, { kind: 'atkPct', tag: 'oshi', value: p('otaku', 'passive').atk, untilTick: FOREVER, sourceUid: otaku.uid }, events)
@@ -110,6 +255,9 @@ export function refreshStats(world: World, unit: Unit) {
   if (passiveOn(unit, 'jirai') && (unit.gauges.jonen ?? 0) >= p('jirai', 'passive').jonen) {
     stats.atk *= 1 + p('jirai', 'passive').atk; stats.dmgTakenMul *= 1 + p('jirai', 'passive').dmgTaken
   }
+  if (passiveOn(unit, 'rikishi')) stats.dmgTakenMul *= 1 + p('rikishi', 'passive').dmgTaken
+  if (passiveOn(unit, 'farmer')) stats.eva = Math.min(b.maxEva, stats.eva + p('farmer', 'passive').eva)
+  if (passiveOn(unit, 'maid')) stats.intervalMs *= 1 + p('maid', 'passive').interval
   const boss = unit.side === 'enemy' ? enemies[unit.defId].boss : undefined
   if (boss && ratio <= b.enrageHp) stats.intervalMs *= boss.enrageInterval
   unit.stats = stats

@@ -21,5 +21,11 @@ const api: ShellApi = {
   updateSettings: (settings) => ipcRenderer.invoke(channels.settings, settings),
   onNavigate: (listener) => subscribe(channels.navigate, listener),
   openSaveFolder: () => ipcRenderer.send(channels.openSaveFolder),
+  exportSave: () => ipcRenderer.send(channels.exportSave),
+  retrySave: () => ipcRenderer.invoke(channels.retrySave),
+  getStore: () => ipcRenderer.invoke(channels.getStore),
+  purchaseProduct: (sku) => ipcRenderer.invoke(channels.purchase, sku),
+  equipCosmetic: (sku) => ipcRenderer.invoke(channels.equipCosmetic, sku),
+  previewCosmetic: (sku) => ipcRenderer.invoke(channels.previewCosmetic, sku),
 }
 contextBridge.exposeInMainWorld('game', api)

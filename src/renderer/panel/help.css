@@ -1,0 +1,39 @@
+.help-root { display: flex; flex-direction: column; gap: 14px; min-width: 0; font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; }
+.help-intro { padding: 3px 0 4px 14px; border-left: 3px solid var(--gold); }
+.help-eyebrow { color: var(--gold); font-size: 10px; letter-spacing: 2px; }
+.help-title { color: var(--text); font-size: 22px; line-height: 1.4; letter-spacing: 1px; margin: 4px 0 8px; }
+.help-text { margin: 0; color: #c1bacb; font-size: 12px; line-height: 1.9; overflow-wrap: anywhere; }
+.help-start { padding: 16px; background: linear-gradient(125deg, #2d2736, #1d1c29); border: 1px solid #5f4d43; }
+.help-subtitle { margin: 0 0 12px; color: #ead9ba; font-size: 15px; }
+.help-steps { list-style: none; counter-reset: help-step; display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; margin: 0; padding: 0; }
+.help-step { min-width: 0; counter-increment: help-step; }
+.help-step-title { display: flex; align-items: center; gap: 7px; color: var(--text); font-size: 13px; margin: 0 0 5px; }
+.help-step-title::before { content: counter(help-step); display: inline-grid; place-items: center; background: #d0b16d1f; color: #dfc78e; border: 1px solid #8b754c; width: 22px; height: 22px; flex: 0 0 22px; font-size: 11px; }
+.help-section { border: 1px solid var(--line); background: #1c1a27; }
+.help-section-title { color: #e4d9e8; font-size: 14px; font-weight: 600; line-height: 1.7; padding: 12px 14px; cursor: pointer; overflow-wrap: anywhere; }
+.help-section-title:hover { background: #2a2435; }
+.help-section-title:focus-visible { outline: 2px solid #dfc78e; outline-offset: -3px; }
+.help-section[open] > .help-section-title { border-bottom: 1px solid var(--line); color: #efdfbe; }
+.help-section-body { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+.help-list { display: flex; flex-direction: column; gap: 7px; margin: 0; padding-left: 20px; color: #c1bacb; font-size: 12px; line-height: 1.9; overflow-wrap: anywhere; }
+.help-role-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 10px; min-width: 0; }
+.help-role { padding: 12px; background: #24212e; border: 1px solid #393343; border-top: 2px solid #a09bb5; min-width: 0; }
+.help-role-title, .help-difficulty-title, .help-platform-title { margin: 0 0 5px; color: #e1d6e5; font-size: 13px; line-height: 1.6; }
+.help-role-members { margin: 8px 0 0; color: #9e96ab; font-size: 11px; line-height: 1.8; overflow-wrap: anywhere; }
+.help-role-tank { border-top-color: #99b8e3; } .help-role-attacker { border-top-color: #e4a08b; }
+.help-role-healer { border-top-color: #a7cda3; } .help-role-buffer { border-top-color: #dfc88d; } .help-role-debuffer { border-top-color: #bfabd8; }
+.help-attributes { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 0; }
+.help-attribute-row { background: #24212e; border: 1px solid #393343; padding: 10px 12px; min-width: 0; }
+.help-attribute-row dt { color: #d8c49c; font-size: 12px; font-weight: 600; margin: 0 0 4px; }
+.help-attribute-row dd { color: #bcb4c5; font-size: 12px; line-height: 1.8; margin: 0; overflow-wrap: anywhere; }
+.help-difficulties { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 9px; }
+.help-difficulty { padding: 10px 12px; background: #24212e; border: 1px solid #393343; min-width: 0; }
+.help-platforms { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.help-platform-card { border: 1px solid #393343; background: #24212e; padding: 12px; min-width: 0; }
+@media (max-width: 700px) {
+  .help-steps, .help-difficulties, .help-platforms, .help-attributes { grid-template-columns: 1fr; }
+  .help-role-grid { grid-template-columns: 1fr; }
+  .help-start { padding: 13px; }
+  .help-section-title { padding: 11px 12px; font-size: 13px; }
+  .help-section-body { padding: 12px; }
+}

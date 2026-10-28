@@ -1,0 +1,26 @@
+async (page) => {
+  // Run via playwright-cli run-code --filename tools/browser-gallery.pw.txt.
+  // The active Bestiary page must be a dedicated verification save with all 12 discoveries.
+  await page.setViewportSize({ width: 1100, height: 840 });
+  await page.evaluate(() => {
+    const entries = [...document.querySelectorAll('.entry')].map(card => ({
+      image: card.querySelector('canvas').toDataURL(), name: card.querySelector('h4').textContent,
+      role: card.querySelector('b')?.textContent ?? '',
+    }));
+    if (entries.length !== 12) throw Error('Expected twelve production enemy portraits');
+    const gallery = document.createElement('main');
+    gallery.style.cssText = 'padding:24px;background:#171822;color:#eee;font:14px sans-serif;overflow:auto;height:100vh;width:100%;box-sizing:border-box';
+    const title = document.createElement('h1'); title.textContent = 'Taskbar Hyakkiko — 12 Yokai';
+    const caption = document.createElement('p'); caption.textContent = 'Production sprites rendered by the actual game. Bosses and enemy roles have distinct silhouettes.';
+    const grid = document.createElement('div'); grid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:14px';
+    for (const entry of entries) {
+      const card = document.createElement('article'); card.style.cssText = 'background:#242532;border:1px solid #414351;padding:16px;text-align:center';
+      const image = document.createElement('img'); image.src = entry.image; image.style.cssText = 'width:160px;height:135px;object-fit:contain;image-rendering:pixelated';
+      const name = document.createElement('b'); name.textContent = entry.name; name.style.display = 'block';
+      const role = document.createElement('small'); role.textContent = entry.role;
+      card.append(image, name, role); grid.append(card);
+    }
+    gallery.append(title, caption, grid); document.body.replaceChildren(gallery);
+  });
+  await page.screenshot({ path: '.dev-data/preview/enemies.png' });
+}

@@ -3,11 +3,14 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { advance, balance, buildView, createGame, createWorld, newProfile, runCommand, snapshot, stageLabel, step, type DojoKey } from '../src/core/index.ts'
+import { advance, balance, buildView, createGame, createWorld, newProfile, runCommand, snapshot, stageLabel, step, validateProfile, type Difficulty, type DojoKey, type JobId } from '../src/core/index.ts'
 import { partyOrder } from '../src/core/data/jobs.ts'
 
-export function simulate(options: { stage: number; minutes: number; seed: number; level: number }) {
-  const world = createWorld({ seed: options.seed, stageNo: options.stage, level: options.level, loop: true })
+export function simulate(options: { stage: number; minutes: number; seed: number; level: number; difficulty?: Difficulty }) {
+  const build = newProfile('fixed', options.seed)
+  for (const member of Object.values(build.party.members)) member.lv = options.level
+  const ready = validateProfile(build)
+  const world = createWorld({ seed: options.seed, stageNo: options.stage, level: options.level, depthRank: options.difficulty, loop: true, allocated: Object.fromEntries(partyOrder.map((job) => [job, ready.party.members[job].allocated])) })
   const totalTicks = Math.floor(options.minutes * 60 * 1000 / balance.tickMs)
   const samples = []
   let koban = 0, exp = 0, wipes = 0, clears = 0, stageClears = 0
@@ -46,24 +49,29 @@ export function simulate(options: { stage: number; minutes: number; seed: number
     const total = Object.values(totals).reduce((sum, value) => sum + value, 0)
     return Object.fromEntries(Object.entries(totals).map(([id, value]) => [id, total ? value / total : 0]))
   }
-  return { mode: 'M1 fixed-level / normal-attacks-only / no-boss', seed: options.seed, level: options.level, samples,
+  return { mode: 'dungeon fixed-level / skills and floor bosses / no-progression', seed: options.seed, level: options.level, samples,
     summary: { ...summary, damageShare: ratio(damage), healingShare: ratio(healing) },
     snapshotHash: createHash('sha256').update(JSON.stringify(snapshot(world, koban))).digest('hex'), elapsedMs: performance.now() - started }
 }
 
 /** --progress: play from a new save with the real progression rules, buying the cheapest dojo upgrade whenever affordable. */
-export function simulateProgress(options: { minutes: number; seed: number }) {
-  const game = createGame(newProfile('sim'), options.seed)
+export function simulateProgress(options: { minutes: number; seed: number; party?: JobId[] }) {
+  const profile = newProfile('sim', options.seed)
+  if (options.party) {
+    if (options.party.length !== 3 || new Set(options.party).size !== 3 || options.party.some((job) => !partyOrder.includes(job))) throw new RangeError('--party は異なる出撃ジョブを3名指定してください')
+    profile.party.order = [...options.party, ...partyOrder.filter((job) => !options.party!.includes(job))]
+  }
+  const game = createGame(profile, options.seed)
   const totalTicks = Math.floor(options.minutes * 60000 / balance.tickMs)
   const firstClear: Record<string, number> = {}
   const samples = []
   let ultimates = 0, skills = 0, kakuhenHits = 0, kakuhenTries = 0
-  const drops = [0, 0, 0, 0, 0]
+  const drops = [0, 0, 0, 0, 0, 0]
   const started = performance.now()
   for (let tick = 1; tick <= totalTicks; tick++) {
     const { events } = advance(game)
     for (const event of events) {
-      if (event.t === 'phase' && event.phase === 'stageClear' && firstClear[event.stageNo] === undefined) firstClear[event.stageNo] = tick * balance.tickMs / 60000
+      if (event.t === 'phase' && event.phase === 'stageClear' && firstClear[`${event.depthRank ?? 0}:${event.stageNo}`] === undefined) firstClear[`${event.depthRank ?? 0}:${event.stageNo}`] = tick * balance.tickMs / 60000
       if (event.t === 'ultimate') ultimates++
       if (event.t === 'skill') skills++
       if (event.t === 'kakuhen') { kakuhenTries++; if (event.hit) kakuhenHits++ }
@@ -81,7 +89,7 @@ export function simulateProgress(options: { minutes: number; seed: number }) {
         全滅: p.stats.wipes, 撃破: p.stats.kills, 周回: game.world.loop ? 'ON' : '' })
     }
   }
-  return { seed: options.seed, minutes: options.minutes, samples, firstClear, stats: game.profile.stats, ultimates, skills,
+  return { seed: options.seed, minutes: options.minutes, party: game.profile.party.order.slice(0, 3), depth: game.world.stageNo, difficulty: game.world.depthRank, level: game.profile.party.members.samurai.lv, samples, firstClear, stats: game.profile.stats, ultimates, skills,
     kakuhenRate: kakuhenTries ? kakuhenHits / kakuhenTries : null, drops, inventory: game.profile.inventory.length,
     equipped: partyOrder.flatMap((job) => Object.values(game.profile.party.members[job].equip)).filter(Boolean).length,
     elapsedMs: performance.now() - started }
@@ -90,23 +98,23 @@ function printProgress(result: ReturnType<typeof simulateProgress>, json: boolea
   if (json) { console.log(JSON.stringify(result, null, 2)); return }
   console.log(`新規セーブからの進行（seed ${result.seed}、${result.minutes}分、道場は買える最安を自動購入）`)
   console.table(result.samples)
-  console.log('初クリア（分）:', Object.entries(result.firstClear).map(([stage, minutes]) => `${stageLabel(Number(stage)).label}=${minutes.toFixed(1)}`).join('  '))
+  console.log('初クリア（分）:', Object.entries(result.firstClear).map(([stage, minutes]) => `${stage.split(':')[0]}:${stageLabel(Number(stage.split(':')[1])).label}=${minutes.toFixed(1)}`).join('  '))
   console.log(`奥義 ${result.ultimates}回 / スキル ${result.skills}回 / 確変の当たり率 ${result.kakuhenRate === null ? '-' : (result.kakuhenRate * 100).toFixed(1) + '%'}`)
-  console.log(`ドロップ 並${result.drops[0]} 上${result.drops[1]} 特上${result.drops[2]} 極${result.drops[3]} 伝説${result.drops[4]}（所持 ${result.inventory}、うち装備中 ${result.equipped}）`)
+  console.log(`ドロップ 並${result.drops[0]} 上${result.drops[1]} 特上${result.drops[2]} 極${result.drops[3]} 伝説${result.drops[4]} 神話${result.drops[5]}（所持 ${result.inventory}、うち装備中 ${result.equipped}）`)
   console.log(`実行時間: ${result.elapsedMs.toFixed(0)}ms`)
 }
 
 function main() {
   const { values } = parseArgs({ args: process.argv.slice(2).filter((arg) => arg !== '--'), options: {
     stage: { type: 'string', default: '1' }, minutes: { type: 'string', default: '10' },
-    seed: { type: 'string', default: '1' }, lv: { type: 'string', default: '1' }, json: { type: 'boolean' }, progress: { type: 'boolean' },
+    difficulty: { type: 'string', default: '0' }, party: { type: 'string' }, seed: { type: 'string', default: '1' }, lv: { type: 'string', default: '1' }, json: { type: 'boolean' }, progress: { type: 'boolean' },
   } })
-  if (values.progress) { printProgress(simulateProgress({ minutes: Number(values.minutes), seed: Number(values.seed) }), values.json === true); return }
   const minutes = Number(values.minutes)
   if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isSafeInteger(minutes * 60000 / balance.tickMs)) throw new RangeError('--minutes は正の100ms刻みの時間を指定してください')
-  const result = simulate({ stage: Number(values.stage), minutes, seed: Number(values.seed), level: Number(values.lv) })
+  if (values.progress) { printProgress(simulateProgress({ minutes, seed: Number(values.seed), party: values.party?.split(',') as JobId[] | undefined }), values.json === true); return }
+  const result = simulate({ stage: Number(values.stage), minutes, seed: Number(values.seed), level: Number(values.lv), difficulty: Number(values.difficulty) as Difficulty })
   if (values.json) { console.log(JSON.stringify(result, null, 2)); return }
-  console.log('M1 通常攻撃のみ・固定Lv・エリア1周回（ボス／育成／ドロップ未実装）')
+  console.log('ダンジョン固定Lv診断（スキル・10階ごとのボスを含む。育成・ドロップは--progress）')
   console.table(result.samples.map((sample) => ({ 分: sample.minutes, ステージ: sample.stage, ウェーブ: sample.wave,
     クリア: sample.waveClears, 全滅: sample.wipes, 小判毎分: sample.kobanPerMinute.toFixed(1), 経験値毎分: sample.expPerMinute.toFixed(1) })))
   console.log('合計:', JSON.stringify(result.summary, null, 2))

@@ -10,6 +10,7 @@ export default defineConfig({
         input: {
           strip: resolve('src/renderer/strip/index.html'),
           panel: resolve('src/renderer/panel/index.html'),
+          mobile: resolve('src/renderer/mobile/index.html'),
         },
       },
     },

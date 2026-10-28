@@ -4,13 +4,14 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   addOffline, advance, applyRewards, balance as b, buyDojo, claimOffline, computeOffline, createGame, createWorld, dojoCost,
-  expToNext, newProfile, runCommand, step, validateProfile, type SimEvent, type World,
+  expToNext, newProfile, partyOrder, runCommand, step, validateProfile, type SimEvent, type World,
 } from '../../src/core/index.ts'
 import { skills, ultimates } from '../../src/core/sim/skills.ts'
 import { loadProfile, saveProfile } from '../../src/main/saveStore.ts'
 
 function battle(options: Parameters<typeof createWorld>[0] = {}) {
-  const world = createWorld(options)
+  const order = options.order ? [...options.order, ...partyOrder.filter((job) => !options.order!.includes(job))] : undefined
+  const world = createWorld({ ...options, order })
   for (let count = 0; world.phase !== 'battle' && count < 2000; count++) step(world)
   return world
 }
@@ -39,7 +40,7 @@ describe('スキル・奥義（M3）', () => {
     expect(skills.sashiire.canUse({ world, self: ally(world, 'otaku'), events: [] })).toBe(false)
   })
   it('激重ラブボムは情念が多いほど強く、使うと情念が0になる', () => {
-    const world = battle({ level: 10 }); hold(world)
+    const world = battle({ level: 10, order: ['samurai', 'jirai', 'otaku', 'ninja', 'pachipro'] }); hold(world)
     const jirai = ally(world, 'jirai'); jirai.gauges.jonen = 100
     const events: SimEvent[] = []
     ultimates.lovebomb({ world, self: jirai, events })
@@ -47,7 +48,7 @@ describe('スキル・奥義（M3）', () => {
     expect(events.filter((event) => event.t === 'damage').length).toBe(foes(world).length)
   })
   it('確変の当たり率は運がいくら高くても1/3を超えない', () => {
-    const world = battle(); hold(world)
+    const world = battle({ order: ['samurai', 'pachipro', 'otaku', 'ninja', 'jirai'] }); hold(world)
     const pachipro = ally(world, 'pachipro'); pachipro.stats = { ...pachipro.stats, luk: 1e6 }
     let hits = 0
     for (let count = 0; count < 3000; count++) {
@@ -64,7 +65,7 @@ describe('スキル・奥義（M3）', () => {
     expect(Array.from({ length: 30 }, () => step(high)).flat().some((event) => event.t === 'ultimate' && event.skillId === 'mijin')).toBe(true)
   })
   it('10ウェーブ目のボスは金棒振りを使う', () => {
-    const world = createWorld(); world.wave = 10
+    const world = createWorld({ stageNo: 20 }); world.wave = 10
     for (let count = 0; world.phase !== 'battle' && count < 2000; count++) step(world)
     const boss = foes(world).find((unit) => unit.defId === 'ooni')!
     for (const foe of foes(world)) if (foe !== boss) { foe.hp = 0 }
@@ -79,7 +80,7 @@ describe('育成と進行（M4の一部）', () => {
     const profile = newProfile('t')
     const out = applyRewards(profile, [{ t: 'reward', koban: 5, exp: expToNext(1), enemyId: 'chochin', x: 0 }])
     expect(profile.party.members.samurai.lv).toBe(2)
-    expect(out.events.filter((event) => event.t === 'levelUp')).toHaveLength(5)
+    expect(out.events.filter((event) => event.t === 'levelUp')).toHaveLength(partyOrder.length)
     expect(profile.koban).toBe(5); expect(profile.stats.kills).toBe(1); expect(profile.seenEnemies).toEqual(['chochin'])
   })
   it('道場：値段は1.5倍ずつ、小判が足りなければ買えない', () => {
@@ -138,7 +139,7 @@ describe('セーブ', () => {
     expect(loaded.source).toBe('prev'); expect(loaded.profile.koban).toBe(7)
     expect(existsSync(paths().brokenSave)).toBe(true)
     writeFileSync(paths().previousSave, 'null')
-    expect(loadProfile(paths()).source).toBe('new')
+    expect(() => loadProfile(paths())).toThrow('セーブを安全に')
   })
   it('NaNや範囲外の値は検証で拒否する', () => {
     const profile = newProfile('t')

@@ -56,7 +56,7 @@ describe('固定ティックと状態', () => {
     expect(world.units[0].effects).toEqual([]); expect(world.units[0].x).toBe(0)
     expect(copy.koban).toBe(42)
   })
-  it('通常攻撃が5ジョブすべてから出てダメージ・報酬になる', () => {
+  it('通常攻撃が出撃3ジョブから出てダメージ・報酬になる', () => {
     const world = battle(), jobs = new Set<string>()
     // Hold durable enemies in melee range to exercise every job independently of balance.
     for (const enemy of world.units.filter((unit) => unit.side === 'enemy')) {
@@ -71,7 +71,7 @@ describe('固定ティックと状態', () => {
       }
       if (event.t === 'reward') rewards++
     }
-    expect([...jobs].sort()).toEqual(['jirai', 'ninja', 'otaku', 'pachipro', 'samurai'])
+    expect([...jobs].sort()).toEqual(['ninja', 'otaku', 'samurai'])
     expect(damage).toBeGreaterThan(0); expect(rewards).toBeGreaterThan(0)
   })
   it('忍者は射程内でHPが最小の敵、近接は射程外を狙わない', () => {
@@ -106,7 +106,7 @@ describe('フェーズ遷移と回復', () => {
     expect(world.units[1].alive).toBe(true)
     expect(world.units[1].hp).toBeCloseTo(world.units[1].stats.maxHp * 0.3)
     advanceTo(world, 'walking'); expect(world.wave).toBe(2)
-    expect(world.units).toHaveLength(5)
+    expect(world.units).toHaveLength(3)
   })
   it('10wave目の後はstageClear、周回は同じステージのwave1', () => {
     const world = battle(); world.wave = 10; world.loop = true
@@ -130,7 +130,7 @@ describe('フェーズ遷移と回復', () => {
     expect(world.units.every((unit) => unit.alive && unit.hp === unit.stats.maxHp)).toBe(true)
   })
   it('wave10の前はbossIntro、護衛2体のあとにボスが200msおきに出る', () => {
-    const world = createWorld(); world.wave = 10
+    const world = createWorld({ stageNo: 20 }); world.wave = 10
     advanceTo(world, 'bossIntro'); const intro = world.tick - 1
     advanceTo(world, 'spawning'); expect(world.tick - 1 - intro).toBe(b.bossIntroMs / b.tickMs)
     expect(world.units.filter((unit) => unit.side === 'enemy')).toHaveLength(1)

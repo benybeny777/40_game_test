@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { enemies, partyOrder } from '../src/core/index.ts'
 import { parsePalette, parseSprite } from '../src/renderer/strip/sprites/parse'
+import { partyArt, enemyArt } from '../src/shared/art'
 
 const root = process.cwd()
 const palette = parsePalette(readFileSync(join(root, 'assets/palettes/base32.txt'), 'utf8'))
@@ -13,7 +14,12 @@ describe('テキストのスプライト', () => {
   it('パレットは32色', () => { expect(Object.keys(palette)).toHaveLength(32) })
   it('全ジョブ・全敵・弾のスプライトがあり、必要なアニメを持つ', () => {
     const names = new Set(sprites.map((sprite) => sprite.name))
-    for (const id of [...partyOrder, ...Object.values(enemies).map((enemy) => enemy.sprite ?? enemy.id), 'projectiles']) expect(names.has(id), id).toBe(true)
+    expect(new Set(partyArt)).toEqual(new Set(partyOrder))
+    for (const id of [...Object.values(enemies).map((enemy) => enemy.sprite ?? enemy.id), 'projectiles']) expect(names.has(id) || (enemyArt as readonly string[]).includes(id), id).toBe(true)
+    for (const sheet of ['party-atlas.png', 'party-extra-a.png', 'party-extra-b.png', 'tono.png', 'gariben.png']) {
+      const bytes = readFileSync(join(root, 'assets/sprites/art', sheet))
+      expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+    }
     for (const sprite of sprites.filter((candidate) => (partyOrder as string[]).includes(candidate.name))) {
       expect(Object.keys(sprite.anims)).toEqual(expect.arrayContaining(['idle', 'walk', 'attack']))
     }

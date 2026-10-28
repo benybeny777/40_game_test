@@ -13,6 +13,8 @@ export function chooseTarget(world: World, self: Unit): Unit | undefined {
   if (self.side === 'enemy') {
     // 呪いのフィギュア: always the rearmost ally it can reach.
     if (enemies[self.defId].traits.backline) return candidates.reduce((best, target) => target.slot > best.slot ? target : best)
+    const taunting = candidates.filter((target) => target.effects.some((effect) => effect.kind === 'aggroAdd' && effect.value > 0))
+    if (taunting.length) return taunting.reduce((best, target) => target.aggro > best.aggro ? target : best)
     const front = candidates.reduce((best, target) => target.slot < best.slot ? target : best)
     const others = candidates.filter((target) => target !== front)
     if (!others.length || random(world) < balance.frontTargetChance) return front

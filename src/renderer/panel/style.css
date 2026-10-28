@@ -1,3 +1,5 @@
+@import './store.css';
+@import './help.css';
 :root { color-scheme: dark; font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; color: #e7eaf0; background: #121723;
   --gold: #d9b25f; --line: #343e50; --card: #1b2231; --muted: #8d9eb7; --text: #f3ead6; }
 * { box-sizing: border-box; }
@@ -8,6 +10,10 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 h1 { margin: 0; font-size: 20px; letter-spacing: 3px; color: var(--text); }
 .brand span { color: var(--muted); font-size: 12px; }
 .wallet { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: bold; color: #ffe27a; }
+.language-toggle { flex: none; min-height: 44px; min-width: 64px; padding: 8px 12px; border: 1px solid #665b70; border-radius: 4px; background: #292637; color: var(--text); font: inherit; font-size: 12px; line-height: 1.3; white-space: nowrap; }
+.language-toggle:hover { background: #383044; border-color: var(--gold); }
+header { gap: 12px; }
+.brand { min-width: 0; }
 .coin { display: inline-block; width: 18px; height: 11px; border-radius: 50%; background: #ffe27a; box-shadow: inset 0 0 0 2px #d9a52c; }
 nav { display: flex; gap: 2px; padding: 0 20px; border-bottom: 1px solid var(--line); }
 nav button { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 16px; font: inherit; font-size: 13px; cursor: pointer; }
@@ -67,6 +73,8 @@ button:disabled { cursor: default; opacity: .45; }
 .settings { display: flex; flex-direction: column; gap: 14px; max-width: 520px; }
 .settings label, .row-line { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
 .settings select { background: #232c3d; color: var(--text); border: 1px solid var(--line); padding: 4px 8px; font: inherit; }
+.settings > button, .storage-error button { align-self: flex-start; background: #292637; color: var(--text); border: 1px solid #665b70; border-radius: 4px; padding: 8px 12px; font-size: 12px; min-height: 36px; }
+.settings > button:hover, .storage-error button:hover { border-color: var(--gold); background: #383044; }
 .modal { position: fixed; inset: 0; background: #000a; display: grid; place-items: center; }
 .dialog { background: var(--card); border: 1px solid var(--gold); padding: 24px 32px; min-width: 320px; text-align: center; }
 .dialog h2 { margin: 0 0 8px; color: #ffe27a; letter-spacing: 3px; }
@@ -110,14 +118,14 @@ button:disabled { cursor: default; opacity: .45; }
 /* Night-paper palette; character art is the focal point. */
 :root { --gold: #d9b878; --line: #393442; --card: #201f2c; --muted: #a39cae; --text: #f7edda; background: #12111b; }
 header { padding: 18px 26px; background: linear-gradient(110deg, #23202e, #161522); }
-h1 { font-family: 'Yu Mincho', 'Meiryo', serif; letter-spacing: 4px; }
+h1 { font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; letter-spacing: 2px; }
 nav { background: #191722; padding: 0 24px; gap: 10px; }
 nav button { padding: 13px 14px; transition: color .15s, background .15s; }
 nav button.active { background: #d9b8780b; }
 main { background: radial-gradient(ellipse at top right, #34243c55, transparent 65%); padding: 22px 26px 32px; }
 .journey { border: 1px solid #665044; border-left: 3px solid var(--gold); background: linear-gradient(110deg,#332431,#201d2a); padding: 20px 22px; margin-bottom: 18px; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
 .eyebrow { color: var(--gold); font-size: 10px; letter-spacing: 3px; }
-.journey h2 { font-family: 'Yu Mincho', 'Meiryo', serif; font-size: 23px; margin: 7px 0; font-weight: 600; letter-spacing: 2px; color: var(--text); }
+.journey h2 { font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; font-size: 23px; margin: 7px 0; font-weight: 600; letter-spacing: 1px; color: var(--text); }
 .journey p { color: #bfb3c4; font-size: 11px; margin: 0; line-height: 1.8; }
 .journey-link { white-space: nowrap; background: #d9b87815; color: #efd7a9; border: 1px solid #8a714d; padding: 10px 14px; font-size: 12px; }
 .cards { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
@@ -142,3 +150,43 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .roster .sprite { width: 80px; height: 68px; object-fit: contain; }
 .roster b { font-size: 12px; }
 .roster small { color: var(--muted); font-size: 10px; }
+.deployed-roster { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.deployed-roster .sprite { width: 112px; height: 96px; }
+.deployed-cards { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.deployed-cards .card-head { flex-direction: column; align-items: flex-start; }
+.reserve-title { font-size: 18px; color: var(--muted); border-top: 1px solid var(--line); margin: 24px 0 8px; padding-top: 18px; }
+.reserve-cards .card { border-top-color: #676071; }
+.swap-label { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted); }
+.party-swap { width: 100%; background: #171621; color: var(--text); border: 1px solid #71604c; padding: 7px 9px; font: inherit; }
+@media (max-width: 740px) { .deployed-cards { grid-template-columns: 1fr; } .deployed-cards .card-head { flex-direction: row; align-items: center; } }
+.role-badge { display: inline-block; margin: 4px 0; border: 1px solid currentColor; padding: 2px 6px; border-radius: 3px; font-size: 10px; }
+.role-tank { color: #99b8e3; } .role-attacker { color: #e4a08b; } .role-healer { color: #a7cda3; } .role-buffer { color: #dfc88d; } .role-debuffer { color: #bfabd8; }
+.member-details { display: flex; flex-direction: column; gap: 12px; }
+.member-details summary { color: var(--muted); cursor: pointer; font-size: 11px; }
+.role-filters { margin: 12px 0; flex-wrap: wrap; }
+.reserve-cards { grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); }
+.reserve-cards .card-head > .sprite { width: 72px; height: 64px; object-fit: contain; }
+.reserve-cards .card-head h3 { font-size: 16px; }
+.reserve-cards .card-head { min-height: 72px; }
+.attribute-panel { border-top: 1px solid var(--line); padding-top: 12px; }
+.attribute-panel h4 { margin: 0 0 10px; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+.attribute-panel h4 span { color: #e6c780; font-size: 11px; }
+.attribute-panel .switch { margin-bottom: 8px; font-size: 12px; }
+.attribute-row { display: flex; align-items: center; gap: 5px; padding: 5px 0; }
+.attribute-row label { display: flex; flex-direction: column; margin-right: auto; font-size: 13px; }
+.attribute-row small { font-size: 9px; color: var(--muted); }
+.attribute-row button, .reset-stats { color: var(--text); background: #2c2938; border: 1px solid var(--line); padding: 6px 8px; font-size: 11px; }
+.reset-stats { margin: 8px 0; }
+.storage-error { background: #52262d; color: #ffddd2; padding: 12px 22px; margin: 0; font-size: 12px; }
+.dungeon-heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 16px; padding: 18px; border: 1px solid #51404f; background: linear-gradient(115deg,#2b1e2d,#1c1c27); }
+.dungeon-heading h2 { margin: 5px 0; font-size: 24px; }
+.dungeon-heading p { color: var(--muted); font-size: 12px; margin: 0; }
+.return-town, .difficulty-tabs button, .floor-jump button { background: #292637; color: var(--text); border: 1px solid #665b70; padding: 9px 12px; font: inherit; font-size: 12px; }
+.difficulty-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.difficulty-tabs button.active { color: #e6c780; border-color: #c4a061; }
+.floor-jump { display: flex; align-items: center; gap: 10px; margin: 14px 0; font-size: 12px; }
+.floor-jump input { width: 100px; background: #15141f; border: 1px solid var(--line); color: var(--text); font: inherit; padding: 8px; }
+.stages { grid-template-columns: repeat(auto-fill,minmax(112px,1fr)); max-height: 360px; overflow-y: auto; padding-right: 5px; }
+.stage { min-height: 76px; }
+.stage b { font-size: 17px; }
+@media (max-width: 740px) { .dungeon-heading { align-items: flex-start; flex-direction: column; } .loop-row { flex-direction: column; align-items: flex-start; gap: 10px; } }

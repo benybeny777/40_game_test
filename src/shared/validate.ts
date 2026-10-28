@@ -1,12 +1,15 @@
 import type { Command } from '../core/index.ts'
+import { partyOrder } from '../core/data/jobs.ts'
+import { attributeKeys } from '../core/data/attributes.ts'
+import { rarities } from '../core/data/items.ts'
 import type { DisplaySize, PanelTab, PanelTarget, Settings } from './api.ts'
 
-const jobs = ['samurai', 'ninja', 'jirai', 'otaku', 'pachipro']
+const jobs: readonly string[] = partyOrder
 const dojoKeys = ['atk', 'hp', 'walk', 'drop', 'offline']
 const slotIds = ['weapon', 'armor', 'charm']
-const isRarity = (value: unknown) => Number.isInteger(value) && (value as number) >= 0 && (value as number) <= 4
+const isRarity = (value: unknown) => Number.isInteger(value) && (value as number) >= 0 && (value as number) < rarities.length
 const isId = (value: unknown): value is string => typeof value === 'string' && /^i\d{1,9}$/.test(value)
-const tabs: PanelTab[] = ['party', 'gear', 'dojo', 'stage', 'dex', 'settings']
+const tabs: PanelTab[] = ['party', 'gear', 'dojo', 'stage', 'dex', 'store', 'help', 'settings']
 const sizes: DisplaySize[] = ['small', 'medium', 'large']
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -15,7 +18,9 @@ export function parseCommand(value: unknown): Command | null {
   if (!isObject(value) || typeof value.c !== 'string') return null
   switch (value.c) {
     case 'setLoop': return typeof value.loop === 'boolean' ? { c: 'setLoop', loop: value.loop } : null
-    case 'selectStage': return Number.isInteger(value.stageNo) ? { c: 'selectStage', stageNo: value.stageNo as number } : null
+    case 'returnTown': return { c: 'returnTown' }
+    case 'selectStage': return Number.isSafeInteger(value.stageNo) && (value.depthRank === undefined || [0, 1, 2].includes(value.depthRank as number))
+      ? { c: 'selectStage', stageNo: value.stageNo as number, depthRank: value.depthRank as 0 | 1 | 2 | undefined } : null
     case 'reorderParty': {
       const order = value.order
       if (!Array.isArray(order) || order.length !== jobs.length || !jobs.every((id) => order.includes(id))) return null
@@ -23,6 +28,11 @@ export function parseCommand(value: unknown): Command | null {
     }
     case 'buyDojo': return typeof value.key === 'string' && dojoKeys.includes(value.key) ? { c: 'buyDojo', key: value.key as Extract<Command, { c: 'buyDojo' }>['key'] } : null
     case 'claimOffline': return { c: 'claimOffline' }
+    case 'allocateStats': return jobs.includes(value.job as string) && attributeKeys.includes(value.key as typeof attributeKeys[number]) && Number.isSafeInteger(value.points) && (value.points as number) > 0
+      ? { c: 'allocateStats', job: value.job as Extract<Command, { c: 'allocateStats' }>['job'], key: value.key as typeof attributeKeys[number], points: value.points as number } : null
+    case 'setAutoStats': return jobs.includes(value.job as string) && typeof value.enabled === 'boolean'
+      ? { c: 'setAutoStats', job: value.job as Extract<Command, { c: 'setAutoStats' }>['job'], enabled: value.enabled } : null
+    case 'resetStats': return jobs.includes(value.job as string) ? { c: 'resetStats', job: value.job as Extract<Command, { c: 'resetStats' }>['job'] } : null
     case 'equip':
       return jobs.includes(value.job as string) && slotIds.includes(value.slot as string) && (value.itemId === null || isId(value.itemId))
         ? { c: 'equip', job: value.job as Extract<Command, { c: 'equip' }>['job'], slot: value.slot as Extract<Command, { c: 'equip' }>['slot'], itemId: value.itemId as string | null } : null
@@ -42,6 +52,7 @@ export function parseCommand(value: unknown): Command | null {
 export function parseSettings(value: unknown): Partial<Settings> | null {
   if (!isObject(value)) return null
   const out: Partial<Settings> = {}
+  if ('locale' in value) { if (value.locale !== 'ja' && value.locale !== 'en') return null; out.locale = value.locale }
   if ('size' in value) { if (!sizes.includes(value.size as DisplaySize)) return null; out.size = value.size as DisplaySize }
   if ('groundBand' in value) { if (typeof value.groundBand !== 'boolean') return null; out.groundBand = value.groundBand }
   if ('hideOnFullscreen' in value) { if (typeof value.hideOnFullscreen !== 'boolean') return null; out.hideOnFullscreen = value.hideOnFullscreen }

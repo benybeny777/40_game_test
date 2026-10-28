@@ -1,5 +1,60 @@
 # 引き継ぎ
 
+## v0.5.0 ローカル実装・検証（2026-10-29、Codex）
+
+下の2026-10-27以前の記録より、この節・現行ソース・[ゲーム仕様](docs/GAME_SPEC.md)・[技術仕様](docs/TECH_SPEC.md)を優先する。利用者の確定仕様に沿うローカル実装と配布物を用意した。Steamなど現環境でできない外部手続きは除外。全環境で完璧・実販売公開済みとは説明しない。GitHub Actionsは無効（APIでfalseを再確認）。
+
+### 実装
+
+- 17ジョブから3人出撃/14人控え。控えも経験値と装備を保持し、戦闘・ドロップのパッシブには加算しない。初期はサムライ/忍者/オタク、交代は次wave。
+- 黄泉の迷宮と街帰還。通常/修羅100階、深淵だけ無限。宝箱/祭壇の二重報酬防止と将来の別ダンジョン進行分離。セーブv1/v2→v3移行。
+- STR/DEX/VIT/INTの手動+1/全振り/自動/無料reset。装備はジョブ+属性のみ、基礎85〜115%、ランダムaffix、神話・極振りunique。
+- 味方17種の5PNGと敵12種の1PNGを刷新。農民は弱々しい猫背、老人は汚れた痩身に箱一つ、メイド/シスターを区別。4姿の切出し、力士の脚/隣セル片、敵の向きを修正。敵の種類別動作・派生縮尺・boss/elite印・攻略図鑑を用意。
+- 日本語/英語、安定キー405件と明示テンプレで技能・装備・図鑑・ストア・help・strip・トレイまで表示層で翻訳。保存IDは変えない。全画面Gothic。未知OS/providerエラー本文は原文を保持。
+- DOM/portrait/dex/help/store/focus、敵presentation、翻訳、PersistenceGuard/quitを分離。入力中ガード、button focus、nav横scroll/タブ別縦scroll/detailsの保持。初期artworkより先に届いた保存障害が古いsnapshotで消えるraceを実I/O試験で再現し、liveイベントを優先して修正。
+- Windows保存の未来版/破損保護、失敗停止/alert/retry/export、設定rollback、quit再入防止/未保存確認。browserは容量・別tab・clear・hidden復帰を保護。
+- 外観4テーマの試着とdev明示sandbox。注文排他・署名済み受領書・unknown保持。通常user/packaged/browserの実購入は拒否、ローカル装備はmarketEligible:false。Steam実所有権同期/決済/Inventory/Marketは未接続。
+- Web独立buildとスマホ画面、Windows portable0.5.0、配布監査/SHA256 manifest、送信しないSteamPipeテンプレ。CHARACTERS/IP/COMMERCE/MOBILE/RELEASE/CREDITS、日英README、仕様2文書を整備。
+
+### 検証と配布物
+
+詳細と測定値は [VALIDATION](docs/VALIDATION.md) に集約。
+
+- 最終typecheck/lint、21ファイル258テスト、build/web:build/dist、release:check116filesが成功。
+- 実Electronのtray MenuItem、8tabs/29 sheets/3人+14控え/入替/role filter/640DIP画面を確認。実Chromeは375×812、812×375、768×1024の8tabs、英語残留/overflowなし、focus/scroll/言語/保存reload、育成/交代/town/store試着を確認。
+- 専用fixtureで深淵B101→105と通常/修羅100上限。core simは正常100踏破約300.3分、12hで深淵B175/Lv60。実時間の踏破実績ではない。
+- 実Win32 foreground handleを一致させ、専用fixtureの3840×2160全画面→通常windowで帯の非表示/自動復帰PASS（旧PARTIALを解消）。Computer Useで実exeパネルの実クリックも確認。
+- `node tools/save-failure-check.mjs`：実I/O失敗→可視alert/停止→retry/復帰、手動pause保持、settings失敗のlocale rollback、起動snapshot race、quitの戻る/書出/破棄を確認。dialogの選択だけstub、実マウス操作と区別。専用labと子は終了・削除済み。
+- 実exe30分戦闘/383撃破/例外0、保存・正常終了・再起動・子終了PASS。これは最終UI修正前のbuildで、最終exeは修正後に短期受入を再実施。測定とhashを混同しない。
+- 30分report：`.dev-data/packaged-acceptance/2026-10-28T18-55-39-460Z-40964/report.json`。最終artifactの受入reportは同フォルダー内の最新日時。検査は実win-unpacked exeへloopback CDPで接続し、source mainへ代替しない。
+- 配布：`release/TaskbarHyakkiko-0.5.0-portable.exe`（108,266,586 bytes）、SHA256 `8ef1349fc01d6fe01d690eb20c7b301622ebbf5bcaa30cf5c91f69b4c7324f87`。未署名。Windows x64本体、NSIS起動部のみx86。Web配布用は`dist/web/`。どちらも非公開のローカル成果物。
+
+### 画像
+
+ローカルは `docs/images/characters.png` / `enemies.png` / `mobile-en.png` / `play-*.png`。生成指示の初稿に残る不要接頭辞は当時の入力として説明を付けて保持し、採用素材の編集指示と区別した。
+
+利用者が既に許可したGoogle Driveの画像保存を使用。既存panel/stripを最新版へ更新、新しい一覧2枚はアップロード後metadataをreadback。共有権限の変更や公開はしていない。
+
+- [味方17人](https://drive.google.com/file/d/1hRiI2gRWEZqtKImFAsLH32_enQTakTPp/view?usp=drivesdk)
+- [敵12種](https://drive.google.com/file/d/11P9T019OBT_RtzUcRTpC0uYVHAsXVKCR/view?usp=drivesdk)
+- [管理画面](https://drive.google.com/file/d/1I1SpRfB0U8Klh1GS55Yc4OhvvFgZk51t/view?usp=drivesdk)
+- [戦闘帯](https://drive.google.com/file/d/1wnbWcVhZpK1-O10HxPZjZe91bgEnuXME/view?usp=drivesdk)
+
+### 境界と後片付け
+
+Steam契約/審査/登録費用/正式署名/実決済/実Market/公開は未実施。別PC/100%表示/別モニター/実スマホOS/スリープ/電池消費/通知領域の実マウスは未確認。boss特殊技の事前予告は未実装（通常windupだけ予告）。キャラの正式名称・類似性の商用最終監修はIP資料のとおりで、登録済みと称しない。
+
+自分の実験用Electron/exe/7za/Chromeセッション・Vite5174/4173は作業終了時に停止し、portとプロセスを確認する。新規save-failure labは所有/リンク/使用状況確認後に削除済み。実利用者save、モデル、生成原本、現行配布物は保護。
+
+以下の削除は**自動承認レビューにblocked by policyで拒否**された。別手段で回避せず、未削除として残す。今回の削除による容量回収はない。
+
+- 以前から拒否：`out`、`.dev-data/verification`、`.dev-data/preview`、`node_modules/.vite`。
+- 今回拒否：`.dev-data/packaged-acceptance/{2026-10-28T18-51-21-886Z-35936,2026-10-28T18-52-50-774Z-38348,2026-10-28T18-55-39-460Z-40964,2026-10-28T19-42-00-564Z-39940}/data` の検証用セーブ/cache（合計約29MB、絶対パス/リンク0/使用0を確認済み）。
+- 今回拒否：`release/builder-debug.yml`、`build/icon.ico`。現行配布exeや原本の削除ではない。初回作業でのdebug削除後に再buildで作られたもの。
+- 旧 `.claude/worktrees/continuation-work-37789e` はGit登録なし、一部ファイル残存。登録済みworktreeはmainだけ。`.playwright-cli` と実測report/画面もignoredで残る。
+
+最終確認時のC空き459,512,426,496 bytes（約427.95GiB）。ソース/素材/仕様/検証ツールは本節と同じコミットに保存しorigin/mainへpushする。公開/配布先アップロードは行わない。今後はAGENTS→この節→README→GAME_SPEC/TECH_SPECで再開し、追加依頼が来たら現行版を基準に進める。
+
 ## 現在の状態（2026-10-27、Codex）
 
 依頼：「claudeがキャラとか画像チープにしたんで作り直して。あと開発すしめて。」

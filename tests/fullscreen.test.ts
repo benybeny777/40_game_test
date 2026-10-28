@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { covers, QUNS, shouldHideStrip, type Sample } from '../src/main/fullscreen.ts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { covers, FullscreenWatcher, QUNS, shouldHideStrip, type Sample } from '../src/main/fullscreen.ts'
 
 const display = { left: 0, top: 0, right: 2560, bottom: 1440 }
 const sample = (over: Partial<Sample> = {}): Sample =>
@@ -20,6 +20,7 @@ describe('全画面のアプリを使っている間は帯を隠す（M7 §1）'
     const full = { left: 0, top: 0, right: 2560, bottom: 1440 }
     for (const className of ['Progman', 'WorkerW', 'Shell_TrayWnd']) {
       expect(shouldHideStrip(sample({ className, rect: full }), display), className).toBe(false)
+      expect(shouldHideStrip(sample({ className, rect: full, state: QUNS.d3dFullScreen }), display), className).toBe(false)
     }
   })
   it('画面ロックや待機中のQUNS_BUSYだけでは隠さない', () => {
@@ -29,5 +30,34 @@ describe('全画面のアプリを使っている間は帯を隠す（M7 §1）'
     const second = { left: 2560, top: 0, right: 4480, bottom: 1080 }
     expect(covers({ left: 2560, top: 0, right: 4480, bottom: 1080 }, second)).toBe(true)
     expect(covers({ left: 0, top: 0, right: 2560, bottom: 1440 }, second)).toBe(false)
+  })
+})
+
+describe('全画面監視の終了', () => {
+  afterEach(() => vi.useRealTimers())
+  it('開始は重複せず、停止すると隠れた帯を戻してポーリングも止まる', () => {
+    vi.useFakeTimers()
+    const probe = vi.fn(() => sample({ rect: display })), changed = vi.fn()
+    const watcher = new FullscreenWatcher(probe, () => display, changed)
+    watcher.start(); watcher.start()
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(changed).toHaveBeenLastCalledWith(true)
+    watcher.stop()
+    expect(changed).toHaveBeenLastCalledWith(false)
+    vi.advanceTimersByTime(10000)
+    expect(probe).toHaveBeenCalledTimes(1)
+  })
+  it('ネイティブAPIが失敗したら監視を止め、帯を復帰する', () => {
+    vi.useFakeTimers()
+    const probe = vi.fn(() => sample({ rect: display })), changed = vi.fn(), log = vi.fn()
+    const watcher = new FullscreenWatcher(probe, () => display, changed, log)
+    watcher.start()
+    probe.mockImplementation(() => { throw new Error('probe failure') })
+    vi.advanceTimersByTime(2000)
+    expect(watcher.hidden).toBe(false)
+    expect(changed).toHaveBeenLastCalledWith(false)
+    expect(log).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(10000)
+    expect(probe).toHaveBeenCalledTimes(2)
   })
 })

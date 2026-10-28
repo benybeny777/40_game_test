@@ -15,6 +15,8 @@ export function resolvePaths(projectRoot: string, userData: string, profile: str
     previousSave: join(data, 'save', 'save.prev.json'),
     brokenSave: join(data, 'save', 'save.broken.json'),
     settings: join(data, 'settings.json'),
+    commerce: join(data, 'commerce.json'),
+    commerceSandbox: join(data, 'commerce.sandbox.json'),
     preload: join(projectRoot, 'out/preload/index.js'),
     renderer: (page: 'strip' | 'panel') => join(projectRoot, 'out/renderer', page, 'index.html'),
   }

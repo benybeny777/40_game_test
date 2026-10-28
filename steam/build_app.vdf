@@ -1,0 +1,15 @@
+// Local SteamPipe PREVIEW template. Replace the explicit IDs only after Steamworks registration.
+// Preview=1 does not upload a build. SetLive is intentionally empty.
+"AppBuild"
+{
+  "AppID" "__APP_ID__"
+  "Desc" "Taskbar Hyakkiko local preview - not published"
+  "Preview" "1"
+  "SetLive" ""
+  "ContentRoot" "../release/win-unpacked"
+  "BuildOutput" "../release/steam-preview"
+  "Depots"
+  {
+    "__DEPOT_ID__" "depot_windows.vdf"
+  }
+}

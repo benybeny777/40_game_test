@@ -15,7 +15,7 @@ function battleAt(stageNo: number, wave = 1): World {
 
 describe('装備（03 §3）', () => {
   it('レア度の比率は重みどおり（10万回で±1%）', () => {
-    const state = { rng: 7 }, counts = [0, 0, 0, 0, 0]
+    const state = { rng: 7 }, counts = rarities.map(() => 0)
     for (let index = 0; index < 100000; index++) counts[rollItem(state, 'x', { ilvl: 1, luk: 0, jobs: ['samurai'] }).rarity]++
     const total = rarities.reduce((sum, rarity) => sum + rarity.weight, 0)
     counts.forEach((count, rarity) => expect(Math.abs(count / 1000 - rarities[rarity].weight / total * 100)).toBeLessThan(1))
@@ -122,12 +122,12 @@ describe('装備（03 §3）', () => {
     expect(drop && drop.rarity >= 1).toBe(true)
     expect(profile.inventory[0].ilvl).toBe(5)
   })
-  it('版1のセーブを版2へ移行し、壊れた装備の参照は拒否する', () => {
+  it('版1のセーブを現行版へ移行し、壊れた装備の参照は拒否する', () => {
     const v1 = { version: 1, savedAt: 't', progress: { unlockedStage: 2, currentStage: 2, loop: false },
       party: { order: ['samurai', 'ninja', 'jirai', 'otaku', 'pachipro'], members: Object.fromEntries(['samurai', 'ninja', 'jirai', 'otaku', 'pachipro'].map((id) => [id, { lv: 3, exp: 1 }])) },
       koban: 50, dojo: { atk: 1, hp: 0, walk: 0 }, stats: { kills: 3 }, rates: { current: { koban: 0, exp: 0 }, minutes: [] }, seenEnemies: [], pendingOffline: null }
     const profile = validateProfile(v1)
-    expect(profile.version).toBe(2); expect(profile.inventory).toEqual([]); expect(profile.party.members.ninja.equip.weapon).toBeNull()
+    expect(profile.version).toBe(3); expect(profile.inventory).toEqual([]); expect(profile.party.members.ninja.equip.weapon).toBeNull()
     expect(profile.koban).toBe(50); expect(profile.dojo.drop).toBe(0)
     const broken = JSON.parse(JSON.stringify(newProfile('t')))
     broken.party.members.samurai.equip.weapon = 'i999'
@@ -142,12 +142,12 @@ describe('エリア2・3の敵（05 §2・§3）', () => {
   it('ステージの伸びはエリアごとの倍率を掛け合わせる', () => {
     expect(stageMul(1, [2, 3])).toBe(1)
     expect(stageMul(6, [2, 3])).toBe(2 ** 5)
-    expect(stageMul(7, [2, 3])).toBe(2 ** 5 * 3)
+    expect(stageMul(7, [2, 3])).toBeCloseTo(2 ** 5 * 3)
   })
   it('エリア2・3のステージでは、そのエリアの敵とボスが出る', () => {
-    const area2 = battleAt(6, 10).units.filter((unit) => unit.side === 'enemy').map((unit) => unit.defId)
+    const area2 = battleAt(10, 10).units.filter((unit) => unit.side === 'enemy').map((unit) => unit.defId)
     expect(area2).toContain('manekitaisho')
-    const area3 = battleAt(11, 10).units.filter((unit) => unit.side === 'enemy').map((unit) => unit.defId)
+    const area3 = battleAt(30, 10).units.filter((unit) => unit.side === 'enemy').map((unit) => unit.defId)
     expect(area3).toContain('denno_kyubi')
   })
   it('バグ精霊は倒すと2体に分裂する（分裂した欠片は分裂しない）', () => {
@@ -168,12 +168,12 @@ describe('エリア2・3の敵（05 §2・§3）', () => {
     expect(new Set(events.filter((event) => event.t === 'damage' && event.tags?.includes('explode')).map((event) => 'uid' in event ? event.uid : 0)).size).toBe(2)
   })
   it('招き猫大将は手下を呼び、九尾はHP半分で幻影を2体出す', () => {
-    const world = battleAt(6, 10)
+    const world = battleAt(10, 10)
     const boss = world.units.find((unit) => unit.defId === 'manekitaisho')!
     boss.x = 14; boss.skillReadyTick = 0
     const events = Array.from({ length: 5 }, () => step(world)).flat()
     expect(events.some((event) => event.t === 'skill' && event.skillId === 'shoufuku')).toBe(true)
-    const kyubiWorld = battleAt(11, 10)
+    const kyubiWorld = battleAt(30, 10)
     const kyubi = kyubiWorld.units.find((unit) => unit.defId === 'denno_kyubi')!
     kyubi.hp = kyubi.stats.maxHp * 0.4
     step(kyubiWorld)

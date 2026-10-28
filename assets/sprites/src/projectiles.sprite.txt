@@ -132,3 +132,39 @@ frame
 .ayyya.
 .aaaaa.
 .......
+anim knife fps=8 loop
+frame
+.......
+.....m.
+....me.
+...me..
+..am...
+.aa....
+.......
+anim junk fps=6 loop
+frame
+.......
+..ddd..
+..cec..
+..cdc..
+..cec..
+..ddd..
+.......
+anim fan fps=8 loop
+frame
+.......
+..e0e..
+.e0w0e.
+e0w0w0e
+.a0w0a.
+..aya..
+...y...
+anim book fps=6 loop
+frame
+.......
+.annna.
+.an0na.
+.an0na.
+.annna.
+.aeeea.
+.......

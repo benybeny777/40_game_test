@@ -1,17 +1,21 @@
+import { attributeKeys, type AttributeKey } from './data/attributes.ts'
+import { availablePoints, resetAllocation, spendAuto } from './progress/attributes.ts'
 import { balance as b } from './data/balance.ts'
+import { cappedAmount, difficulties, maxFloor, type Difficulty } from './data/dungeon.ts'
 import { rarities, type Rarity, type SlotId } from './data/items.ts'
 import { partyOrder } from './data/jobs.ts'
 import { dojo as dojoDefs, progressBalance as pb, type DojoKey } from './data/progress.ts'
-import { equipItem, gearMap, ownerOf, sellItems } from './progress/items.ts'
+import { equipItem, gearMap, ownerOf, reconcileEquipment, sellItems } from './progress/items.ts'
 import { applyRewards, buyDojo, claimOffline, closeMinute, levels, type Profile } from './progress/profile.ts'
 import type { JobId, SimEvent, World } from './sim/types.ts'
-import { createWorld, refreshParty, requestOrder, requestStage, step } from './sim/world.ts'
+import { createWorld, refreshParty, requestOrder, requestStage, returnToTown, step } from './sim/world.ts'
 
 /** World + Profile wired together. Shared by the Electron main loop and the headless simulator. */
 export interface Game { world: World; profile: Profile; autoFarmClears: number; minuteTicks: number }
 export type Command =
   | { c: 'setLoop'; loop: boolean }
-  | { c: 'selectStage'; stageNo: number }
+  | { c: 'selectStage'; stageNo: number; depthRank?: Difficulty }
+  | { c: 'returnTown' }
   | { c: 'reorderParty'; order: JobId[] }
   | { c: 'buyDojo'; key: DojoKey }
   | { c: 'claimOffline' }
@@ -19,21 +23,26 @@ export type Command =
   | { c: 'sell'; itemIds: string[] }
   | { c: 'sellAll'; maxRarity: Rarity }
   | { c: 'lock'; itemId: string; locked: boolean }
+  | { c: 'allocateStats'; job: JobId; key: AttributeKey; points: number }
+  | { c: 'setAutoStats'; job: JobId; enabled: boolean }
+  | { c: 'resetStats'; job: JobId }
   | { c: 'markSeen' }
   | { c: 'setOptions'; autoEquip?: boolean; autoSellMaxRarity?: Rarity | null }
 export type CommandResult = { ok: true } | { ok: false; reason: string }
 
-const refresh = (game: Game) => refreshParty(game.world, levels(game.profile), game.profile.dojo, gearMap(game.profile))
+const allocationMap = (profile: Profile) => Object.fromEntries(partyOrder.map((job) => [job, profile.party.members[job].allocated]))
+const refresh = (game: Game) => { reconcileEquipment(game.profile); refreshParty(game.world, levels(game.profile), game.profile.dojo, gearMap(game.profile), allocationMap(game.profile)) }
 
 export function createGame(profile: Profile, seed: number): Game {
   const world = createWorld({ seed, stageNo: profile.progress.currentStage, levels: levels(profile), order: profile.party.order,
-    dojo: profile.dojo, gear: gearMap(profile), loop: profile.progress.loop, maxStage: b.maxStage })
+    dojo: profile.dojo, gear: gearMap(profile), allocated: allocationMap(profile), loop: profile.progress.loop, depthRank: profile.progress.depthRank, dungeonSeed: profile.dungeonSeed, eventDepths: profile.progress.eventDepths })
+  if (profile.progress.inTown) returnToTown(world)
   return { world, profile, autoFarmClears: 0, minuteTicks: 0 }
 }
 export function advance(game: Game): { events: SimEvent[]; changed: boolean; stageCleared: boolean } {
   const { world, profile } = game
   const events = step(world)
-  const result = applyRewards(profile, events)
+  const result = applyRewards(profile, events, world.units.filter((unit) => unit.side === 'ally').map((unit) => unit.defId as JobId))
   if (result.levelsChanged) refresh(game)
   // 3 wipes in a row turn on world.loop; step back to the last cleared stage to farm, then retry.
   const autoLoop = world.loop && !profile.progress.loop
@@ -41,7 +50,7 @@ export function advance(game: Game): { events: SimEvent[]; changed: boolean; sta
   if (result.stageCleared && world.loop && !profile.progress.loop && world.stageNo < profile.progress.unlockedStage) {
     if (++game.autoFarmClears >= pb.autoFarmClears) { world.loop = false; world.wipeStreak = 0; game.autoFarmClears = 0 }
   }
-  profile.stats.playMs += b.tickMs
+  if (world.phase !== 'town') profile.stats.playMs = cappedAmount(profile.stats.playMs + b.tickMs)
   if (++game.minuteTicks >= pb.minuteMs / b.tickMs) { game.minuteTicks = 0; closeMinute(profile) }
   return { events: result.events.length ? [...events, ...result.events] : events, changed: result.changed || result.levelsChanged, stageCleared: result.stageCleared }
 }
@@ -51,10 +60,20 @@ export function runCommand(game: Game, command: Command): CommandResult & { even
     case 'setLoop':
       profile.progress.loop = command.loop; world.loop = command.loop; world.wipeStreak = 0; game.autoFarmClears = 0
       return { ok: true }
-    case 'selectStage':
-      if (!Number.isInteger(command.stageNo) || command.stageNo < 1 || command.stageNo > profile.progress.unlockedStage) return { ok: false, reason: 'まだ解放されていないステージです' }
-      requestStage(world, command.stageNo); world.loop = profile.progress.loop; game.autoFarmClears = 0
+    case 'returnTown': {
+      const events = returnToTown(world)
+      applyRewards(profile, events); game.autoFarmClears = 0
+      return { ok: true, events }
+    }
+    case 'selectStage': {
+      const rank = command.depthRank ?? profile.progress.depthRank
+      if (!Number.isInteger(rank) || rank < 0 || rank >= difficulties.length || !Number.isSafeInteger(command.stageNo)
+        || command.stageNo < 1 || command.stageNo > Math.min(maxFloor(rank), profile.progress.unlockedDepths[rank])) return { ok: false, reason: 'まだ解放されていない階層・難易度です' }
+      const immediate = world.phase === 'town' || world.phase === 'walking'
+      requestStage(world, command.stageNo, rank); world.loop = profile.progress.loop; game.autoFarmClears = 0
+      if (immediate) { profile.progress.depthRank = rank; profile.progress.currentStage = command.stageNo; profile.progress.unlockedStage = profile.progress.unlockedDepths[rank]; profile.progress.inTown = false }
       return { ok: true }
+    }
     case 'reorderParty':
       if (command.order.length !== partyOrder.length || !partyOrder.every((id) => command.order.includes(id))) return { ok: false, reason: '隊列が正しくありません' }
       profile.party.order = [...command.order]; requestOrder(world, command.order)
@@ -91,6 +110,23 @@ export function runCommand(game: Game, command: Command): CommandResult & { even
       if (!item) return { ok: false, reason: '持っていない装備です' }
       item.locked = command.locked
       return { ok: true }
+    }
+    case 'allocateStats': {
+      const member = profile.party.members[command.job]
+      if (!member || !attributeKeys.includes(command.key) || !Number.isSafeInteger(command.points) || command.points < 1 || command.points > availablePoints(member)) return { ok: false, reason: '振り分ける能力・ポイントが正しくありません' }
+      member.autoStats = false; member.allocated[command.key] += command.points
+      refresh(game); return { ok: true }
+    }
+    case 'setAutoStats': {
+      const member = profile.party.members[command.job]
+      if (!member) return { ok: false, reason: '不明なジョブです' }
+      member.autoStats = command.enabled; spendAuto(member, command.job); refresh(game)
+      return { ok: true }
+    }
+    case 'resetStats': {
+      const member = profile.party.members[command.job]
+      if (!member) return { ok: false, reason: '不明なジョブです' }
+      resetAllocation(member); refresh(game); return { ok: true }
     }
     case 'markSeen':
       for (const item of profile.inventory) item.isNew = false

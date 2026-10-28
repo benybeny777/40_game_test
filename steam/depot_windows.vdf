@@ -1,0 +1,17 @@
+// Upload the application folder, not the self-extracting portable launcher.
+"DepotBuild"
+{
+  "DepotID" "__DEPOT_ID__"
+  "FileMapping"
+  {
+    "LocalPath" "*"
+    "DepotPath" "."
+    "Recursive" "1"
+  }
+  "FileExclusion" "*.pdb"
+  "FileExclusion" "steam_appid.txt"
+  "FileExclusion" ".env*"
+  "FileExclusion" "*.pfx"
+  "FileExclusion" "*.pem"
+  "FileExclusion" "*.key"
+}

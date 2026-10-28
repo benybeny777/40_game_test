@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#161621">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23161721'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%23e8ba55'/%3E%3Cpath d='M14 10h4v12h-4z' fill='%23161721'/%3E%3C/svg%3E">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws:; object-src 'none'; base-uri 'none'">
+  <title>百鬼行 — 冒険の手帳</title>
+  <link rel="stylesheet" href="../panel/style.css">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <section id="mobile-battle" aria-label="冒険の様子">
+    <canvas id="mobile-screen" aria-label="戦闘の読み込み中"></canvas>
+    <div id="mobile-banner" aria-live="polite"></div>
+    <div id="mobile-controls"><button id="mobile-pause" type="button">一時停止</button><button id="mobile-town" type="button">街へ戻る</button></div>
+  </section>
+  <div id="app"></div>
+  <aside id="mobile-storage-error" role="alert" hidden></aside>
+  <script type="module" src="./index.ts"></script>
+</body>
+</html>

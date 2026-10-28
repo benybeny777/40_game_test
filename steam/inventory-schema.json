@@ -1,0 +1,66 @@
+{
+  "appid": 0,
+  "items": [
+    {
+      "itemdefid": 1001,
+      "type": "item",
+      "name": "Sakura Footpath",
+      "name_japanese": "桜色の足元",
+      "description": "Cosmetic ground theme. No combat benefits.",
+      "description_japanese": "地面の外観だけを変えるテーマ。能力への影響はありません。",
+      "display_type": "Ground Theme",
+      "tradable": false,
+      "marketable": false,
+      "hidden": true,
+      "store_hidden": true,
+      "purchase_limit": 1,
+      "store_tags": "cosmetic;ground",
+      "game_sku": "ground_sakura"
+    },
+    {
+      "itemdefid": 1002,
+      "type": "item",
+      "name": "Moonlit Footpath",
+      "name_japanese": "月明かりの足元",
+      "description": "Cosmetic ground theme. No combat benefits.",
+      "display_type": "Ground Theme",
+      "tradable": false,
+      "marketable": false,
+      "hidden": true,
+      "store_hidden": true,
+      "purchase_limit": 1,
+      "store_tags": "cosmetic;ground",
+      "game_sku": "ground_moon"
+    },
+    {
+      "itemdefid": 1003,
+      "type": "item",
+      "name": "Lantern Footpath",
+      "name_japanese": "提灯色の足元",
+      "description": "Cosmetic ground theme. No combat benefits.",
+      "display_type": "Ground Theme",
+      "tradable": false,
+      "marketable": false,
+      "hidden": true,
+      "store_hidden": true,
+      "purchase_limit": 1,
+      "store_tags": "cosmetic;ground",
+      "game_sku": "ground_lantern"
+    },
+    {
+      "itemdefid": 1004,
+      "type": "item",
+      "name": "Abyss Footpath",
+      "name_japanese": "深淵色の足元",
+      "description": "Cosmetic ground theme. No combat benefits.",
+      "display_type": "Ground Theme",
+      "tradable": false,
+      "marketable": false,
+      "hidden": true,
+      "store_hidden": true,
+      "purchase_limit": 1,
+      "store_tags": "cosmetic;ground",
+      "game_sku": "ground_abyss"
+    }
+  ]
+}

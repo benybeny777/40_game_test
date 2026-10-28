@@ -1,0 +1,57 @@
+async (page) => {
+  // Dedicated browser profile only. Run with playwright-cli run-code --filename tools/browser-acceptance.pw.txt.
+  const assert = (condition, reason) => { if (!condition) throw new Error(reason); };
+  await page.goto('http://127.0.0.1:5174/mobile/');
+  await page.locator('.card').first().waitFor();
+  if (await page.locator('html').getAttribute('lang') !== 'en') await page.locator('.language-toggle').click();
+  const initial = await page.evaluate(async () => ({ view: await window.game.getView(), state: await window.game.getState() }));
+  assert(initial.view.party.length === 17 && initial.view.party.filter(member => member.active).length === 3, '17 members / 3 active');
+  assert(!initial.state.storageError, 'Unexpected save error');
+  if (!initial.state.paused) await page.locator('#mobile-pause').click();
+  const checks = [];
+  const tabs = ['Party', 'Equipment', 'Dojo', 'Dungeon', 'Bestiary', 'Store', 'How to play', 'Settings'];
+  for (const [width, height] of [[375, 812], [812, 375], [768, 1024]]) {
+    await page.setViewportSize({ width, height });
+    for (const name of tabs) {
+      await page.getByRole('button', { name, exact: true }).click();
+      await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+      const geometry = await page.locator('main').evaluate(element => ({ overflow: element.scrollWidth - element.clientWidth, height: element.clientHeight }));
+      assert(geometry.overflow <= 1 && geometry.height > 50, `${name} overflow at ${width}x${height}`);
+      const text = await page.locator('main').innerText();
+      const clean = name === 'Settings' ? text.replaceAll('Language / 言語', '').replaceAll('日本語', '') : text;
+      assert(!/[一-龯ぁ-ゖァ-ヺ]/u.test(clean), `${name}: untranslated text at ${width}x${height}`);
+      checks.push(`${width}x${height}:${name}`);
+    }
+  }
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole('button', { name: 'Party', exact: true }).click();
+  await page.locator('main').evaluate(element => { element.scrollTop = 400; });
+  await page.getByRole('button', { name: 'Equipment', exact: true }).click();
+  assert(await page.locator('main').evaluate(element => element.scrollTop) === 0, 'New tab must start at top');
+  await page.getByRole('button', { name: 'Party', exact: true }).click();
+  assert(await page.locator('main').evaluate(element => Math.abs(element.scrollTop - 400)) < 2, 'Party scroll must be retained');
+  await page.getByRole('button', { name: 'How to play', exact: true }).click();
+  await page.getByRole('button', { name: 'How to play', exact: true }).focus();
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+  const beforeNav = await page.locator('nav').evaluate(element => element.scrollLeft);
+  await page.evaluate(async () => { const v = await window.game.getView(); await window.game.command({ c: 'setLoop', loop: v.stage.loop }); });
+  await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+  assert(await page.evaluate(() => document.activeElement?.dataset.focusKey) === 'nav-help', 'Keyboard focus lost on view refresh');
+  assert(Math.abs(await page.locator('nav').evaluate(element => element.scrollLeft) - beforeNav) < 2, 'Navigation scroll lost on refresh');
+  await page.locator('.language-toggle').click();
+  assert(await page.locator('html').getAttribute('lang') === 'ja', 'Japanese language switch');
+  await page.locator('.language-toggle').click();
+  await page.getByRole('button', { name: 'Party', exact: true }).click();
+  await page.locator('main').evaluate(element => { element.scrollTop = 0; });
+  const saved = await page.evaluate(async () => { const v = await window.game.getView(); return { order: v.party.map(m => m.job), koban: v.koban, level: v.party[0].lv }; });
+  await page.reload(); await page.locator('.card').first().waitFor();
+  const restored = await page.evaluate(async () => { const v = await window.game.getView(); return { order: v.party.map(m => m.job), koban: v.koban, level: v.party[0].lv }; });
+  assert(JSON.stringify(saved) === JSON.stringify(restored), 'Save did not restore after reload');
+  assert(await page.locator('html').getAttribute('lang') === 'en', 'Language did not restore');
+  await page.screenshot({ path: '.dev-data/preview/mobile-en-party.png', scale: 'css' });
+  for (const [name, file] of [['Dungeon', 'dungeon'], ['Store', 'store'], ['Bestiary', 'bestiary']]) {
+    await page.getByRole('button', { name, exact: true }).click();
+    await page.screenshot({ path: `.dev-data/preview/mobile-en-${file}.png`, scale: 'css' });
+  }
+  await page.evaluate(result => { window.__browserAcceptance = result; }, { ok: true, checks, saveReload: true, focus: true, perTabScroll: true, language: 'ja/en' });
+}

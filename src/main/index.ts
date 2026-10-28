@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, screen, shell, Tray } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, shell, Tray } from 'electron'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { randomInt } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
@@ -7,9 +7,15 @@ import { resolvePaths } from './paths'
 import { stripLayout } from './windows/placement'
 import { GameHost } from './loop'
 import { createProbe, FullscreenWatcher } from './fullscreen'
-import { loadProfile, loadSettings, saveProfile, saveSettings } from './saveStore'
+import { loadProfile, loadSettings, saveProfile, saveSettings, writeAtomic } from './saveStore'
+import { commitSettings, confirmSavedQuit, isProtectedExport, PersistenceGuard, StoragePause } from './persistence'
+import type { Profile } from '../core/index.ts'
 import { channels, type PanelTarget, type Settings, type ShellState, type StripLayout } from '../shared/api'
 import { parseCommand, parseSettings, parseTarget } from '../shared/validate'
+import { CommerceService } from '../commerce/service'
+import { findProduct } from '../commerce/catalog'
+import { setLocale, translatedLabel as tr } from '../shared/i18n'
+import '../shared/locales/system'
 
 app.setName('タスクバー百鬼行')
 const paths = resolvePaths(resolve(__dirname, '../..'), app.getPath('userData'), process.env.GAME_PROFILE, process.env.GAME_DATA_DIR)
@@ -22,12 +28,18 @@ let trayMenu: Menu
 let host: GameHost
 let layout: StripLayout
 let quitting = false
+let handlingQuit = false
 let interactive = false
 let pendingTarget: PanelTarget | undefined
 let viewTimer: ReturnType<typeof setTimeout> | undefined
 let fullscreenWatcher: FullscreenWatcher | undefined
+let commerce: CommerceService
+let previewTimer: ReturnType<typeof setTimeout> | undefined
+let persistence: PersistenceGuard<Profile>
+const storagePause = new StoragePause(() => state.paused, paused => { state.paused = paused; host.setPaused(paused) })
 const state: ShellState = { visible: true, paused: false, profile: paths.profile, settings: loadSettings(paths),
-  packaged: app.isPackaged, fullscreenHidden: false, fullscreenSupported: false }
+  packaged: app.isPackaged, fullscreenHidden: false, fullscreenSupported: false, appearance: null }
+setLocale(state.settings.locale ?? 'ja')
 
 // Main-process operation also used by the local acceptance launcher.
 export function getTrayMenu() { return trayMenu }
@@ -44,7 +56,11 @@ else {
   app.setPath('sessionData', paths.session)
   app.setAppLogsPath(paths.logs)
   app.on('second-instance', () => { if (app.isReady()) openPanel() })
-  app.whenReady().then(start).catch((error) => { console.error(error); log(String(error)); app.exit(1) })
+  app.whenReady().then(start).catch((error) => {
+    console.error(error); log(String(error))
+    dialog.showErrorBox(tr('タスクバー百鬼行を起動できません'), tr(error instanceof Error ? error.message : String(error)))
+    app.exit(1)
+  })
 }
 
 function webPreferences(extra: Electron.WebPreferences = {}) {
@@ -75,7 +91,7 @@ function sendView() {
 function openPanel(target?: PanelTarget) {
   if (!panel || panel.isDestroyed()) {
     panel = new BrowserWindow({ width: 960, height: 600, minWidth: 620, minHeight: 420,
-      title: 'タスクバー百鬼行', show: false, backgroundColor: '#121723', webPreferences: webPreferences() })
+      title: tr('タスクバー百鬼行'), show: false, backgroundColor: '#121723', webPreferences: webPreferences() })
     panel.setMenu(null)
     pendingTarget = target
     panel.once('ready-to-show', () => { panel?.show(); if (pendingTarget) panel?.webContents.send(channels.navigate, pendingTarget); pendingTarget = undefined })
@@ -96,27 +112,33 @@ function pointer(ignore: boolean) {
 }
 
 function publish() {
-  for (const win of BrowserWindow.getAllWindows()) win.webContents.send(channels.state, { ...state })
-  if (tray) tray.setContextMenu(trayMenu = menu())
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue
+    try { win.webContents.send(channels.state, { ...state }) } catch (error) { log('state notification failed: ' + String(error)) }
+  }
+  if (tray && !tray.isDestroyed()) {
+    try { tray.setContextMenu(trayMenu = menu()) } catch (error) { log('tray notification failed: ' + String(error)) }
+  }
 }
 
 function menu() {
   return Menu.buildFromTemplate([
-    { label: '管理パネルを開く', click: () => openPanel() },
-    { label: state.visible ? '帯を隠す' : '帯を表示', click: () => {
+    { label: tr('管理パネルを開く'), click: () => openPanel() },
+    { label: tr(state.visible ? '帯を隠す' : '帯を表示'), click: () => {
       state.visible = !state.visible
       pointer(true)
       applyStripVisibility()
       publish()
     } },
-    { label: state.paused ? '再開' : '一時停止', click: () => { state.paused = !state.paused; host.setPaused(state.paused); publish() } },
+    { label: tr(state.paused ? '再開' : '一時停止'), enabled: !state.storageError, click: () => { if (state.storageError || quitting || handlingQuit) return; state.paused = !state.paused; host.setPaused(state.paused); publish() } },
     { type: 'separator' },
-    { label: '終了', click: () => app.quit() },
+    { label: tr('終了'), click: () => app.quit() },
   ])
 }
 
 /** The strip shows only when the user wants it AND no full-screen app is in front. */
 function applyStripVisibility() {
+  if (quitting) return
   const show = state.visible && !state.fullscreenHidden
   if (show && !strip.isVisible()) { strip.showInactive(); strip.setAlwaysOnTop(true, 'screen-saver'); strip.webContents.send(channels.frame, host.frame()) }
   if (!show && strip.isVisible()) { pointer(true); strip.hide() }
@@ -137,8 +159,17 @@ function placeStrip() {
 
 function applySettings(next: Partial<Settings>) {
   const sizeChanged = next.size !== undefined && next.size !== state.settings.size
-  state.settings = { ...state.settings, ...next }
-  try { saveSettings(paths, state.settings) } catch (error) { log(`settings save failed: ${String(error)}`) }
+  const settings = commitSettings(state.settings, next, candidate => saveSettings(paths, candidate), publish)
+  state.settings = settings
+  if (next.locale) {
+    setLocale(next.locale)
+    // Committed settings remain successful even if a closing native window cannot update its title.
+    try {
+      if (panel && !panel.isDestroyed()) panel.setTitle(tr('タスクバー百鬼行'))
+      if (!strip.isDestroyed()) strip.setTitle(tr('タスクバー百鬼行') + ' — ' + tr('帯'))
+      if (tray && !tray.isDestroyed()) tray.setToolTip(tr('タスクバー百鬼行'))
+    } catch (error) { log('locale notification failed: ' + String(error)) }
+  }
   if (sizeChanged) placeStrip()
   if (next.autoStart !== undefined) applyAutoStart()
   if (next.hideOnFullscreen === false) fullscreenWatcher?.stop()
@@ -149,6 +180,16 @@ function applySettings(next: Partial<Settings>) {
 
 function start() {
   const loaded = loadProfile(paths)
+  persistence = new PersistenceGuard(profile => saveProfile(paths, profile), error => {
+    state.storageError = error ? `セーブを保存できないため一時停止しました。保存先の空き容量と書き込み権限を確認し、再試行またはセーブを書き出してください。\n${error}` : undefined
+    storagePause.update(error)
+    if (error) log(`save failed: ${error}`)
+    publish()
+    if (error && !handlingQuit) { try { openPanel() } catch (failure) { log('recovery panel failed: ' + String(failure)) } }
+  })
+  const sandbox = paths.profile === 'dev' && !app.isPackaged && process.env.GAME_STORE_SANDBOX === '1'
+  commerce = new CommerceService({ path: sandbox ? paths.commerceSandbox : paths.commerce, profile: paths.profile, sandbox, packaged: app.isPackaged })
+  state.appearance = commerce.getAppearance()
   if (loaded.errors.length) log(`save load: ${loaded.source} after ${loaded.errors.join(' / ')}`)
   if (loaded.source !== 'new') {
     const offline = computeOffline(loaded.profile, Date.now() - Date.parse(loaded.profile.savedAt))
@@ -159,16 +200,16 @@ function start() {
     frame: (frame) => { if (state.visible && !state.fullscreenHidden && !strip.isDestroyed()) strip.webContents.send(channels.frame, frame) },
     viewChanged: sendView,
     save: (profile) => {
-      try { mkdirSync(dirname(paths.save), { recursive: true }); saveProfile(paths, profile) } catch (error) { log(`save failed: ${String(error)}`) }
+      if (!persistence.error) persistence.save(profile)
     },
-    offline: () => tray?.displayBalloon({ title: 'おかえりなさい', content: '留守の間の報酬が届いています。管理パネルで受け取れます。' }),
+    offline: () => tray?.displayBalloon({ title: tr('おかえりなさい'), content: tr('留守の間の報酬が届いています。管理パネルで受け取れます。') }),
   }, speed)
 
   const display = screen.getPrimaryDisplay()
   const placed = stripLayout(display.workArea, display.scaleFactor, state.settings.size)
   layout = placed.layout
   strip = new BrowserWindow({ ...placed.bounds,
-    title: 'タスクバー百鬼行 — 帯', frame: false, transparent: true, alwaysOnTop: true,
+    title: tr('タスクバー百鬼行') + ' — ' + tr('帯'), frame: false, transparent: true, alwaysOnTop: true,
     skipTaskbar: true, focusable: false, resizable: false, hasShadow: false, show: false,
     backgroundColor: '#00000000', webPreferences: webPreferences({ backgroundThrottling: false }) })
   strip.setIgnoreMouseEvents(true, { forward: true })
@@ -185,7 +226,7 @@ function start() {
     pixels.set(gold ? [102, 198, 240, 255] : [43, 29, 23, 255], index)
   }
   tray = new Tray(nativeImage.createFromBitmap(pixels, { width: 16, height: 16 }))
-  tray.setToolTip('タスクバー百鬼行')
+  tray.setToolTip(tr('タスクバー百鬼行'))
   tray.setContextMenu(trayMenu = menu())
   tray.on('double-click', () => openPanel())
   if (loaded.profile.pendingOffline) tray.displayBalloon({ title: 'おかえりなさい', content: '留守の間の報酬が届いています。管理パネルで受け取れます。' })
@@ -201,15 +242,47 @@ function start() {
   ipcMain.handle(channels.getView, (event) => { if (!fromPanel(event)) throw new Error('Unknown window'); return host.view() })
   ipcMain.handle(channels.command, (event, value: unknown) => {
     if (!fromPanel(event)) throw new Error('Unknown window')
+    if (quitting || handlingQuit) return { ok: false, reason: tr('終了処理中のため操作できません。') }
+    if (state.storageError) return { ok: false, reason: '保存できないため操作を止めています。再試行またはセーブを書き出してください。' }
     const command = parseCommand(value)
-    return command ? host.command(command) : { ok: false, reason: '不正な操作です' }
+    const result = command ? host.command(command) : { ok: false as const, reason: '不正な操作です' }
+    return result.ok && state.storageError ? { ok: false, reason: state.storageError } : result
   })
   ipcMain.handle(channels.settings, (event, value: unknown) => {
     if (!fromPanel(event)) throw new Error('Unknown window')
+    if (quitting || handlingQuit) { publish(); throw new Error(tr('終了処理中のため操作できません。')) }
     const settings = parseSettings(value)
     return settings ? applySettings(settings) : { ...state }
   })
   ipcMain.on(channels.openSaveFolder, (event) => { if (fromPanel(event)) void shell.openPath(dirname(paths.save)) })
+  ipcMain.on(channels.exportSave, (event) => { if (fromPanel(event) && !quitting && !handlingQuit) exportCurrentSave() })
+  ipcMain.handle(channels.retrySave, (event) => { if (!fromPanel(event)) throw new Error('Unknown window'); return !quitting && !handlingQuit && persistence.save(host.profile) })
+  ipcMain.handle(channels.getStore, (event) => { if (!fromPanel(event)) throw new Error('Unknown window'); return commerce.getView() })
+  ipcMain.handle(channels.purchase, async (event, sku: unknown) => {
+    if (!fromPanel(event)) throw new Error('Unknown window')
+    if (quitting || handlingQuit) return { ok: false, reason: tr('終了処理中のため操作できません。'), view: commerce.getView() }
+    const result = await commerce.purchase(typeof sku === 'string' && sku.length < 64 ? sku : '')
+    state.appearance = commerce.getAppearance(); publish()
+    return result
+  })
+  ipcMain.handle(channels.equipCosmetic, (event, sku: unknown) => {
+    if (!fromPanel(event)) throw new Error('Unknown window')
+    if (quitting || handlingQuit) return { ok: false, reason: tr('終了処理中のため操作できません。'), view: commerce.getView() }
+    const result = commerce.equip(sku === null ? null : typeof sku === 'string' && sku.length < 64 ? sku : '')
+    if (previewTimer) clearTimeout(previewTimer)
+    state.appearance = commerce.getAppearance(); publish()
+    return result
+  })
+  ipcMain.handle(channels.previewCosmetic, (event, sku: unknown) => {
+    if (!fromPanel(event)) throw new Error('Unknown window')
+    if (quitting || handlingQuit) return false
+    const product = typeof sku === 'string' && sku.length < 64 ? findProduct(sku) : undefined
+    if (sku !== null && !product) return false
+    if (previewTimer) clearTimeout(previewTimer)
+    state.appearance = product?.theme ?? commerce.getAppearance(); publish()
+    if (product) previewTimer = setTimeout(() => { state.appearance = commerce.getAppearance(); publish() }, 30000)
+    return true
+  })
 
   const probe = createProbe(log)
   state.fullscreenSupported = probe !== null
@@ -231,11 +304,47 @@ function start() {
   if (smoke > 0) setTimeout(() => { log('smoke test: quitting'); app.quit() }, smoke)
 }
 
-app.on('before-quit', () => {
-  quitting = true
-  fullscreenWatcher?.stop()
-  if (host) { host.stop(); host.saveNow() }
-  tray?.destroy()
+function exportCurrentSave() {
+  try {
+    const destination = dialog.showSaveDialogSync({ title: tr('セーブを書き出す'), defaultPath: 'hyakkiko-save.json', filters: [{ name: 'JSON', extensions: ['json'] }] })
+    if (!destination) return false
+    if (isProtectedExport(destination, [paths.save, paths.previousSave, paths.brokenSave, paths.settings, paths.commerce, paths.commerceSandbox])) throw new Error(tr('保存ファイルや設定を上書きしない別名を指定してください。'))
+    writeAtomic(destination, JSON.stringify({ ...host.profile, savedAt: new Date().toISOString() }, null, 2))
+    return true
+  } catch (error) {
+    log('save export failed: ' + String(error))
+    try { dialog.showErrorBox(tr('セーブを書き出せません'), String(error)) } catch { /* Keep the unsaved session alive even if native dialogs fail. */ }
+    return false
+  }
+}
+
+app.on('before-quit', (event) => {
+  if (quitting) return
+  // Stop an unexpected exception or a reentrant quit from closing an unsaved game.
+  event.preventDefault()
+  if (handlingQuit) return
+  handlingQuit = true
+  try {
+    const approved = confirmSavedQuit({
+      stop: () => host?.stop(), save: () => !host || persistence.save(host.profile),
+      choose: () => dialog.showMessageBoxSync({ type: 'warning', title: tr('セーブを保存できません'), message: tr('未保存の進行があります。'), detail: tr('保存先を確認して再試行するか、別の場所へ書き出してください。保存せず終了すると、この起動中の未保存分は失われます。'), buttons: ['ゲームへ戻る', 'セーブを書き出す', '保存せず終了'].map(tr), defaultId: 0, cancelId: 0, noLink: true }),
+      export: () => { exportCurrentSave() },
+      restart: () => { host?.start(); if (state.storageError) openPanel() },
+    })
+    if (!approved) return
+    quitting = true
+    try {
+      if (viewTimer) { clearTimeout(viewTimer); viewTimer = undefined }
+      if (previewTimer) clearTimeout(previewTimer)
+      fullscreenWatcher?.stop()
+      tray?.destroy()
+    } finally {
+      // A cleanup failure must not strand an already-saved, stopped game.
+      // The approved flag prevents another write or prompt on the second quit event.
+      setImmediate(() => app.quit())
+    }
+  } catch (error) { log('quit was cancelled: ' + String(error)) }
+  finally { handlingQuit = false }
 })
 // Closing the panel only hides it; the tray owns the lifetime.
 app.on('window-all-closed', () => { if (quitting) app.quit() })

@@ -1,9 +1,11 @@
+import type { Attributes } from '../data/attributes.ts'
 import { balance as b } from '../data/balance.ts'
+import { depthScale, dungeonBalance as db, floorFeature, isBossFloor, maxFloor, type Difficulty } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
-import { jobs, partyOrder } from '../data/jobs.ts'
+import { defaultFormation, jobs, partyOrder, partySize } from '../data/jobs.ts'
 import { dojo as dojoDefs } from '../data/progress.ts'
 import { areaOf, areas, previousAreaShare, stagesPerArea, waveSizes } from '../data/stages.ts'
-import { healUnit, kobanMul, strike } from './actions.ts'
+import { healUnit, kobanMul, passiveOn, strike } from './actions.ts'
 import { attackDef, chooseTarget, living, opponents } from './combat.ts'
 import { random } from './rng.ts'
 import { onBattleStart, refreshStats, rollOatari, skills, ultimates } from './skills.ts'
@@ -13,7 +15,7 @@ import type { GearStats, JobId, Phase, SimEvent, Snapshot, Stats, Unit, World } 
 
 export interface WorldOptions {
   seed?: number; stageNo?: number; level?: number; levels?: Partial<Record<JobId, number>>
-  order?: readonly JobId[]; dojo?: DojoLevels; gear?: Partial<Record<JobId, GearStats[]>>; loop?: boolean; moveBonus?: number; maxStage?: number
+  depthRank?: Difficulty; dungeonSeed?: number; eventDepths?: [number, number, number]; order?: readonly JobId[]; dojo?: DojoLevels; allocated?: Partial<Record<JobId, Attributes>>; gear?: Partial<Record<JobId, GearStats[]>>; loop?: boolean; moveBonus?: number; maxStage?: number
 }
 function makeUnit(world: World, side: Unit['side'], defId: string, slot: number, stats: Stats, x: number, lv: number): Unit {
   return { uid: world.nextId++, side, defId, slot, x, lv, hp: stats.maxHp, stats: { ...stats }, base: { ...stats }, alive: true,
@@ -24,51 +26,57 @@ const walkTicks = (world: World) => ticks(b.walkMs / (1 + world.moveBonus))
 const validOrder = (order: readonly JobId[]) => order.length === partyOrder.length && partyOrder.every((id) => order.includes(id))
 
 export function createWorld(options: WorldOptions = {}): World {
-  const { seed = 1, stageNo = 1, level = 1, levels = {}, order = partyOrder, dojo = {}, gear = {}, loop = false, maxStage = b.maxStage } = options
+  const { seed = 1, stageNo = 1, level = 1, levels = {}, order = defaultFormation, dojo = {}, gear = {}, allocated = {}, loop = false, depthRank = 0, maxStage = maxFloor(depthRank) } = options
+  if (!Number.isInteger(depthRank) || depthRank < 0 || depthRank > db.maxDifficulty) throw new RangeError('invalid difficulty')
   const moveBonus = options.moveBonus ?? dojoDefs.walk.per * (dojo.walk ?? 0)
   if (!Number.isInteger(seed) || seed < 0 || seed >= b.rng.divisor) throw new RangeError('seed must be uint32')
-  if (!Number.isInteger(stageNo) || stageNo < 1 || stageNo > maxStage) throw new RangeError(`stage must be 1..${maxStage}`)
+  if (!Number.isSafeInteger(stageNo) || stageNo < 1 || stageNo > maxStage) throw new RangeError(`stage must be 1..${maxStage}`)
   if (!Number.isFinite(moveBonus) || moveBonus < 0) throw new RangeError('Invalid moveBonus')
   if (!validOrder(order)) throw new RangeError('order must contain each job once')
   const world: World = { tick: 0, rng: seed >>> 0, phase: 'walking', phaseUntilTick: 0,
-    stageNo, wave: 1, loop, units: [], projectiles: [], mines: [], nextId: 1, wipeStreak: 0,
-    spawnQueue: [], spawnIndex: 0, nextSpawnTick: 0, moveBonus, maxStage, pending: {} }
+    stageNo, wave: 1, loop, units: [], reserves: [], projectiles: [], mines: [], nextId: 1, wipeStreak: 0,
+    spawnQueue: [], spawnIndex: 0, nextSpawnTick: 0, moveBonus, maxStage, depthRank, dungeonSeed: options.dungeonSeed ?? seed, eventDepths: [...(options.eventDepths ?? [0, 0, 0])], pending: {} }
   world.phaseUntilTick = walkTicks(world)
   world.units = order.map((id, slot) => {
     const lv = levels[id] ?? level
-    return makeUnit(world, 'ally', id, slot, computeStats(jobs[id], lv, dojo, gear[id]), 0 - slot * b.formationGap, lv)
+    return makeUnit(world, 'ally', id, slot, computeStats(jobs[id], lv, dojo, gear[id], allocated[id]), 0 - slot * b.formationGap, lv)
   })
+  world.reserves = world.units.splice(partySize)
   return world
 }
 
 /** Lv/dojo changes from progression. Keeps each ally's HP ratio. */
-export function refreshParty(world: World, levels: Partial<Record<JobId, number>>, dojo: DojoLevels = {}, gear: Partial<Record<JobId, GearStats[]>> = {}) {
+export function refreshParty(world: World, levels: Partial<Record<JobId, number>>, dojo: DojoLevels = {}, gear: Partial<Record<JobId, GearStats[]>> = {}, allocated: Partial<Record<JobId, Attributes>> = {}) {
   world.moveBonus = dojoDefs.walk.per * (dojo.walk ?? 0)
-  for (const unit of world.units.filter((candidate) => candidate.side === 'ally')) {
+  for (const unit of [...world.units.filter((candidate) => candidate.side === 'ally'), ...world.reserves]) {
     const lv = levels[unit.defId as JobId] ?? unit.lv
     const ratio = unit.hp / unit.base.maxHp
-    unit.lv = lv; unit.base = computeStats(jobs[unit.defId as JobId], lv, dojo, gear[unit.defId as JobId])
+    unit.lv = lv; unit.base = computeStats(jobs[unit.defId as JobId], lv, dojo, gear[unit.defId as JobId], allocated[unit.defId as JobId])
     refreshStats(world, unit)
-    if (unit.alive) unit.hp = Math.max(1, unit.base.maxHp * ratio)
+    if (unit.alive) unit.hp = Math.max(0, unit.base.maxHp * ratio)
   }
 }
 /** Applied at the next wave boundary so a running fight is never discarded. */
-export function requestStage(world: World, stageNo: number) {
-  if (!Number.isInteger(stageNo) || stageNo < 1 || stageNo > world.maxStage) throw new RangeError('stage out of range')
-  world.pending.stageNo = stageNo
-  if (world.phase === 'walking') { applyPending(world); world.phaseUntilTick = world.tick + walkTicks(world) }
+export function requestStage(world: World, stageNo: number, depthRank: Difficulty = world.depthRank) {
+  if (!Number.isInteger(depthRank) || depthRank < 0 || depthRank > db.maxDifficulty || !Number.isSafeInteger(stageNo) || stageNo < 1 || stageNo > maxFloor(depthRank)) throw new RangeError('stage out of range')
+  world.pending.stageNo = stageNo; world.pending.depthRank = depthRank
+  if (world.phase === 'walking' || world.phase === 'town') { applyPending(world); world.phase = 'walking'; world.phaseUntilTick = world.tick + walkTicks(world) }
 }
 export function requestOrder(world: World, order: readonly JobId[]) {
   if (!validOrder(order)) throw new RangeError('order must contain each job once')
   world.pending.order = [...order]
-  if (world.phase === 'walking') applyPending(world)
+  if (world.phase === 'walking' || world.phase === 'town') applyPending(world)
 }
 function applyPending(world: World) {
+  if (world.pending.depthRank !== undefined) { world.depthRank = world.pending.depthRank; world.maxStage = maxFloor(world.depthRank) }
   if (world.pending.stageNo !== undefined) { world.stageNo = world.pending.stageNo; world.wave = 1; world.wipeStreak = 0 }
   if (world.pending.order) {
     const order = world.pending.order
-    world.units.sort((a, z) => order.indexOf(a.defId as JobId) - order.indexOf(z.defId as JobId))
-    world.units.forEach((unit, slot) => { unit.slot = slot; unit.x = 0 - slot * b.formationGap })
+    const allies = [...world.units.filter((unit) => unit.side === 'ally'), ...world.reserves]
+      .sort((a, z) => order.indexOf(a.defId as JobId) - order.indexOf(z.defId as JobId))
+    allies.forEach((unit, slot) => { unit.slot = slot; unit.x = 0 - slot * b.formationGap })
+    world.units = [...allies.slice(0, partySize), ...world.units.filter((unit) => unit.side === 'enemy')]
+    world.reserves = allies.slice(partySize)
   }
   world.pending = {}
 }
@@ -76,12 +84,14 @@ function applyPending(world: World) {
 function phase(world: World, next: Phase, ms: number, events: SimEvent[]) {
   world.phase = next
   world.phaseUntilTick = world.tick + ticks(ms)
-  events.push({ t: 'phase', phase: next, stageNo: world.stageNo, wave: world.wave })
+  events.push({ t: 'phase', phase: next, stageNo: world.stageNo, wave: world.wave, depthRank: world.depthRank })
 }
 function resetWave(world: World, events: SimEvent[], fullHeal = false) {
   world.units = world.units.filter((unit) => unit.side === 'ally')
   world.projectiles = []; world.mines = []
-  for (const unit of world.units) {
+  for (const unit of [...world.units, ...world.reserves]) {
+    delete unit.gauges.wardUsed
+    delete unit.gauges.raised
     unit.effects = []; unit.action = { kind: 'none', untilTick: 0 }
     unit.attackReadyTick = world.tick; unit.skillReadyTick = Math.min(unit.skillReadyTick, world.tick)
     if (fullHeal) {
@@ -104,21 +114,26 @@ function beginSpawning(world: World, events: SimEvent[]) {
   const size = waveSizes.find((entry) => world.wave <= entry.through)!.count || area.maxWave
   world.spawnQueue = Array.from({ length: size }, () =>
     pickWeighted(world, previous && random(world) < previousAreaShare ? previous.weights : area.weights))
-  if (world.wave === b.waves) world.spawnQueue.push(area.boss)
+  if (world.wave === b.waves && isBossFloor(world.stageNo)) world.spawnQueue.push(area.boss)
   world.spawnIndex = 0; world.nextSpawnTick = world.tick
   phase(world, 'spawning', 0, events)
 }
 /** Product of the per-step growth from stage 1 up to stageNo; the rate depends on the area each step starts in. */
 export function stageMul(stageNo: number, perArea: readonly number[]) {
-  let mul = 1
-  for (let stage = 1; stage < stageNo; stage++) mul *= perArea[Math.min(perArea.length - 1, Math.floor((stage - 1) / stagesPerArea))]
-  return mul
+  let logarithm = 0
+  for (let index = 0; index < perArea.length; index++) {
+    const steps = index === perArea.length - 1 ? Math.max(0, stageNo - 1 - index * stagesPerArea)
+      : Math.max(0, Math.min(stagesPerArea, stageNo - 1 - index * stagesPerArea))
+    logarithm += steps * Math.log(perArea[index])
+  }
+  return Math.exp(Math.min(Math.log(Number.MAX_SAFE_INTEGER), logarithm))
 }
 function enemyStats(world: World, id: string): Stats {
-  const def = enemies[id]
+  const def = enemies[id], scaling = depthScale(world.stageNo, world.depthRank)
   const waveMul = def.boss ? 1 : 1 + b.waveGrowth * (world.wave - 1)
-  return { ...def.base, maxHp: def.base.maxHp * stageMul(world.stageNo, b.stageHpGrowth) * waveMul,
-    atk: def.base.atk * stageMul(world.stageNo, b.stageAtkGrowth) * waveMul, def: def.base.def * b.stageDefGrowth ** (world.stageNo - 1) }
+  const elite = !def.boss && world.wave === b.waves && !isBossFloor(world.stageNo)
+  return { ...def.base, maxHp: def.base.maxHp * scaling.hp * waveMul * (elite ? db.eliteHp : 1),
+    atk: def.base.atk * scaling.atk * waveMul * (elite ? db.eliteAtk : 1), def: def.base.def * scaling.def }
 }
 /** Mid-battle spawns (split, summons, phantoms) join at the given x, after everyone already on the field. */
 function spawnEnemy(world: World, id: string, x: number, events: SimEvent[], stats = enemyStats(world, id)) {
@@ -128,11 +143,30 @@ function spawnEnemy(world: World, id: string, x: number, events: SimEvent[], sta
   world.units.push(unit); events.push({ t: 'spawn', uid: unit.uid })
   return unit
 }
+function resolveFloorFeature(world: World, events: SimEvent[]) {
+  if (world.wave !== 1 || world.stageNo <= world.eventDepths[world.depthRank]) return
+  const kind = floorFeature(world.stageNo, world.dungeonSeed, world.depthRank)
+  if (kind === 'none') return
+  world.eventDepths[world.depthRank] = world.stageNo
+  events.push({ t: 'floorEvent', kind, stageNo: world.stageNo, depthRank: world.depthRank })
+  if (kind === 'treasure') {
+    const mul = depthScale(world.stageNo, world.depthRank).reward
+    events.push({ t: 'reward', koban: Math.floor(db.treasureKoban * mul), exp: Math.floor(db.treasureExp * mul), enemyId: 'treasure', x: 0, stageNo: world.stageNo })
+  } else for (const unit of world.units.filter((ally) => ally.side === 'ally' && living(ally))) healUnit(unit, unit.stats.maxHp * db.altarHeal, unit.uid, events)
+}
+export function returnToTown(world: World, events: SimEvent[] = []) {
+  delete world.pending.stageNo; delete world.pending.depthRank
+  world.wave = 1; world.wipeStreak = 0; world.spawnQueue = []; world.spawnIndex = 0
+  resetWave(world, events, true)
+  phase(world, 'town', 0, events)
+  return events
+}
 function phaseStep(world: World, events: SimEvent[]) {
   if (world.tick >= world.phaseUntilTick) {
     switch (world.phase) {
       case 'walking':
-        if (world.wave === b.waves) phase(world, 'bossIntro', b.bossIntroMs, events)
+        resolveFloorFeature(world, events)
+        if (world.wave === b.waves && isBossFloor(world.stageNo)) phase(world, 'bossIntro', b.bossIntroMs, events)
         else beginSpawning(world, events)
         break
       case 'bossIntro': beginSpawning(world, events); break
@@ -141,9 +175,11 @@ function phaseStep(world: World, events: SimEvent[]) {
         else { world.wave++; resetWave(world, events) }
         break
       case 'stageClear':
-        // The last implemented stage turns into a farming loop instead of stopping.
-        if (!world.loop && world.stageNo >= world.maxStage) world.loop = true
-        if (!world.loop) world.stageNo++
+        if (!world.loop) {
+          if (world.stageNo < world.maxStage) world.stageNo++
+          else if (world.depthRank < db.maxDifficulty) { world.depthRank = (world.depthRank + 1) as Difficulty; world.maxStage = maxFloor(world.depthRank); world.stageNo = 1 }
+          else world.loop = true
+        }
         world.wave = 1; resetWave(world, events)
         break
       case 'wipe': world.wave = 1; resetWave(world, events, true); break
@@ -275,9 +311,15 @@ function settle(world: World, events: SimEvent[]) {
       }
     }
     if (!unit.alive || unit.hp > 0) continue
+    if (passiveOn(unit, 'jiangshi') && !unit.gauges.raised) {
+      unit.gauges.raised = 1; unit.hp = unit.stats.maxHp * jobs.jiangshi.passive.params.heal
+      unit.action = { kind: 'none', untilTick: 0 }
+      events.push({ t: 'revive', uid: unit.uid })
+      continue
+    }
     unit.alive = false; unit.action = { kind: 'none', untilTick: 0 }; events.push({ t: 'death', uid: unit.uid })
     if (!def) continue
-    const rewardMul = b.rewardGrowth ** (world.stageNo - 1)
+    const rewardMul = depthScale(world.stageNo, world.depthRank).reward
     if (def.exp || def.koban) events.push({ t: 'reward', koban: Math.floor(def.koban * rewardMul * kobanMul(world)), exp: Math.floor(def.exp * rewardMul), enemyId: unit.defId, x: unit.x, stageNo: world.stageNo })
     if (def.traits.split) {
       // バグ精霊: the first death splits into two smaller pieces at the same spot.
@@ -337,7 +379,7 @@ function battleStep(world: World, events: SimEvent[]) {
 export function step(world: World, commands: readonly never[] = []): SimEvent[] {
   if (commands.length) throw new Error('Commands are introduced in M5')
   const events: SimEvent[] = []
-  for (const unit of world.units) {
+  for (const unit of [...world.units, ...world.reserves]) {
     const expired = unit.effects.filter((effect) => effect.untilTick <= world.tick)
     for (const effect of expired) events.push({ t: 'effect', uid: unit.uid, tag: effect.tag, on: false })
     if (expired.length) unit.effects = unit.effects.filter((effect) => effect.untilTick > world.tick)
@@ -349,7 +391,7 @@ export function step(world: World, commands: readonly never[] = []): SimEvent[] 
   return events
 }
 export function snapshot(world: World, koban = 0): Snapshot {
-  return { tick: world.tick, phase: world.phase, stageNo: world.stageNo, wave: world.wave, koban, loop: world.loop,
+  return { tick: world.tick, phase: world.phase, stageNo: world.stageNo, depthRank: world.depthRank, wave: world.wave, koban, loop: world.loop,
     units: world.units.map((unit) => {
       const cooldown = unit.side === 'ally' ? ticks(jobs[unit.defId as JobId].skill.cooldownMs ?? 0) : 0
       return { uid: unit.uid, side: unit.side, defId: unit.defId, slot: unit.slot, x: unit.x, lv: unit.lv,
