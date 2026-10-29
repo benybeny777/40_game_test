@@ -39,6 +39,16 @@ export function renderStore(view: StoreView, hooks: StoreHooks): HTMLElement {
   toolbar.append(element('span', 'store-preview-help', '未購入の外観も30秒間試着できます。'))
   const buttons: Array<{ node: HTMLButtonElement; enabled: boolean }> = []
   const updateButtons = () => { for (const button of buttons) button.node.disabled = busy || !button.enabled }
+  const unreadableView = (error: unknown): StoreView => {
+    console.error('Store state refresh failed', error)
+    const message = 'ストアの最新状態を確認できません。操作を停止しました。状態を再確認してください。'
+    hooks.toast(message)
+    return { ...view, error: message, products: view.products.map(product => ({ ...product, purchasable: false })) }
+  }
+  const refresh = async (): Promise<StoreView> => {
+    try { return await window.game.getStore() }
+    catch (error) { return unreadableView(error) }
+  }
   const action = async (operation: () => Promise<CommerceResult | boolean>, success?: string) => {
     if (busy) return
     busy = true; updateButtons()
@@ -53,10 +63,11 @@ export function renderStore(view: StoreView, hooks: StoreHooks): HTMLElement {
         if (!result.ok) hooks.toast(result.reason)
         else if (success) hooks.toast(success)
       }
-    } catch {
+    } catch (error) {
+      console.error('Store operation response failed; purchase is not retried', error)
       hooks.toast('ストアとの通信を確認できませんでした。購入を繰り返さず、状態の更新をお待ちください。')
       // Readback only: never retry a purchase after an uncertain response.
-      try { next = await window.game.getStore() } catch { /* The existing view remains usable for preview. */ }
+      next = await refresh()
     } finally {
       busy = false; updateButtons(); hooks.updated(next)
     }
@@ -74,17 +85,21 @@ export function renderStore(view: StoreView, hooks: StoreHooks): HTMLElement {
     previewSku = sku; previewUntil = sku ? Date.now() + 30000 : 0
     if (sku) previewTimer = setTimeout(() => {
       previewSku = null; previewUntil = 0
-      void window.game.getStore().then(hooks.updated).catch(() => {})
+      void refresh().then(hooks.updated)
     }, 30050)
     return true
   }
   const previewActive = previewSku !== null && Date.now() < previewUntil
-  toolbar.append(button(previewActive ? '試着を取り消す' : '試着なし', previewActive, () => preview(null), '試着を取り消しました。'),
+  toolbar.append(button(previewActive ? '試着を取り消す' : '試着なし', previewActive && !view.error, () => preview(null), '試着を取り消しました。'),
     button('既定の足元に戻す', view.equippedSku !== null && !view.error, async () => {
       const result = await window.game.equipCosmetic(null)
       if (result.ok) { if (previewTimer) clearTimeout(previewTimer); previewSku = null; previewUntil = 0 }
       return result
     }, '既定の足元に戻しました。'))
+  if (view.error) toolbar.append(button('ストアの状態を再確認', true, async () => {
+    const next = await refresh()
+    return next.error ? { ok: false, reason: next.error, view: next } : { ok: true, view: next }
+  }))
   root.append(toolbar)
   const grid = element('div', 'store-grid')
   for (const product of view.products) grid.append(productCard(product))
@@ -108,7 +123,7 @@ export function renderStore(view: StoreView, hooks: StoreHooks): HTMLElement {
     const price = view.mode === 'sandbox' ? 'テスト取得・課金なし' : product.price?.formatted ?? '価格は販売開始時に表示'
     card.append(element('p', 'store-price', price))
     const actions = element('div', 'store-actions')
-    actions.append(button(previewActive && previewSku === product.sku ? '試着中（30秒）' : '30秒間試着', true, () => preview(product.sku), '30秒間の試着を開始しました。'))
+    actions.append(button(previewActive && previewSku === product.sku ? '試着中（30秒）' : '30秒間試着', !view.error, () => preview(product.sku), '30秒間の試着を開始しました。'))
     if (product.owned) {
       actions.append(button(product.equipped ? '装備中' : 'この外観を使う', !product.equipped && !view.error, async () => {
         const result = await window.game.equipCosmetic(product.sku)

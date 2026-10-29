@@ -1,22 +1,60 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { formatNumber, getLocale, onLocaleChange, registerTranslations, registerTranslationTemplates, setLocale, t, translatedLabel } from '../src/shared/i18n'
 import '../src/renderer/panel/translations'
+import '../src/shared/locales/system'
+import { createBattleText } from '../src/renderer/battleText'
 
 afterEach(() => { setLocale('ja'); vi.unstubAllGlobals() })
 describe('locale and UI translations', () => {
-  it('restores the persisted locale when a renderer starts', async () => {
-    vi.stubGlobal('localStorage', { getItem: () => 'en', setItem: vi.fn() })
+  it('retranslates an existing battle banner and deployed party without another simulation frame', () => {
+    setLocale('ja')
+    const attributes: Record<string, string> = {}, dataset: Record<string, string> = {}
+    const screen = { dataset, setAttribute: (key: string, value: string) => { attributes[key] = value } } as unknown as HTMLCanvasElement
+    const banner = { textContent: '' } as HTMLElement
+    const presentation = createBattleText(screen, banner)
+    presentation.banner('差し入れ'); presentation.party(['samurai', 'bancho', 'rikishi'])
+    expect(attributes['aria-label']).toContain('サムライ')
+    setLocale('en'); presentation.translate()
+    expect(banner.textContent).not.toMatch(/[一-龯ぁ-ゖァ-ヺ]/u)
+    expect(attributes['aria-label']).toBe('Deployed: Samurai / Bancho / Sumo Wrestler')
+    expect(dataset.party).toBe('samurai,bancho,rikishi')
+    setLocale('ja'); presentation.translate()
+    expect(banner.textContent).toBe('差し入れ')
+    expect(attributes['aria-label']).toContain('サムライ')
+  })
+  it('retranslates active floating labels from their source and stops updating expired labels', () => {
+    setLocale('ja')
+    const screen = { dataset: {}, setAttribute: vi.fn() } as unknown as HTMLCanvasElement
+    const banner = { textContent: '' } as HTMLElement, floating = { textContent: '' } as HTMLElement
+    const presentation = createBattleText(screen, banner), forget = presentation.label(floating, '差し入れ')
+    setLocale('en'); presentation.translate()
+    const english = floating.textContent
+    expect(english).not.toBe('差し入れ')
+    forget(); setLocale('ja'); presentation.translate()
+    expect(floating.textContent).toBe(english)
+  })
+  it.each([['ja-JP', 'ja'], ['en-US', 'en'], ['fr-FR', 'en']])('uses system language %s for a fresh profile', async (language, expected) => {
+    vi.stubGlobal('localStorage', { getItem: () => null })
+    vi.stubGlobal('navigator', { language })
+    vi.resetModules()
+    expect((await import('../src/shared/i18n')).getLocale()).toBe(expected)
+  })
+  it('does not read browser storage when the translation runtime starts', async () => {
+    const getItem = vi.fn(() => { throw new Error('blocked') })
+    vi.stubGlobal('localStorage', { getItem })
+    vi.stubGlobal('navigator', { language: 'en-US' })
     vi.resetModules()
     const fresh = await import('../src/shared/i18n')
     expect(fresh.getLocale()).toBe('en')
     expect(fresh.t('loading')).toBe('Loading…')
+    expect(getItem).not.toHaveBeenCalled()
   })
-  it('saves locale independently from adventure data and notifies subscribers', () => {
+  it('notifies subscribers without writing storage from the translation runtime', () => {
     const setItem = vi.fn(), listener = vi.fn()
     vi.stubGlobal('localStorage', { setItem })
     const unsubscribe = onLocaleChange(listener)
     setLocale('en'); unsubscribe(); setLocale('ja')
-    expect(setItem).toHaveBeenCalledWith('hyakkiko.locale', 'en')
+    expect(setItem).not.toHaveBeenCalled()
     expect(listener).toHaveBeenCalledExactlyOnceWith('en')
     expect(getLocale()).toBe('ja')
   })

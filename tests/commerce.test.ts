@@ -19,6 +19,46 @@ const steamId = '76561198000000000'
 const live = (file: string, payment: CommerceProvider) => new CommerceService({ path: file, profile: 'user', sandbox: false, appId: 123456, steamId, provider: payment })
 
 describe('外観ストア・所有権・取引状態', () => {
+  it('価格取得例外を未発売の価格なしに偽装せず、全購入を停止して原因を記録する', async () => {
+    const payment = provider(), error = new Error('price provider down'), diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+    payment.getPrice = () => { throw error }
+    try {
+      const service = live(path(), payment), view = service.getView()
+      expect(view.error).toContain('商品価格')
+      expect(view.products.every(product => !product.purchasable)).toBe(true)
+      expect(diagnostic).toHaveBeenCalledWith(view.error, error)
+      expect((await service.purchase(catalog[0].sku)).ok).toBe(false)
+      expect(payment.purchase).not.toHaveBeenCalled()
+    } finally { diagnostic.mockRestore() }
+  })
+  it('不正な価格をエラーにし、正常な未設定価格nullと区別する', () => {
+    const payment = provider(), diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      payment.getPrice = () => ({ amount: -1, currency: 'JPY', formatted: '¥-1' })
+      expect(live(path(), payment).getView().error).toContain('商品価格')
+      payment.getPrice = () => null
+      expect(live(path(), payment).getView().error).toBeUndefined()
+    } finally { diagnostic.mockRestore() }
+  })
+  it('一度のストア表示で商品価格を二重に取得しない', () => {
+    const payment = provider(), getPrice = vi.fn(payment.getPrice)
+    payment.getPrice = getPrice
+    const view = live(path(), payment).getView()
+    expect(getPrice).toHaveBeenCalledTimes(catalog.length)
+    expect(view.products.every(product => product.price?.amount === 200 && product.purchasable)).toBe(true)
+  })
+  it('読み込んだ空の取引記録が消失しても新規storeとして上書きしない', async () => {
+    const file = path(), payment = provider(), diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {})
+    writeFileSync(file, JSON.stringify({ version: 1, scope: 'live', account: { appId: 123456, steamId }, owned: [], equippedSku: null, transactions: [] }))
+    try {
+      const service = live(file, payment)
+      rmSync(file)
+      expect((await service.purchase(catalog[0].sku)).ok).toBe(false)
+      expect(service.getView().error).toBeDefined()
+      expect(existsSync(file)).toBe(false)
+      expect(payment.purchase).not.toHaveBeenCalled()
+    } finally { diagnostic.mockRestore() }
+  })
   it('Steam未接続時は価格を捏造せず購入と所有権付与を拒否する', async () => {
     const service = new CommerceService({ path: path(), profile: 'user', sandbox: false })
     expect(service.getView().mode).toBe('unavailable')

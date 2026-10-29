@@ -6,9 +6,13 @@ import { defaultSettings, type Frame, type PanelTarget, type Settings, type Shel
 import type { CommerceResult, StoreView } from '../shared/commerce'
 import { PLAY_DOTS } from '../shared/art'
 import { parseCommand, parseSettings, parseTarget } from '../shared/validate'
-import { getLocale, translatedLabel } from '../shared/i18n'
+import { getLocale, setLocale, systemLocale, translatedLabel } from '../shared/i18n'
+import { CloudClient } from '../shared/cloudClient'
+import { DEVELOPMENT_CLOUD_ENDPOINT, parseCloudCommand } from '../shared/cloud'
+import { prepareCloudRestore } from '../shared/cloudProfile'
 
 const STORAGE_KEY = 'hyakkiko.web.save'
+const LEGACY_LOCALE_KEY = 'hyakkiko.locale'
 const STORAGE_FORMAT = 1
 const AUTOSAVE_MS = 5000, SLEEP_GAP_MS = 60000, VIEW_INTERVAL_MS = 400, MAX_STEPS = 50, PREVIEW_MS = 30000
 type BrowserState = ShellState & { platform: 'browser'; storageError?: string }
@@ -30,8 +34,12 @@ export function initializePlatform(): ShellApi {
   if (window.game) return window.game
   let stored: string | null
   let profile: Profile, settings: Settings, paused = false
+  let legacyLocale: string | null
   const now = Date.now()
   try {
+    legacyLocale = localStorage.getItem(LEGACY_LOCALE_KEY)
+    const initialLocale = legacyLocale === 'ja' || legacyLocale === 'en' ? legacyLocale : systemLocale(navigator.language ?? Intl.DateTimeFormat().resolvedOptions().locale)
+    setLocale(initialLocale)
     stored = localStorage.getItem(STORAGE_KEY)
     if (stored !== null) {
       const raw: unknown = JSON.parse(stored)
@@ -41,12 +49,14 @@ export function initializePlatform(): ShellApi {
       const parsedSettings = parseSettings(raw.settings)
       if (!parsedSettings || !object(raw.state) || typeof raw.state.paused !== 'boolean') throw new Error('保存した設定を読み込めません。')
       settings = { ...defaultSettings, ...parsedSettings, hideOnFullscreen: false, autoStart: false }
+      settings.locale = legacyLocale === 'ja' || legacyLocale === 'en' ? legacyLocale : parsedSettings.locale ?? initialLocale
+      setLocale(settings.locale)
       paused = raw.state.paused
       if (!Number.isFinite(Date.parse(profile.savedAt))) throw new Error('保存日時を読み込めません。')
     } else {
       const seed = crypto.getRandomValues(new Uint32Array(1))[0]
       profile = newProfile(new Date(now).toISOString(), seed)
-      settings = { ...defaultSettings, hideOnFullscreen: false, autoStart: false }
+      settings = { ...defaultSettings, locale: initialLocale, hideOnFullscreen: false, autoStart: false }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'このブラウザーの保存データを読み込めません。'
@@ -54,7 +64,7 @@ export function initializePlatform(): ShellApi {
     throw new Error(message, { cause: error })
   }
 
-  const game: Game = createGame(profile, profile.rng)
+  let game: Game = createGame(profile, profile.rng)
   const state: BrowserState = { paused, visible: true, profile: 'user', settings, packaged: false,
     fullscreenHidden: false, fullscreenSupported: false, appearance: null, platform: 'browser' }
   const subscribers = {
@@ -104,7 +114,10 @@ export function initializePlatform(): ShellApi {
     if (reward) addOffline(game.profile, reward)
   }
   offline(now - Date.parse(game.profile.savedAt))
-  persist(now)
+  if (persist(now) && legacyLocale !== null) {
+    try { localStorage.removeItem(LEGACY_LOCALE_KEY) }
+    catch { blockStorage('言語設定の移行を完了できませんでした。保存データを書き出してから読み直してください。') }
+  }
 
   const storeView = (): StoreView => ({ mode: 'unavailable', message: '外観を試着できます。ブラウザー版では購入・Steam取引は利用できません。',
     equippedSku: null, appearance: copy(state.appearance), pending: false,
@@ -130,7 +143,22 @@ export function initializePlatform(): ShellApi {
     if (initial) queueMicrotask(() => { if (listeners.has(listener)) listener(copy(initial())) })
     return () => { listeners.delete(listener) }
   }
+  const cloud = new CloudClient(import.meta.env.VITE_CLOUD_URL ?? (import.meta.env.DEV ? DEVELOPMENT_CLOUD_ENDPOINT : undefined), {
+    readProfile: () => ({ ...copy(game.profile), savedAt: new Date().toISOString() }),
+    restoreProfile: raw => {
+      if (storageBlocked) throw new Error(state.storageError)
+      const restored = prepareCloudRestore(raw), next = createGame(restored, restored.rng), previous = game
+      game = next; state.paused = true; accumulated = 0; lastTick = Date.now()
+      if (!persist()) {
+        game = previous; publishState(); publishView(); emit(subscribers.frame, currentFrame())
+        throw new Error(state.storageError)
+      }
+      publishState(); publishView(); emit(subscribers.frame, currentFrame())
+    },
+  })
   const api: ShellApi = {
+    getCloud: async () => cloud.view(),
+    cloudCommand: async command => cloud.execute(parseCloudCommand(command)),
     pointer: () => {},
     openPanel: target => emit(subscribers.navigate, parseTarget(target)),
     openMenu: () => {
@@ -156,9 +184,19 @@ export function initializePlatform(): ShellApi {
       return (result.ok ? { ok: true } : { ok: false, reason: result.reason }) as CommandResult
     },
     updateSettings: async value => {
-      if (storageBlocked) return copy(state)
+      if (storageBlocked) {
+        if (state.settings.locale) setLocale(state.settings.locale)
+        throw new Error(state.storageError)
+      }
       const next = parseSettings(value)
-      if (next) { state.settings = { ...state.settings, ...next, hideOnFullscreen: false, autoStart: false }; persist(); publishState() }
+      if (!next) throw new Error('保存した設定を読み込めません。')
+      const previous = state.settings
+      state.settings = { ...previous, ...next, hideOnFullscreen: false, autoStart: false }
+      if (!persist()) {
+        state.settings = previous; publishState(); if (previous.locale) setLocale(previous.locale)
+        throw new Error(state.storageError)
+      }
+      publishState(); if (state.settings.locale) setLocale(state.settings.locale)
       return copy(state)
     },
     onNavigate: listener => subscribe(subscribers.navigate, listener),

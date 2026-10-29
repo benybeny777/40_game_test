@@ -1,0 +1,12 @@
+.cloud-settings { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 18px; }
+.cloud-settings h2 { font-size: 17px; margin: 0 0 12px; }
+.cloud-settings p { font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.cloud-settings .cloud-endpoint, .cloud-settings .cloud-account { display: flex; flex-direction: column; gap: 4px; }
+.cloud-login fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.cloud-settings .cloud-login label { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 12px 0; }
+.cloud-login input, .cloud-login select { box-sizing: border-box; width: 100%; min-height: 44px; padding: 9px 10px; font: inherit; font-size: 16px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); background: #171621; }
+.cloud-settings button { min-height: 44px; padding: 9px 12px; font: inherit; font-size: 12px; border: 1px solid #665b70; border-radius: 4px; color: var(--text); background: #292637; }
+.cloud-settings button:disabled { opacity: .5; cursor: default; }
+.cloud-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cloud-error { padding: 10px; border: 1px solid #a56868; background: #40252d; color: #ffdedb; }
+.cloud-confirm { border: 1px solid #b28e52; padding: 12px; margin-top: 14px; background: #302622; }

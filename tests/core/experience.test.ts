@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addOffline, advance, applyRewards, claimOffline, computeOffline, createGame, deployedJobs, expToNext, newProfile, partyOrder, runCommand, validateProfile, type Game, type JobId, type Profile } from '../../src/core/index.ts'
+import { addOffline, advance, applyRewards, buildView, claimOffline, computeOffline, createGame, deployedJobs, expToNext, newProfile, partyOrder, runCommand, validateProfile, type Game, type JobId, type Profile } from '../../src/core/index.ts'
 
 const formation = (active: JobId[]) => [...active, ...partyOrder.filter(job => !active.includes(job))]
 const active = ['samurai', 'ninja', 'otaku'] as JobId[]
@@ -26,6 +26,10 @@ describe('経験値は実出撃者へだけ付与する', () => {
     const before = members(profile, replacement)
     expect(runCommand(game, { c: 'reorderParty', order: formation(replacement) }).ok).toBe(true)
     expect(profile.offlineJobs).toEqual(active)
+    const pendingView = buildView(profile, game.world.loop)
+    expect(pendingView.formationPending).toBe(true)
+    expect(pendingView.party.filter(member => member.active).map(member => member.job)).toEqual(replacement)
+    expect(pendingView.party.filter(member => member.fighting).map(member => member.job).sort()).toEqual([...active].sort())
     killEnemies(game)
     expect(active.every(job => profile.party.members[job].lv > 1)).toBe(true)
     expect(members(profile, replacement)).toEqual(before)
@@ -33,6 +37,9 @@ describe('経験値は実出撃者へだけ付与する', () => {
     game.world.phaseUntilTick = game.world.tick
     advance(game); battle(game)
     expect(profile.offlineJobs).toEqual(replacement)
+    const appliedView = buildView(profile, game.world.loop)
+    expect(appliedView.formationPending).toBe(false)
+    expect(appliedView.party.filter(member => member.fighting).map(member => member.job)).toEqual(replacement)
     killEnemies(game)
     expect(replacement.every(job => earnedExp(profile, job) > 0)).toBe(true)
     expect(members(profile, active)).toEqual(veterans)

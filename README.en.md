@@ -4,7 +4,7 @@
 
 A Japanese folklore idle RPG about choosing three companions from a roster of 17, descending into a dungeon, and finding equipment. On Windows, battles run just above the taskbar while a separate panel handles your party, equipment, and attributes. The browser edition shares the same game core and provides a portrait layout for phones.
 
-Normal and Nightmare each have 100 floors. Only the highest difficulty, Abyss, continues without a gameplay floor limit. Future updates are intended to introduce dungeons with different themes and separate progress. Switch between Japanese and English using the language button or Settings.
+Normal and Nightmare each have 100 floors. Only the highest difficulty, Abyss, continues without a gameplay floor limit. Future updates are intended to introduce dungeons with different themes and separate progress. Switch between Japanese and English in Settings.
 
 ![Party management in the running game](docs/images/play-panel.png)
 
@@ -53,9 +53,17 @@ Windows saves automatically every 30 seconds, after floor clears and commands, a
 
 A failed save pauses progression and displays recovery actions. On Windows, retry saving or export the current progress to another location. If saving still fails when quitting, choose to return to the game, export, or explicitly exit without saving. Progress is never silently discarded by that dialog.
 
-Browser saves stay in the current browser and site. Storage failures and conflicting updates from another tab stop progression. Export before reloading; there is no automatic overwrite retry for a tab conflict. Clearing site data also removes its save. Import and cloud sync are not currently provided.
+Browser saves stay in the current browser and site. Storage failures and conflicting updates from another tab stop progression. Export before reloading; there is no automatic overwrite retry for a tab conflict. Clearing site data also removes its save. Cloud saves are available through the separate service described below.
 
 The store previews cosmetic ground themes without changing combat or rewards. Real purchases and Steam Market are unavailable in normal builds. Explicitly isolated development builds support test purchases. Live Steam integration still requires contracts, application IDs, a trusted service, ownership synchronization, and acceptance checks. Local equipment does not become a Steam trading item. See [Commerce](docs/COMMERCE.md).
+
+## Cloud saves in v0.6
+
+Open Cloud saves in Settings to create an account, log in, manually save or load progress, or log out. Usernames contain 3–32 lowercase letters, digits or underscores; passwords contain 12–256 characters. The game does not persist passwords or session tokens. Sign in again after restarting the app or browser.
+
+If another device has saved first, the server rejects the stale revision rather than replacing the newer save. Loading shows the selected revision and asks for confirmation before replacing local progress; the restored game starts paused. Export your local save in Settings first if you want to retain it. An upload with an unknown result is never retried automatically. Use Check status to verify what the server saved before proceeding.
+
+The service lives in the separate repository `C:\00_PG\40_game_test_server`. Development starts with `http://127.0.0.1:8787` as its server address; start the server process separately. Override the Windows endpoint using `GAME_CLOUD_URL` at startup, or the browser endpoint using `VITE_CLOUD_URL` during development/build. Specify a server origin. A production build with no endpoint clearly shows that cloud saves are disconnected and remains playable with local saves. Remote servers require HTTPS. The service has not been publicly deployed or accepted for production operation.
 
 ## Local verification and distribution
 

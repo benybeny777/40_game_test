@@ -4,6 +4,7 @@ registerTranslations({
   '画面の切り替え':'Game sections',
   '保存を再試行':'Retry saving',
   '言語設定を保存できませんでした。':'The language preference could not be saved.',
+  '設定を保存できませんでした。現在の設定を確認してください。':'Settings could not be saved. Please check the current settings.',
   '保存を再試行しましたが、保存できませんでした。保存先を確認してください。':'Saving still failed. Please check the save location.',
   '保存を再試行できませんでした。セーブを書き出して保護してください。':'Could not retry saving. Export your save to protect it.',
   '桜色の足元':'Cherry blossom ground', '月明かりの足元':'Moonlit ground', '提灯色の足元':'Lantern glow ground', '深淵色の足元':'Abyss ground',
@@ -15,6 +16,13 @@ registerTranslations({
   'タスクバー百鬼行':'Taskbar Hyakkiko', '操作を完了できませんでした。少し待って再度お試しください。':'Could not complete the action. Please wait a moment and try again.',
   '出撃・前衛（先頭）':'Deployed · Front line', '控え・経験値なし（育成と装備を保持）':'Reserve · No EXP (progress and gear retained)', '能力・スキルを見る':'View stats and skills',
   '戦闘参加で経験値':'Earns EXP by participating in battle', '控えでは経験値を獲得しません':'Reserves do not gain EXP',
+  '1ポイント追加':'Add 1 point', '残りのポイントを全て追加':'Assign all remaining points',
+  '選択中のキャラが装備できるものだけ':'Only gear the selected companion can equip',
+  'この条件に合う装備はありません。種類や装備条件の絞り込みを変更してください。':'No gear matches these filters. Change the item type or equipment eligibility filter.',
+  '出撃予約・次のウェーブから':'Deployment queued · Starts next wave', '交代待ち・現在の出撃メンバー':'Swap queued · Currently deployed',
+  '反映後の戦闘から経験値を獲得します':'Gains EXP after deployment takes effect',
+  '編成の反映待ちです。現在の出撃メンバーが次のウェーブまで戦い、経験値を獲得します。':'Formation change queued. The currently deployed companions keep fighting and earning EXP until the next wave.',
+  '街で休息中。編成・装備を整えて探索を再開しましょう。':'Resting in town. Prepare your party and equipment before resuming exploration.',
   '経験値は不在時の出撃メンバーに付与します。受取時の入れ替えでは対象は変わりません。':'Experience goes to companions deployed during your absence. Changing the party before claiming does not change the recipients.',
   '攻撃':'Attack', '防御':'Defense', '間隔':'Interval', '会心':'Critical', '回避':'Evasion', '運':'Luck', '射程':'Range',
   'ステータス配分':'Attribute points', '自動振り':'Auto allocation', '全振り':'Use all', '無料で振り直す':'Reset points for free',
@@ -53,6 +61,7 @@ registerTranslations({
   '開発テスト用の外観を取得しました。実決済は発生していません。':'Test cosmetic acquired. No real payment was made.', '外観を取得しました。':'Cosmetic acquired.',
 })
 registerTranslationTemplates([
+  {ja:'{rarity}をまとめて売る（{n}個）',en:'Sell all {rarity} ({n} items)'},
   {ja:'出撃・{n}番手',en:'Deployed · Position {n}'}, {ja:'次のLvまで {n}',en:'{n} EXP to next level'}, {ja:'{n}秒',en:'{n}s'}, {ja:'Lv{n}で解放',en:'Unlocks at Lv {n}'}, {ja:'未使用 {n} pt',en:'Unspent: {n} pt'},
   {ja:'主属性：{main}。自動配分 {weights}。手動にするには自動振りをOFFにします。',en:'Main attribute: {main}. Auto weights: {weights}. Turn auto allocation off to assign points manually.'},
   {ja:'基礎{base}＋配分{points}',en:'Base {base} + assigned {points}'}, {ja:'未使用ポイントを全て{attribute}へ',en:'Assign all remaining points to {attribute}'},
@@ -69,6 +78,9 @@ registerTranslationTemplates([
 registerTranslations({ '（この環境では使えません）':'(unavailable on this device)', 'このブラウザー内（Windows版とは別）':'This browser (separate from Windows)', '開発用（.dev-data）':'Development profile', '利用者用':'User profile' })
 registerTranslations({
   'ストア記録を読み込めません。購入と外観の変更を停止しました。':'The store record could not be read. Purchases and cosmetic changes are stopped.',
+  'ストアの最新状態を確認できません。操作を停止しました。状態を再確認してください。':'The latest store state could not be confirmed. Actions are stopped. Check the state again.',
+  'ストアの状態を再確認':'Check store state again',
+  '商品価格の取得に失敗しました。購入を停止しました。':'Product prices could not be loaded. Purchases are stopped.',
   'ストア記録を保存できません。購入を停止しました。':'The store record could not be saved. Purchases are stopped.',
   '開発テスト：実決済は発生しません。テスト所有権は製品版へ移りません。':'Development test: no real payment. Test ownership does not transfer to the released game.',
   '購入の確定はSteamの確認結果を受け取った後に行います。':'Purchases are finalized only after Steam confirms the result.',

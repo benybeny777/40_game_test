@@ -4,6 +4,7 @@ export const platformEnglish: Record<string, string> = {
   '保存形式が対応していません。':'This save format is not supported.',
   '新しいバージョンで保存されたデータです。最新版で開いてください。':'This save was made with a newer version. Please open it with the latest version.',
   '保存した設定を読み込めません。':'The saved settings could not be loaded.',
+  '言語設定の移行を完了できませんでした。保存データを書き出してから読み直してください。':'The language setting could not be migrated. Export your save data, then reload.',
   '保存日時を読み込めません。':'The save timestamp could not be read.',
   'このブラウザーの保存データを読み込めません。':'The save data in this browser could not be read.',
   '別の画面で保存データが更新されました。重複した画面を閉じ、読み直してください。':'Another window updated this save. Close duplicate game windows and reload.',

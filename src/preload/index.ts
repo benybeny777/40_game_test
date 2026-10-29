@@ -27,5 +27,7 @@ const api: ShellApi = {
   purchaseProduct: (sku) => ipcRenderer.invoke(channels.purchase, sku),
   equipCosmetic: (sku) => ipcRenderer.invoke(channels.equipCosmetic, sku),
   previewCosmetic: (sku) => ipcRenderer.invoke(channels.previewCosmetic, sku),
+  getCloud: () => ipcRenderer.invoke(channels.getCloud),
+  cloudCommand: (command) => ipcRenderer.invoke(channels.cloudCommand, command),
 }
 contextBridge.exposeInMainWorld('game', api)

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { CommerceResult, StorePrice, StoreView, ThemeDefinition } from '../shared/commerce.ts'
 import { catalog, findProduct } from './catalog.ts'
@@ -23,6 +23,7 @@ export class CommerceService {
   private state: StoreState
   private error: string | undefined
   private busy = false
+  private loadedRecord = false
   private readonly verifiedOwned = new Map<string, string>()
 
   constructor(private readonly options: CommerceOptions) {
@@ -31,11 +32,11 @@ export class CommerceService {
     this.state = { version: 1, scope: this.mode === 'sandbox' ? 'sandbox' : 'live', ...(this.mode === 'live' ? { account: { appId: options.appId!, steamId: options.steamId! } } : {}), owned: [], equippedSku: null, transactions: [] }
     // A local file cannot grant production entitlements. Live adapters must revalidate ownership on startup.
     // Until that sync exists, live cached ownership is intentionally not restored.
-    if (this.mode === 'unavailable' || !existsSync(options.path)) return
+    if (this.mode === 'unavailable') return
     try {
       this.reload()
-    } catch {
-      this.error = 'ストア記録を読み込めません。購入と外観の変更を停止しました。'
+    } catch (error) {
+      this.stop('ストア記録を読み込めません。購入と外観の変更を停止しました。', error)
     }
   }
 
@@ -57,11 +58,14 @@ export class CommerceService {
   }
 
   private reload() {
-    if (!existsSync(this.options.path)) {
-      if (this.state.transactions.length) throw new Error('store disappeared')
-      return
+    let text: string
+    try { text = readFileSync(this.options.path, 'utf8') }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT' && !this.loadedRecord && !this.state.transactions.length) return
+      throw error
     }
-    const state = this.validate(JSON.parse(readFileSync(this.options.path, 'utf8')))
+    const state = this.validate(JSON.parse(text))
+    this.loadedRecord = true
     for (const transaction of state.transactions) if (transaction.status === 'pending') transaction.status = 'unknown'
     if (this.mode === 'live') {
       // Only entitlements verified in this running service may survive a local reload.
@@ -96,18 +100,25 @@ export class CommerceService {
   }
 
   private persistOrStop(): boolean {
-    try { this.persist(); return true } catch { this.error = 'ストア記録を保存できません。購入を停止しました。'; return false }
+    try { this.persist(); this.loadedRecord = true; return true }
+    catch (error) { this.stop('ストア記録を保存できません。購入を停止しました。', error); return false }
+  }
+  private stop(message: string, error: unknown) {
+    this.error = message
+    console.error(message, error)
   }
   private fail(reason: string): CommerceResult { return { ok: false, reason, view: this.getView() } }
   private pendingSku(sku: string) { return this.state.transactions.some(transaction => transaction.sku === sku && (transaction.status === 'pending' || transaction.status === 'unknown'
     || this.mode === 'live' && transaction.status === 'paid' && !this.state.owned.includes(sku))) }
   private price(sku: string): StorePrice | null {
-    if (this.mode !== 'live') return null
+    if (this.mode !== 'live' || this.error) return null
     try {
       const price = this.options.provider!.getPrice(sku)
-      return price && Number.isSafeInteger(price.amount) && price.amount >= 0 && /^[A-Z]{3}$/.test(price.currency)
-        && typeof price.formatted === 'string' && price.formatted.length > 0 && price.formatted.length < 100 ? { ...price } : null
-    } catch { return null }
+      if (price === null) return null
+      if (!price || !Number.isSafeInteger(price.amount) || price.amount < 0 || !/^[A-Z]{3}$/.test(price.currency)
+        || typeof price.formatted !== 'string' || price.formatted.length === 0 || price.formatted.length >= 100) throw new Error('Invalid store price: ' + sku)
+      return { ...price }
+    } catch (error) { this.stop('商品価格の取得に失敗しました。購入を停止しました。', error); return null }
   }
 
   getAppearance(): ThemeDefinition | null {
@@ -116,13 +127,14 @@ export class CommerceService {
   }
 
   getView(): StoreView {
+    const prices = new Map(catalog.map(product => [product.sku, this.price(product.sku)]))
     const enabled = this.mode !== 'unavailable' && !this.error
     return { mode: this.mode, message: this.mode === 'sandbox' ? '開発テスト：実決済は発生しません。テスト所有権は製品版へ移りません。'
       : this.mode === 'live' ? '購入の確定はSteamの確認結果を受け取った後に行います。' : '現在は販売前です。Steam決済の接続後に購入できるようになります。',
       products: catalog.map(product => ({ sku: product.sku, name: product.name, description: product.description, theme: structuredClone(product.theme),
-        price: this.price(product.sku),
+        price: prices.get(product.sku)!,
         owned: enabled && this.state.owned.includes(product.sku), equipped: enabled && this.state.equippedSku === product.sku,
-        purchasable: enabled && !this.busy && !this.state.owned.includes(product.sku) && !this.pendingSku(product.sku) && (this.mode === 'sandbox' || this.price(product.sku) !== null) })),
+        purchasable: enabled && !this.busy && !this.state.owned.includes(product.sku) && !this.pendingSku(product.sku) && (this.mode === 'sandbox' || prices.get(product.sku) !== null) })),
       equippedSku: enabled ? this.state.equippedSku : null, appearance: enabled ? this.getAppearance() : null,
       pending: this.busy || catalog.some(product => this.pendingSku(product.sku)),
       market: { available: false, message: 'Steamマーケット取引は準備中です。ローカルの装備・小判は取引できません。' },
@@ -154,7 +166,7 @@ export class CommerceService {
         result = this.mode === 'sandbox'
           ? { status: 'paid', receipt: { orderId: order.orderId, sku, appId: 0, steamId: 'sandbox', receiptId: 'sandbox:' + order.orderId, signature: 'sandbox-only' } }
           : await this.options.provider!.purchase({ orderId: order.orderId, sku, appId: this.options.appId!, steamId: this.options.steamId! })
-      } catch { result = { status: 'unknown' } }
+      } catch (error) { console.error('Purchase response failed; order remains unconfirmed', { orderId: order.orderId, error }); result = { status: 'unknown' } }
       const reason = this.withStoreLock(() => {
         this.reload()
         const current = this.state.transactions.find(candidate => candidate.orderId === order.orderId && candidate.sku === sku)
@@ -176,8 +188,8 @@ export class CommerceService {
         return undefined
       })
       return finish(reason)
-    } catch {
-      this.error = transaction ? '購入結果の記録を確定できません。自動で再購入せず、取引の確認が必要です。' : 'ストア記録を安全に更新できません。購入を停止しました。'
+    } catch (error) {
+      this.stop(transaction ? '購入結果の記録を確定できません。自動で再購入せず、取引の確認が必要です。' : 'ストア記録を安全に更新できません。購入を停止しました。', error)
       return finish(this.error)
     } finally { this.busy = false }
   }
@@ -193,9 +205,9 @@ export class CommerceService {
         if (!this.persistOrStop()) { this.state.equippedSku = previous; return this.fail(this.error!) }
         return { ok: true, view: this.getView() }
       })
-    } catch {
-      this.error = 'ストア記録を安全に更新できません。外観の変更を停止しました。'
-      return this.fail(this.error)
+    } catch (error) {
+      this.stop('ストア記録を安全に更新できません。外観の変更を停止しました。', error)
+      return this.fail(this.error!)
     }
   }
 }

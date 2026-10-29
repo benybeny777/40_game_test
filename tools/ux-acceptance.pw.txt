@@ -1,0 +1,46 @@
+async (page) => {
+  const assert = (ok, message) => { if (!ok) throw new Error(message); };
+  const checks = [];
+  for (const [locale, expected] of [['ja-JP', 'ja'], ['en-US', 'en'], ['fr-FR', 'en']]) {
+    const context = await page.context().browser().newContext({ locale, viewport: { width: 375, height: 812 } });
+    try {
+      const fresh = await context.newPage();
+      await fresh.goto('http://127.0.0.1:5174/mobile/');
+      await fresh.locator('.card').first().waitFor();
+      assert(await fresh.locator('html').getAttribute('lang') === expected, `OS locale ${locale}`);
+      assert(await fresh.locator('header button').count() === 0, 'No casual language toggle');
+      await fresh.locator('[data-focus-key=nav-settings]').click();
+      assert(await fresh.locator('select[aria-label*=Language]').inputValue() === expected, 'Settings shows current language');
+      assert(await fresh.locator('select').count() === 2, 'Browser settings only language and FPS');
+      await fresh.locator('select[aria-label*=Language]').selectOption(expected === 'ja' ? 'en' : 'ja');
+      await fresh.reload(); await fresh.locator('.card').first().waitFor();
+      assert(await fresh.locator('html').getAttribute('lang') === (expected === 'ja' ? 'en' : 'ja'), 'Explicit language overrides OS after restart');
+      checks.push(`OS ${locale}, explicit override reload`);
+    } finally { await context.close(); }
+  }
+  await page.goto('http://127.0.0.1:5174/mobile/'); await page.locator('.card').first().waitFor();
+  await page.route('**/qa-ux', route => route.fulfill({ contentType: 'text/html', body: '<html>UX fixture</html>' }));
+  await page.goto('http://127.0.0.1:5174/qa-ux');
+  await page.evaluate(() => {
+    const key = 'hyakkiko.web.save', save = JSON.parse(localStorage.getItem(key));
+    save.profile.pendingOffline = { ms: 600000, koban: 42, exp: 10, items: 0, expByJob: { samurai: 10, ninja: 10, otaku: 10 } };
+    save.state.paused = true; save.profile.savedAt = new Date().toISOString();
+    save.settings.locale = 'en'; localStorage.setItem(key, JSON.stringify(save));
+  });
+  await page.goto('http://127.0.0.1:5174/mobile/');
+  const modal = page.getByRole('dialog'); await modal.waitFor();
+  assert(await modal.getAttribute('aria-modal') === 'true', 'Modal semantics');
+  for (const key of ['Tab', 'Shift+Tab', 'Escape']) {
+    await page.keyboard.press(key);
+    assert(await page.evaluate(() => !!document.activeElement?.closest('[role=dialog]')), `Modal focus ${key}`);
+  }
+  assert(await page.locator('#mobile-battle').evaluate(el => el.inert), 'Background battle inert');
+  await modal.locator('button').click(); await modal.waitFor({ state: 'detached' });
+  assert(!await page.locator('#mobile-battle').evaluate(el => el.inert), 'Background restored');
+  await page.locator('[data-focus-key=nav-stage]').click();
+  assert(await page.locator('.stages').count() === 0, 'Redundant floor grid removed');
+  assert(await page.locator('.floor-jump input').count() === 1, 'Floor jump retained');
+  await page.screenshot({ path: '.dev-data/preview/ux-dungeon.png', scale: 'css' });
+  checks.push('reward modal focus trap, background inert, claim and restore', 'compact dungeon controls');
+  return { ok: true, checks };
+}

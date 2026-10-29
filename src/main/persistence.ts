@@ -3,8 +3,18 @@ import { resolve } from 'node:path'
 /** A notification failure must never change whether the data write actually succeeded. */
 export class PersistenceGuard<T> {
   error: string | undefined
-  constructor(private readonly write: (value: T) => void, private readonly changed: (error?: string) => void) {}
-  private notify(error?: string) { try { if (error === undefined) this.changed(); else this.changed(error) } catch { /* Presentation cannot change the durable write result. */ } }
+  notificationError: unknown
+  constructor(private readonly write: (value: T) => void, private readonly changed: (error?: string) => void,
+    private readonly notificationFailed: (error: unknown) => void = error => console.error('Persistence notification failed', error)) {}
+  private notify(error?: string) {
+    try {
+      if (error === undefined) this.changed(); else this.changed(error)
+      this.notificationError = undefined
+    } catch (failure) {
+      this.notificationError = failure
+      this.notificationFailed(failure)
+    }
+  }
   save(value: T): boolean {
     try { this.write(value) } catch (error) {
       this.error = (error instanceof Error ? error.message : String(error)) || 'Save failed'
@@ -33,7 +43,12 @@ export class StoragePause {
 /** Persist before exposing a settings change; failed writes republish the committed state to undo optimistic UI. */
 export function commitSettings<T extends object>(current: T, patch: Partial<T>, write: (settings: T) => void, failed: () => void): T {
   const candidate = { ...current, ...patch }
-  try { write(candidate) } catch (error) { try { failed() } catch { /* Keep the original write error. */ } throw error }
+  try { write(candidate) } catch (error) {
+    const errors: unknown[] = [error]
+    try { failed() } catch (notificationError) { errors.push(notificationError) }
+    if (errors.length > 1) throw new AggregateError(errors, 'Settings write and rollback notification failed', { cause: error })
+    throw error
+  }
   return candidate
 }
 

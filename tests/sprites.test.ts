@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { enemies, partyOrder } from '../src/core/index.ts'
+import { enemies, jobs, partyOrder } from '../src/core/index.ts'
 import { parsePalette, parseSprite } from '../src/renderer/strip/sprites/parse'
 import { partyArt, enemyArt } from '../src/shared/art'
 
@@ -16,12 +16,19 @@ describe('テキストのスプライト', () => {
     const names = new Set(sprites.map((sprite) => sprite.name))
     expect(new Set(partyArt)).toEqual(new Set(partyOrder))
     for (const id of [...Object.values(enemies).map((enemy) => enemy.sprite ?? enemy.id), 'projectiles']) expect(names.has(id) || (enemyArt as readonly string[]).includes(id), id).toBe(true)
-    for (const sheet of ['party-atlas.png', 'party-extra-a.png', 'party-extra-b.png', 'tono.png', 'gariben.png', 'enemy-atlas.png', 'enemy-attack.png', 'dungeon-backgrounds.png']) {
+    for (const sheet of ['party-atlas.png', 'party-extra-a.png', 'party-extra-b.png', 'party-walk-a.png', 'party-walk-b.png', 'party-walk-c.png', 'tono.png', 'gariben.png', 'enemy-atlas.png', 'enemy-attack.png', 'dungeon-backgrounds.png']) {
       const bytes = readFileSync(join(root, 'assets/sprites/art', sheet))
       expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
     }
     for (const sprite of sprites.filter((candidate) => (partyOrder as string[]).includes(candidate.name))) {
       expect(Object.keys(sprite.anims)).toEqual(expect.arrayContaining(['idle', 'walk', 'attack']))
+    }
+  })
+  it('実戦で使う全飛び道具に専用アニメがあり、別の弾で代用しない', () => {
+    const projectiles = sprites.find(sprite => sprite.name === 'projectiles')!
+    for (const definition of [...Object.values(jobs), ...Object.values(enemies)]) {
+      const kind = definition.attack.projectile
+      if (kind) expect(Object.hasOwn(projectiles.anims, kind), kind).toBe(true)
     }
   })
   it('全コマが指定の大きさ', () => {

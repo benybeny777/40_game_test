@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { newProfile, PROFILE_VERSION, type Profile } from '../src/core/index.ts'
 import { defaultSettings, type ShellApi, type ShellState } from '../src/shared/api.ts'
 import { initializePlatform } from '../src/renderer/platform.ts'
-import { setLocale } from '../src/shared/i18n'
+import { getLocale, setLocale } from '../src/shared/i18n'
 
 const storageKey = 'hyakkiko.web.save'
 const start = Date.parse('2026-10-29T03:00:00.000Z')
@@ -37,7 +37,7 @@ function browser(storage = new MemoryStorage(), hidden = false) {
   const document = new BrowserDocument(), window = new BrowserWindow()
   document.hidden = hidden
   vi.stubGlobal('window', window); vi.stubGlobal('document', document); vi.stubGlobal('localStorage', storage)
-  vi.stubGlobal('navigator', { userActivation: { isActive: true } })
+  vi.stubGlobal('navigator', { language: 'ja-JP', userActivation: { isActive: true } })
   vi.stubGlobal('crypto', { getRandomValues: (values: Uint32Array) => { for (let i = 0; i < values.length; i++) values[i] = ++randomValue; return values } })
   return { document, window, storage }
 }
@@ -59,6 +59,83 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(start); randomValue = 0 
 afterEach(() => { setLocale('ja'); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('ブラウザー保存・復帰・操作', () => {
+  it('クラウド復元のローカル書込が失敗しても現在の進行は失わない', async () => {
+    const { storage } = browser(), original = profiled(), remote = profiled()
+    original.koban = 123; remote.koban = 777; seed(storage, original, true)
+    const response = { revision: 1, updatedAt: new Date(start).toISOString(), save: { format: 1, game: 'taskbar-hyakkiko', profile: remote } }
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'test-only-session', account: { id: 'account', username: 'testuser' }, expiresAt: '2027-01-01T00:00:00Z' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify(response)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(response))))
+    const api = initializePlatform()
+    expect((await api.cloudCommand({ action: 'login', username: 'testuser', password: 'test-password-123' })).ok).toBe(true)
+    storage.failWrites = true
+    expect((await api.cloudCommand({ action: 'download', revision: 1 })).ok).toBe(false)
+    expect((await api.getView()).koban).toBe(123)
+    expect((await api.getState()).paused).toBe(true)
+    expect((await api.getState()).storageError).toBeTruthy()
+    expect(JSON.parse(storage.getItem(storageKey)!).profile.koban).toBe(123)
+  })
+  it.each([['ja-JP', 'ja'], ['en-US', 'en'], ['fr-FR', 'en']])('初回はOS言語%sを使い、設定を通常セーブだけへ保存する', async (language, expected) => {
+    const { storage } = browser()
+    vi.stubGlobal('navigator', { language })
+    const api = initializePlatform()
+    expect((await api.getState()).settings.locale).toBe(expected)
+    expect(getLocale()).toBe(expected)
+    expect(JSON.parse(storage.getItem(storageKey)!).settings.locale).toBe(expected)
+    expect(storage.length).toBe(1)
+  })
+  it('旧言語キーを一度だけ優先移行し、成功後は通常設定だけを正本にする', async () => {
+    const { storage } = browser()
+    seed(storage, profiled()); storage.setItem('hyakkiko.locale', 'en')
+    const api = initializePlatform()
+    expect((await api.getState()).settings.locale).toBe('en')
+    expect(storage.getItem('hyakkiko.locale')).toBeNull()
+    expect(JSON.parse(storage.getItem(storageKey)!).settings.locale).toBe('en')
+    await api.updateSettings({ locale: 'ja' })
+    expect(getLocale()).toBe('ja')
+    browser(storage); vi.stubGlobal('navigator', { language: 'en-US' })
+    expect((await initializePlatform().getState()).settings.locale).toBe('ja')
+    expect(getLocale()).toBe('ja')
+  })
+  it('移行の保存失敗では旧キーと元セーブを保護し、停止と保存障害を表示する', async () => {
+    const { storage } = browser()
+    seed(storage, profiled()); storage.setItem('hyakkiko.locale', 'en')
+    const original = storage.getItem(storageKey); storage.failWrites = true
+    const state = await initializePlatform().getState()
+    expect(state.paused).toBe(true); expect(state.storageError).toBeTruthy()
+    expect(storage.getItem('hyakkiko.locale')).toBe('en')
+    expect(storage.getItem(storageKey)).toBe(original)
+  })
+  it('旧言語キーの削除失敗も見える障害として停止し、移行済み設定を保持する', async () => {
+    const { storage } = browser()
+    storage.setItem('hyakkiko.locale', 'en')
+    vi.spyOn(storage, 'removeItem').mockImplementation(() => { throw new Error('denied') })
+    const state = await initializePlatform().getState()
+    expect(state.paused).toBe(true); expect(state.storageError).toContain('言語設定の移行')
+    expect(JSON.parse(storage.getItem(storageKey)!).settings.locale).toBe('en')
+    expect(storage.getItem('hyakkiko.locale')).toBe('en')
+  })
+  it('旧言語キーの読み込み拒否は初期値で握り潰さず起動エラーへ渡す', () => {
+    const { storage, document } = browser()
+    vi.spyOn(storage, 'getItem').mockImplementation(() => { throw new Error('storage denied') })
+    expect(() => initializePlatform()).toThrow('storage denied')
+    expect(document.root.children[0].children.map(node => node.textContent).join(' ')).toContain('storage denied')
+    expect(storage.length).toBe(0)
+  })
+  it('言語変更の保存失敗は表示と設定を戻し、保存できたふりをしない', async () => {
+    const { storage } = browser(), api = initializePlatform()
+    const original = storage.getItem(storageKey)
+    storage.failWrites = true; setLocale('en')
+    await expect(api.updateSettings({ locale: 'en' })).rejects.toThrow()
+    const state = await api.getState()
+    expect(state.settings.locale).toBe('ja'); expect(getLocale()).toBe('ja')
+    expect(state.storageError).toBeTruthy(); expect(state.paused).toBe(true)
+    expect(storage.getItem(storageKey)).toBe(original)
+    setLocale('en')
+    await expect(api.updateSettings({ locale: 'en' })).rejects.toThrow()
+    expect(getLocale()).toBe('ja')
+  })
   it('Electronのpreload APIがあればブラウザーセーブを書かずに利用する', () => {
     const { window, storage } = browser()
     const native = { sentinel: true } as unknown as ShellApi
@@ -104,7 +181,7 @@ describe('ブラウザー保存・復帰・操作', () => {
   })
   it('英語設定の起動エラーでも元のセーブを保護し、復旧案内を英語で表示する', () => {
     const { storage, document } = browser(), profile = profiled()
-    setLocale('en'); profile.version = PROFILE_VERSION + 1
+    vi.stubGlobal('navigator', { language: 'en-US' }); profile.version = PROFILE_VERSION + 1
     const original = envelope(profile); storage.setItem(storageKey, original)
     expect(() => initializePlatform()).toThrow()
     expect(storage.getItem(storageKey)).toBe(original)

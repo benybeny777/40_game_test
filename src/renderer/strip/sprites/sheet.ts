@@ -47,7 +47,8 @@ export const artReady = Promise.all([loadArtSheets(), backgroundReady]).then(([a
   document.documentElement.dataset.artSheets = String(art.length)
 })
 export function frameAt(sheet: Sheet, anim: string, elapsedMs: number): Frame {
-  const entry = sheet.anims[anim] ?? sheet.anims.idle ?? Object.values(sheet.anims)[0]
+  const entry = sheet.anims[anim]
+  if (!entry || !entry.frames.length || entry.fps <= 0) throw new Error(`Invalid animation: ${sheet.name}/${anim}`)
   const index = Math.floor(Math.max(0, elapsedMs) / (1000 / entry.fps))
   return entry.frames[entry.loop ? index % entry.frames.length : Math.min(index, entry.frames.length - 1)]
 }

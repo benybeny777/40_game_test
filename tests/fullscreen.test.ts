@@ -35,6 +35,17 @@ describe('全画面のアプリを使っている間は帯を隠す（M7 §1）'
 
 describe('全画面監視の終了', () => {
   afterEach(() => vi.useRealTimers())
+  it('監視失敗は通知し、正常判定として継続しない', () => {
+    vi.useFakeTimers()
+    const fault = new Error('probe failed'), failed = vi.fn(), log = vi.fn()
+    const probe = vi.fn(() => { throw fault })
+    const watcher = new FullscreenWatcher(probe, () => display, vi.fn(), log, failed)
+    watcher.start()
+    expect(failed).toHaveBeenCalledWith(fault)
+    expect(log).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(10000)
+    expect(probe).toHaveBeenCalledOnce()
+  })
   it('開始は重複せず、停止すると隠れた帯を戻してポーリングも止まる', () => {
     vi.useFakeTimers()
     const probe = vi.fn(() => sample({ rect: display })), changed = vi.fn()

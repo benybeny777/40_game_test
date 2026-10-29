@@ -47,7 +47,8 @@ export function createProbe(log: (message: string) => void): Probe | null {
     const nameBuffer = new Uint16Array(256)
     return () => {
       const state = [0]
-      queryState(state)
+      const result = queryState(state)
+      if (result < 0) throw new Error(`SHQueryUserNotificationState failed: ${result}`)
       const hwnd = foregroundWindow()
       if (!hwnd) return { state: state[0], className: '', rect: null }
       const rect: Partial<Rect> = {}
@@ -68,7 +69,8 @@ export class FullscreenWatcher {
   private timer: ReturnType<typeof setInterval> | undefined
   hidden = false
   constructor(private readonly probe: Probe, private readonly displayRect: () => Rect,
-    private readonly onChange: (hidden: boolean) => void, private readonly log: (message: string) => void = () => {}) {}
+    private readonly onChange: (hidden: boolean) => void, private readonly log: (message: string) => void = console.error,
+    private readonly onFailure: (error: unknown) => void = console.error) {}
 
   start() {
     if (this.timer) return
@@ -85,6 +87,7 @@ export class FullscreenWatcher {
     try { hidden = shouldHideStrip(this.probe(), this.displayRect()) } catch (error) {
       this.log(`fullscreen probe failed: ${error instanceof Error ? error.message : String(error)}`)
       this.stop()
+      this.onFailure(error)
       return
     }
     if (hidden === this.hidden) return

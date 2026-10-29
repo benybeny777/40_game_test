@@ -16,7 +16,7 @@ export interface HostCallbacks {
 }
 /** Runs the deterministic simulation at a fixed 100ms tick against wall-clock time. */
 export class GameHost {
-  readonly game: Game
+  game: Game
   paused = false
   private last = performance.now()
   private accumulated = 0
@@ -31,6 +31,14 @@ export class GameHost {
   start() { this.last = performance.now(); this.timer = setInterval(() => this.poll(), POLL_MS) }
   stop() { if (this.timer) clearInterval(this.timer); this.timer = undefined }
   get profile() { return this.game.profile }
+  prepareProfile(profile: Profile): Game { return createGame(profile, profile.rng) }
+  replacePreparedProfile(game: Game) {
+    this.game = game
+    this.setPaused(true)
+    this.lastSave = performance.now()
+    this.callbacks.viewChanged()
+    this.callbacks.frame(this.frame())
+  }
   view(): ProfileView { return buildView(this.game.profile, this.game.world.loop) }
   frame(events: SimEvent[] = []): Frame { return { snapshot: snapshot(this.game.world, this.game.profile.koban), events } }
   setPaused(paused: boolean) { this.paused = paused; this.accumulated = 0; this.last = performance.now() }

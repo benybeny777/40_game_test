@@ -26,10 +26,15 @@ import { join } from 'node:path'
 describe('保存通知と再試行の停止状態', () => {
   it('画面通知が失敗しても、成功した保存を失敗扱いにしない', () => {
     let failWrite = true
-    const guard = new PersistenceGuard(() => { if (failWrite) throw new Error('disk full') }, () => { throw new Error('renderer gone') })
+    const failed = vi.fn(), notificationError = new Error('renderer gone')
+    const guard = new PersistenceGuard(() => { if (failWrite) throw new Error('disk full') }, () => { throw notificationError }, failed)
     expect(guard.save({})).toBe(false); expect(guard.error).toBe('disk full')
+    expect(guard.notificationError).toBe(notificationError)
+    expect(failed).toHaveBeenLastCalledWith(notificationError)
     failWrite = false
     expect(guard.save({})).toBe(true); expect(guard.error).toBeUndefined()
+    expect(guard.notificationError).toBe(notificationError)
+    expect(failed).toHaveBeenCalledTimes(2)
   })
   it('空の例外メッセージでも保存失敗を見失わない', () => {
     const changed = vi.fn(), guard = new PersistenceGuard(() => { throw new Error('') }, changed)
@@ -48,6 +53,14 @@ describe('保存通知と再試行の停止状態', () => {
 })
 
 describe('設定の確定前公開を防ぐ', () => {
+  it('保存と画面の復元通知が共に失敗した場合は両方の原因を返す', () => {
+    const writeError = new Error('settings denied'), notifyError = new Error('renderer gone')
+    let failure: unknown
+    try { commitSettings({}, {}, () => { throw writeError }, () => { throw notifyError }) } catch (error) { failure = error }
+    expect(failure).toBeInstanceOf(AggregateError)
+    expect((failure as AggregateError).errors).toEqual([writeError, notifyError])
+    expect((failure as Error).cause).toBe(writeError)
+  })
   it('保存失敗時はlocaleを含む元の設定を保ち、旧状態を再配信する', () => {
     const current: Readonly<{ locale: string; autoStart: boolean }> = Object.freeze({ locale: 'ja', autoStart: false }), republish = vi.fn()
     const write = vi.fn(() => { throw new Error('settings denied') })

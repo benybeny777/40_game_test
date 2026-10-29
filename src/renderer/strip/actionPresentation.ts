@@ -1,7 +1,8 @@
 import { balance } from '../../core/data/balance.ts'
 import type { Side } from '../../core/sim/types.ts'
+import { gaitTiming } from './gait'
 
-export const actionTiming = { walkFps: 10, attackFps: 14, hitStopMs: 45, flashMs: 65, knockMs: 150, sparkMs: 115, recoveryMs: 110 } as const
+export const actionTiming = { walkFps: gaitTiming.fps, attackFps: 14, hitStopMs: 45, flashMs: 65, knockMs: 150, sparkMs: 115, recoveryMs: 110 } as const
 type Style = 'slash' | 'thrust' | 'fist' | 'palm' | 'toss' | 'spell' | 'hop' | 'fan' | 'book'
 interface Motion { style: Style; reach: number; lift: number; hold: number; width: number; height: number }
 const motion = (style: Style, reach: number, lift = 0, hold = 80, width = 0, height = 0): Motion => ({ style, reach, lift, hold, width, height })

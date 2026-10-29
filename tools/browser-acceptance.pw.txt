@@ -3,7 +3,13 @@ async (page) => {
   const assert = (condition, reason) => { if (!condition) throw new Error(reason); };
   await page.goto('http://127.0.0.1:5174/mobile/');
   await page.locator('.card').first().waitFor();
-  if (await page.locator('html').getAttribute('lang') !== 'en') await page.locator('.language-toggle').click();
+  const selectLanguage = async value => {
+    await page.locator('[data-focus-key="nav-settings"]').click();
+    await page.locator('select[aria-label*="Language"]').selectOption(value);
+  };
+  assert(await page.locator('header button').count() === 0, 'Language setting must not be a header toggle');
+  if (await page.locator('html').getAttribute('lang') !== 'en') await selectLanguage('en');
+  await page.locator('[data-focus-key="nav-party"]').click();
   const initial = await page.evaluate(async () => ({ view: await window.game.getView(), state: await window.game.getState() }));
   assert(initial.view.party.length === 17 && initial.view.party.filter(member => member.active).length === 3, '17 members / 3 active');
   assert(!initial.state.storageError, 'Unexpected save error');
@@ -38,9 +44,9 @@ async (page) => {
   await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
   assert(await page.evaluate(() => document.activeElement?.dataset.focusKey) === 'nav-help', 'Keyboard focus lost on view refresh');
   assert(Math.abs(await page.locator('nav').evaluate(element => element.scrollLeft) - beforeNav) < 2, 'Navigation scroll lost on refresh');
-  await page.locator('.language-toggle').click();
+  await selectLanguage('ja');
   assert(await page.locator('html').getAttribute('lang') === 'ja', 'Japanese language switch');
-  await page.locator('.language-toggle').click();
+  await selectLanguage('en');
   await page.getByRole('button', { name: 'Party', exact: true }).click();
   await page.locator('main').evaluate(element => { element.scrollTop = 0; });
   const saved = await page.evaluate(async () => { const v = await window.game.getView(); return { order: v.party.map(m => m.job), koban: v.koban, level: v.party[0].lv }; });

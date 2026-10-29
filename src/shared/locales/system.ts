@@ -10,6 +10,8 @@ registerTranslations({
   '未保存の進行があります。': 'You have unsaved progress.', 'ゲームへ戻る': 'Return to game', '保存せず終了': 'Quit without saving',
   '保存先を確認して再試行するか、別の場所へ書き出してください。保存せず終了すると、この起動中の未保存分は失われます。': 'Check the save location and retry, or export to another location. Quitting without saving will lose unsaved progress from this session.',
   'タスクバー百鬼行を起動できません': 'Could not start Taskbar Hyakkiko',
+  '保存状態を画面に通知できません': 'Could not notify the game window about save status',
+  '全画面の監視を続けられません': 'Fullscreen detection has stopped because of an error',
   '街へ戻る': 'Return to town', '準備OK': 'Ready', '奥義はLv10で解放': 'Ultimate unlocks at Lv 10', '戦闘不能': 'Knocked out',
   'クリックでステージ画面': 'Click to open dungeon', 'クリックで育成画面': 'Click to manage character', '周回中': 'Farming', '（ボス）': ' (Boss)',
   '画像を読み込めませんでした。再起動してください。': 'Images could not be loaded. Please restart.',

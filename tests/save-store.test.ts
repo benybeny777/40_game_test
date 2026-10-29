@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { newProfile, PROFILE_VERSION } from '../src/core/index.ts'
-import { FutureSaveVersionError, loadProfile, SaveRecoveryRequiredError, saveProfile, writeAtomic, type SavePaths } from '../src/main/saveStore.ts'
+import { FutureSaveVersionError, loadProfile, loadSettings, SaveRecoveryRequiredError, saveProfile, writeAtomic, type SavePaths } from '../src/main/saveStore.ts'
 
 let directory = '', paths: SavePaths
 beforeEach(() => {
@@ -17,6 +17,20 @@ afterEach(() => {
 })
 
 describe('製品セーブの保護', () => {
+  it('初回だけOS言語で設定を作り、明示選択を優先する', () => {
+    expect(loadSettings(paths, 'en').locale).toBe('en')
+    writeFileSync(paths.settings, JSON.stringify({ locale: 'ja' }))
+    expect(loadSettings(paths, 'en').locale).toBe('ja')
+  })
+  it.each(['{broken', 'null', '{"locale":"unknown"}'])('破損設定を既定値で隠さない: %s', text => {
+    writeFileSync(paths.settings, text)
+    expect(() => loadSettings(paths, 'en')).toThrow('設定が破損')
+    expect(readFileSync(paths.settings, 'utf8')).toBe(text)
+  })
+  it('設定の読み取り障害を初回起動として扱わない', () => {
+    mkdirSync(paths.settings)
+    expect(() => loadSettings(paths, 'en')).toThrow('設定を読み込めません')
+  })
   it('新規フォルダだけは新しいプロフィールを作る', () => {
     expect(loadProfile(paths).source).toBe('new')
     expect(existsSync(paths.save)).toBe(false)

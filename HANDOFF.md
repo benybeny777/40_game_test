@@ -1,5 +1,27 @@
 # 引き継ぎ
 
+## v0.6.0 クラウド保存・操作整理・歩行刷新（2026-10-29）
+
+この節・現行仕様・ソースを下記の旧版履歴より優先する。ユーザーが追加した「購入は置いておいてユーザーデータ保存」「サーバーは別リポジトリ」「コピペ／エラーを隠すfallback禁止」「歩行を作り直す」に対応。製品全体が完璧・遠隔運用済みとは扱わない。
+
+### 現行の変更
+
+- 保存APIは非公開の別repo [40_game_test_server](https://github.com/benybeny777/40_game_test_server)。ローカルは`C:\00_PG\40_game_test_server`。Node24標準HTTP/crypto/SQLiteのみ。登録・ログイン・期限付きhashed session・アカウント別save・revision CAS。初回の空DBのみ初期化し、破損/未来schemaは無変更で拒否する。GitHub Actionsはfalse。
+- ゲームの設定へクラウド保存を追加。Windows mainとブラウザーadapterは同じ`CloudClient`を利用。手動保存・2段階確認の復元・競合/結果不明時の再送停止。tokenはメモリーのみ、password非永続。未設定の製品版は未接続を明示。外部運用/公開は未実施。購入・取引権威は別で、ローカル由来装備は市場に昇格しない。
+- 復元はvalidatorとゲーム事前構築が両方成功した後だけdiskへ保存・置換し、一時停止する。小数rng、unsafe item ID/counter、prototype名、不正な報酬/統計/配分等を成功へ置換しない。ローカル保存失敗時は元の進行を保持。設定はENOENT以外の破損/読取失敗を既定値で隠さない。
+- 通常攻撃間隔を初期版の0.5倍へ（前回の0.8倍から増速）。歩行は新規3PNG・17人×実5コマ。各人物のコマ間の体格を共通倍率で固定。40dot歩幅・50dot/sec・6.25fps、隊列/人物の位相差、跳躍/重い揺れ/小刻みな歩きを分け、pause中は地面と歩行を固定。素材の指示/採用5コマはWALK_PROMPTS/CREDITSに記録。
+- 上部の言語toggleを削除。初回はOS/ブラウザー言語、明示選択は設定のみ。言語保存は各ホストの通常settingsへ一本化。停止中の既存battle banner/party aria/label/tooltipも共通`battleText`で再翻訳する。
+- 無駄な到達階gridを削除し現在/最高階＋数値移動へ。`dungeon.ts`へ表示責務を分離。効かないbrowser表示サイズ設定を非表示、保存失敗rollbackを明示、装備可能filter/まとめ売り件数、編成予約と実EXP対象の区別、街の休息表示、offline modalのfocus/inertを整備。スマホ主要操作44px。
+- 起動中は素材読込完了までportraitを描かない。素材未読込のraceを実exe検証で発見して修正。未知sprite/animationを別素材で置換する処理も撤去し明示エラーにする。
+
+### 確認の境界
+
+- typecheck/lint、30ファイル377テスト成功。サーバー側の実HTTP/DB14テストも成功。`tools/cloud-check.ts --server-root C:/00_PG/40_game_test_server`は実CloudClient＋本物SQLiteで保存/復元/別client競合/DB再起動/未来版拒否/別account分離を確認し専用tmpを削除。
+- Codex内IABで17人の新歩行素材/切出し/位相と日本語・英語の設定画面を確認。開発専用`/qa-walk/`は製品buildに含めない。外部Chromeはユーザーの希望に従って終了し、以後は使用しない。
+- 旧版30分受入や全画面検証は履歴であり、この版の長時間/クリーンPC/遠隔HTTPS/実スマホ受入を意味しない。運用サーバーの設置、復旧運用、アカウント削除/パスワード再発行は未実装・未検証のまま境界を残す。
+- 最終配布物`release/TaskbarHyakkiko-0.6.0-portable.exe`は116,421,284 bytes、SHA256 `7cfc9149dd304b0f08e22afbfc60ebfab6a17338e881d76e090349ca3cfc8864`。Webは`dist/web/`。最終実exeのreport `.dev-data/packaged-acceptance/2026-10-29T12-10-34-475Z-11116/report.json`は初回/再起動ともPASS、renderer例外0・残存子0、実cloud IPCの登録/upload/復元/logoutも両phaseで成功。詳細はVALIDATION。
+- 確認用IABtab・5174/8787 listenerを終了。既知の合成server SQLiteと旧portable3本を範囲/リンク/非使用確認後に削除し、約332MB解放。以前の自動承認レビューが拒否したout/preview等の対象は再試行していない。唯一の利用者データ、生成原本、現在の配布物は維持。
+
 ## v0.5.1 テンポ・参加者育成・アクション・背景（2026-10-29）
 
 この節を下のv0.5.0記録より優先する。控えへの経験値配布を廃止し、実際に戦っている3人だけへ付与する。入替待ち・オフライン報酬も獲得時の参加者に固定する。既存のレベルは下げない。

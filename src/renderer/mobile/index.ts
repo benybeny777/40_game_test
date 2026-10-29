@@ -1,10 +1,11 @@
 import { initializePlatform } from '../platform'
-import { jobs, type JobId } from '../../core/index.ts'
+import type { JobId } from '../../core/index.ts'
 import type { ShellState } from '../../shared/api'
 import { Scene } from '../strip/scene'
 import { artReady } from '../strip/sprites/sheet'
 import { onLocaleChange, translatedLabel as tr } from '../../shared/i18n'
 import '../../shared/locales/system'
+import { createBattleText } from '../battleText'
 
 async function start() {
   const api = initializePlatform()
@@ -12,10 +13,11 @@ async function start() {
   const banner = document.querySelector<HTMLElement>('#mobile-banner')!
   const pause = document.querySelector<HTMLButtonElement>('#mobile-pause')!
   const storage = document.querySelector<HTMLElement>('#mobile-storage-error')!
+  const battleText = createBattleText(screen, banner)
   let state: ShellState = await api.getState()
   let bannerTimer: ReturnType<typeof setTimeout> | undefined
   const message = (text: string) => {
-    banner.textContent = tr(text); banner.classList.add('show')
+    battleText.banner(text); banner.classList.add('show')
     if (bannerTimer) clearTimeout(bannerTimer)
     bannerTimer = setTimeout(() => banner.classList.remove('show'), 2200)
   }
@@ -37,14 +39,16 @@ async function start() {
     api.openPanel({ tab: 'stage' })
   })
   api.onState(next => {
-    state = next; needsDraw = true; pause.textContent = tr(next.paused ? '再開' : '一時停止')
-    const error = (next as ShellState & { storageError?: string }).storageError
-    storage.textContent = tr(error ?? ''); storage.hidden = !error; pause.disabled = Boolean(error)
+    state = next; translateControls()
   })
-  const translateControls = () => {
+  function translateControls() {
+    needsDraw = true
     pause.textContent = tr(state.paused ? '再開' : '一時停止')
+    const error = state.storageError
+    storage.textContent = error ? tr(error) : ''; storage.hidden = !error; pause.disabled = Boolean(error)
     document.querySelector('#mobile-town')!.textContent = tr('街へ戻る')
     document.querySelector('#mobile-battle')!.setAttribute('aria-label', tr('冒険の様子'))
+    battleText.translate()
   }
   onLocaleChange(translateControls); translateControls()
   await artReady
@@ -52,8 +56,7 @@ async function start() {
     scene.ingest(frame, performance.now())
     needsDraw = true
     const allies = frame.snapshot.units.filter(unit => unit.side === 'ally')
-    screen.dataset.party = allies.map(unit => unit.defId).join(',')
-    screen.setAttribute('aria-label', tr(`出撃中：${allies.map(unit => tr(jobs[unit.defId as JobId].name)).join(' / ')}`))
+    battleText.party(allies.map(unit => unit.defId as JobId))
   })
   screen.addEventListener('click', event => {
     const rect = screen.getBoundingClientRect(), dpr = window.devicePixelRatio || 1
@@ -70,6 +73,7 @@ async function start() {
     if (document.hidden || now - lastDraw < 1000 / state.settings.fpsCap - 2) return
     if (state.paused && !needsDraw && !scene.busy(now)) return
     lastDraw = now; needsDraw = false; scene.groundBand = state.settings.groundBand; scene.appearance = state.appearance
+    scene.paused = state.paused
     scene.draw(off, now)
     ctx.clearRect(0, 0, screen.width, screen.height); ctx.imageSmoothingEnabled = false
     ctx.drawImage(logical, 0, screen.height - scene.H * dotPx, scene.W * dotPx, scene.H * dotPx)

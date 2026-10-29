@@ -18,7 +18,7 @@ export interface ItemView {
   owner?: JobId; delta: Partial<Record<JobId, number>>                 // Power change if that job equipped it (null = cannot).
 }
 export interface MemberView {
-  active: boolean; job: JobId; name: string; role: string; roleId: JobRole; color: string; lv: number; exp: number; expNext: number
+  active: boolean; fighting: boolean; job: JobId; name: string; role: string; roleId: JobRole; color: string; lv: number; exp: number; expNext: number
   attributes: Attributes; baseAttributes: Attributes; allocated: Attributes; availablePoints: number; autoStats: boolean; mainAttribute: AttributeKey; autoWeights: Attributes
   stats: { hp: number; atk: number; def: number; interval: number; cri: number; eva: number; luk: number; range: string }
   skills: Array<{ kind: '通常' | 'スキル' | 'パッシブ' | '奥義'; name: string; desc: string; unlockLv: number; unlocked: boolean }>
@@ -29,6 +29,7 @@ export interface ProfileView {
   koban: number; totalKoban: number
   stage: { current: number; unlocked: number; label: string; areaName: string; loop: boolean; max: number }
   partySize: number
+  formationPending: boolean
   party: MemberView[]
   inventory: ItemView[]
   inventoryMax: number
@@ -66,9 +67,10 @@ export function buildView(profile: Profile, loop: boolean): ProfileView {
     koban: profile.koban, totalKoban: profile.stats.totalKoban,
     stage: { current: profile.progress.currentStage, unlocked: profile.progress.unlockedStage, label: current.label, areaName: current.areaName, loop, max: limit ?? db.maxDepth },
     partySize,
+    formationPending: profile.offlineJobs.some((id, index) => profile.party.order[index] !== id),
     party: profile.party.order.map((id) => {
       const job = jobs[id], member = profile.party.members[id], stats = statsOf(profile, id)
-      return { active: deployedJobs(profile.party.order).includes(id), job: id, name: job.name, role: roleLabels[job.role], roleId: job.role, color: job.color, lv: member.lv, exp: member.exp, expNext: expToNext(member.lv), attributes: attributesOf(id, member.allocated), baseAttributes: { ...attributeDefs[id].base }, allocated: { ...member.allocated }, availablePoints: availablePoints(member), autoStats: member.autoStats, mainAttribute: attributeDefs[id].main, autoWeights: { ...attributeDefs[id].auto },
+      return { active: deployedJobs(profile.party.order).includes(id), fighting: profile.offlineJobs.includes(id), job: id, name: job.name, role: roleLabels[job.role], roleId: job.role, color: job.color, lv: member.lv, exp: member.exp, expNext: expToNext(member.lv), attributes: attributesOf(id, member.allocated), baseAttributes: { ...attributeDefs[id].base }, allocated: { ...member.allocated }, availablePoints: availablePoints(member), autoStats: member.autoStats, mainAttribute: attributeDefs[id].main, autoWeights: { ...attributeDefs[id].auto },
         stats: { hp: round(stats.maxHp), atk: round(stats.atk, 1), def: round(stats.def, 1), interval: round(stats.intervalMs / 1000, 2),
           cri: round(stats.cri * 100, 1), eva: round(stats.eva * 100, 1), luk: round(stats.luk, 1), range: job.attack.kind === 'melee' ? '近接' : '遠隔' },
         skills: [

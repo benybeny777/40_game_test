@@ -5,6 +5,9 @@ import tonoUrl from '../../../../assets/sprites/art/tono.png'
 import garibenUrl from '../../../../assets/sprites/art/gariben.png'
 import enemyUrl from '../../../../assets/sprites/art/enemy-atlas.png'
 import enemyAttackUrl from '../../../../assets/sprites/art/enemy-attack.png'
+import walkAUrl from '../../../../assets/sprites/art/party-walk-a.png'
+import walkBUrl from '../../../../assets/sprites/art/party-walk-b.png'
+import walkCUrl from '../../../../assets/sprites/art/party-walk-c.png'
 import { enemyArt, partyArt, partyArtGroups } from '../../../shared/art'
 import type { Frame, Sheet } from './sheet'
 import { actionTiming } from '../actionPresentation'
@@ -17,10 +20,10 @@ async function load(url: string) {
   const image = new Image(); image.src = url; await image.decode(); return image
 }
 /** Crop atlas cells to their alpha bounds; retain original pixels for the panel portraits. */
-function crop(image: HTMLImageElement, left: number, top: number, right: number, bottom: number, isolate = false) {
+function crop(image: HTMLImageElement, left: number, top: number, right: number, bottom: number, isolate: boolean | 'cell' = false) {
   const expectedX = (right - left) / 2, expectedY = (bottom - top) / 2
   const originalLeft = left, originalTop = top
-  if (isolate) {
+  if (isolate === true) {
     const marginX = image.width * .055, marginY = image.height * .02
     left = Math.max(0, left - marginX); top = Math.max(0, top - marginY)
     right = Math.min(image.width, right + marginX); bottom = Math.min(image.height, bottom + marginY)
@@ -65,7 +68,7 @@ function crop(image: HTMLImageElement, left: number, top: number, right: number,
   out.getContext('2d')!.drawImage(cell, x0, y0, out.width, out.height, 0, 0, out.width, out.height)
   return out
 }
-function frame(source: HTMLCanvasElement, size: number, height: number, attackKey = false): Frame {
+function frame(source: HTMLCanvasElement, size: number, height: number, attackKey = false, fixedScale?: number): Frame {
   let anchorX = source.width / 2
   if (attackKey) {
     const pixels = source.getContext('2d')!.getImageData(0, 0, source.width, source.height).data
@@ -73,7 +76,7 @@ function frame(source: HTMLCanvasElement, size: number, height: number, attackKe
     for (let y = Math.floor(source.height * .85); y < source.height; y++) for (let x = 0; x < source.width; x++) if (pixels[(y * source.width + x) * 4 + 3] >= 64) { sum += x; count++ }
     if (count) anchorX = sum / count
   }
-  const scale = attackKey ? height / source.height : Math.min(height / source.height, (size - 2) / source.width)
+  const scale = fixedScale ?? (attackKey ? height / source.height : Math.min(height / source.height, (size - 2) / source.width))
   // Wide swings keep their body scale and stay anchored at the feet instead of shrinking the whole enemy.
   const width = attackKey ? Math.max(size, 2 * Math.ceil(Math.max(anchorX, source.width - anchorX) * scale) + 2) : size
   const normal = canvas(width, size), ctx = normal.getContext('2d')!
@@ -86,21 +89,54 @@ function frame(source: HTMLCanvasElement, size: number, height: number, attackKe
   g.filter = 'grayscale(1) brightness(.65)'; g.drawImage(normal, 0, 0)
   return { normal, flash, gray }
 }
-function sheet(name: string, sources: HTMLCanvasElement[], boss: boolean): Sheet {
+function sheet(name: string, sources: HTMLCanvasElement[], boss: boolean, walkSources?: HTMLCanvasElement[]): Sheet {
   const size = boss ? 60 : 48, height = boss ? 52 : (partyArt as readonly string[]).includes(name) ? 40 : 32
   const hero = (partyArt as readonly string[]).includes(name)
   const frames = sources.map((source, index) => frame(source, size, height, !hero && index === 2))
+  // All five poses retain a shared body scale; a bent knee must lower the head instead of stretching the body.
+  const walkScale = walkSources ? Math.min(height / Math.max(...walkSources.map(source => source.height)), (size - 2) / Math.max(...walkSources.map(source => source.width))) : undefined
+  const walkFrames = walkSources?.map(source => frame(source, size, height, false, walkScale))
   return { name, width: size, height: size, anchor: [size / 2, size], top: size - height,
     portrait: sources[0], anims: {
       idle: { fps: 2, loop: true, frames: [frames[0]] },
-      walk: { fps: actionTiming.walkFps, loop: true, frames: sources.length > 1 ? [frames[1], frames[3]] : frames },
+      walk: { fps: actionTiming.walkFps, loop: true, frames: walkFrames ?? (sources.length > 1 ? [frames[1], frames[3]] : frames) },
       attack: { fps: actionTiming.attackFps, loop: false, frames: [frames[2] ?? frames[0], frames[2] ?? frames[0], frames[0]] },
     } }
 }
 
 export async function loadArtSheets(): Promise<Sheet[]> {
-  const images = await Promise.all([partyUrl, extraAUrl, extraBUrl, tonoUrl, garibenUrl, enemyUrl, enemyAttackUrl].map(load))
+  const images = await Promise.all([partyUrl, extraAUrl, extraBUrl, tonoUrl, garibenUrl, enemyUrl, enemyAttackUrl, walkAUrl, walkBUrl, walkCUrl].map(load))
   const enemy = images[5], enemyAttack = images[6]
+  const walkGroups = [partyArtGroups[0], partyArtGroups[1], [...partyArtGroups[2], ...partyArtGroups[3], ...partyArtGroups[4]]]
+  // Actual outputs contain five rows. Individual bounds retain hats/feet when neighbouring rows overlap.
+  // The cell-only component pass removes neighbouring fragments without expanding into another full pose.
+  const walkRegions: Array<Array<{ x: [number, number]; y: Array<[number, number]> }>> = [
+    [
+      { x: [36, 249], y: [[16, 240], [242, 464], [463, 683], [682, 903], [901, 1117]] },
+      { x: [316, 505], y: [[11, 240], [240, 465], [465, 685], [685, 905], [905, 1112]] },
+      { x: [603, 811], y: [[18, 240], [245, 464], [471, 684], [687, 905], [905, 1117]] },
+      { x: [890, 1056], y: [[13, 240], [245, 463], [466, 684], [687, 905], [905, 1117]] },
+      { x: [1171, 1350], y: [[14, 240], [246, 464], [466, 685], [685, 905], [905, 1117]] },
+    ], [
+      { x: [33, 252], y: [[28, 247], [256, 467], [468, 681], [686, 895], [900, 1108]] },
+      { x: [310, 500], y: [[20, 251], [249, 467], [468, 681], [680, 895], [893, 1108]] },
+      { x: [576, 787], y: [[20, 251], [255, 475], [475, 689], [687, 899], [899, 1111]] },
+      { x: [850, 1111], y: [[31, 251], [256, 472], [477, 685], [692, 899], [902, 1110]] },
+      { x: [1176, 1369], y: [[32, 251], [250, 472], [461, 682], [690, 899], [886, 1111]] },
+    ], [
+      { x: [14, 178], y: [[37, 235], [248, 444], [458, 662], [673, 875], [903, 1106]] },
+      { x: [205, 380], y: [[32, 227], [228, 424], [430, 629], [646, 845], [870, 1081]] },
+      { x: [386, 573], y: [[51, 236], [252, 445], [461, 660], [681, 879], [906, 1106]] },
+      { x: [596, 777], y: [[35, 235], [244, 446], [458, 660], [668, 879], [891, 1106]] },
+      { x: [770, 936], y: [[42, 235], [249, 447], [458, 659], [673, 879], [899, 1106]] },
+      { x: [957, 1168], y: [[5, 237], [232, 453], [451, 665], [671, 885], [891, 1113]] },
+      { x: [1177, 1333], y: [[39, 236], [244, 448], [457, 662], [679, 881], [898, 1110]] },
+    ],
+  ]
+  const walks = new Map(walkGroups.flatMap((ids, group) => ids.map((id, col) => {
+    const image = images[7 + group], region = walkRegions[group][col]
+    return [id, region.y.map(([top, bottom]) => crop(image, region.x[0], top, region.x[1], bottom, 'cell'))] as const
+  })))
   const heroes = partyArtGroups.flatMap((ids, group) => {
     const image = images[group], single = ids.length === 1
     const columns = single ? 2 : ids.length, rows = single ? 2 : 4
@@ -111,7 +147,7 @@ export async function loadArtSheets(): Promise<Sheet[]> {
       const y1 = rowCuts ? rowCuts[y + 1] / 1122 * image.height : (y + 1) * image.height / rows
       return crop(image, x * image.width / columns, y0,
         (x + 1) * image.width / columns, y1, true)
-    }), false))
+    }), false, walks.get(id)))
   })
   // Reviewed transparent gutters in the selected 1448x1086 source atlas, including the bosses' full silhouettes.
   const enemyColumns = [[0, 330, 715, 1010, 1448], [0, 330, 745, 1000, 1448], [0, 360, 695, 985, 1448]]

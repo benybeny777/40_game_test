@@ -3,13 +3,15 @@ import type { ShellState, StripLayout } from '../../shared/api'
 import { Scene, type HitTarget } from './scene'
 import { PLAY_DOTS } from '../../shared/art'
 import { artReady } from './sprites/sheet'
-import { setLocale, translatedLabel as tr } from '../../shared/i18n'
+import { onLocaleChange, setLocale, translatedLabel as tr } from '../../shared/i18n'
 import '../../shared/locales/system'
+import { createBattleText } from '../battleText'
 
 const screen = document.querySelector<HTMLCanvasElement>('#screen')!
 const tooltip = document.querySelector<HTMLElement>('#tooltip')!
 const banner = document.querySelector<HTMLElement>('#banner')!
 const labels = document.querySelector<HTMLElement>('#labels')!
+const battleText = createBattleText(screen, banner)
 const offscreen = document.createElement('canvas')
 const off = offscreen.getContext('2d')!
 const ctx = screen.getContext('2d')!
@@ -22,18 +24,19 @@ let bannerTimer: ReturnType<typeof setTimeout> | undefined
 
 const scene = new Scene({
   banner(text, tone) {
-    banner.textContent = tr(text); banner.className = `show ${tone}`
+    battleText.banner(text); banner.className = `show ${tone}`
     if (bannerTimer) clearTimeout(bannerTimer)
     bannerTimer = setTimeout(() => { banner.className = '' }, 1800)
   },
   label(text, dotX, dotY, color) {
     const element = document.createElement('div')
-    element.className = 'label'; element.textContent = tr(text); element.style.color = color
+    const forgetLabel = battleText.label(element, text)
+    element.className = 'label'; element.style.color = color
     const { x, y } = toCss(dotX, dotY)
     element.style.left = `${x}px`; element.style.top = `${y}px`
     labels.append(element)
     while (labels.childElementCount > 8) labels.firstElementChild?.remove()
-    setTimeout(() => element.remove(), 1100)
+    setTimeout(() => { forgetLabel(); element.remove() }, 1100)
   },
 })
 
@@ -50,6 +53,10 @@ function resize() {
 
 let lastDraw = 0
 let needsDraw = true
+onLocaleChange(() => {
+  battleText.translate(); needsDraw = true
+  if (hover) showTooltip(hover)
+})
 function loop(now: number) {
   requestAnimationFrame(loop)
   const cap = state?.settings.fpsCap ?? 30
@@ -58,6 +65,7 @@ function loop(now: number) {
   needsDraw = false
   lastDraw = now
   scene.groundBand = state?.settings.groundBand ?? true
+  scene.paused = Boolean(state?.paused)
   scene.appearance = state?.appearance ?? null
   scene.draw(off, now)
   ctx.imageSmoothingEnabled = false
@@ -123,14 +131,12 @@ window.game.onFrame((frame) => {
   if (!artLoaded) return
   scene.ingest(frame, performance.now())
   const allies = frame.snapshot.units.filter(unit => unit.side === 'ally')
-  screen.dataset.party = allies.map(unit => unit.defId).join(',')
-  screen.setAttribute('role', 'img')
-  screen.setAttribute('aria-label', tr(`出撃中：${allies.map(unit => tr(jobs[unit.defId as JobId].name)).join(' / ')}`))
+  battleText.party(allies.map(unit => unit.defId as JobId))
 })
 void Promise.all([window.game.getLayout(), window.game.getState()]).then(([nextLayout, nextState]) => {
   layout = nextLayout; state = nextState; setLocale(nextState.settings.locale ?? 'ja'); resize()
 })
 resize()
 void artReady.then(() => { artLoaded = true; requestAnimationFrame(loop) }).catch(() => {
-  banner.textContent = tr('画像を読み込めませんでした。再起動してください。'); banner.className = 'show bad'
+  battleText.banner('画像を読み込めませんでした。再起動してください。'); banner.className = 'show bad'
 })

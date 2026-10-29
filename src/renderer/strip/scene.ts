@@ -7,6 +7,7 @@ import type { ThemeDefinition } from '../../shared/commerce'
 import { damageText, enemyMotion, enemyRank, enemyScale } from './enemyPresentation'
 import { drawDungeonBackground } from './background'
 import { actionPose, actionTiming, hitRecoil, meleeDashDistance, normalWindupMs } from './actionPresentation'
+import { gaitTiming, walkPose } from './gait'
 
 /** Vertical layout inside the 32-dot play area (02-strip.md §3). Everything above it is headroom. */
 const PLAY = PLAY_DOTS, FOOT_FROM_TOP = PLAY_DOTS - 3
@@ -37,6 +38,7 @@ export interface SceneHooks { banner(text: string, tone: 'info' | 'boss' | 'good
 export class Scene {
   W = 0; H = 0
   groundBand = true
+  paused = false
   appearance: ThemeDefinition | null = null
   private prev?: Snapshot
   cur?: Snapshot
@@ -59,12 +61,21 @@ export class Scene {
   private screenX(x: number, enemy = false) { return this.baseX + x * PARTY_SPACING_SCALE + (enemy ? ENEMY_DRAW_OFFSET : 0) }
 
   ingest(frame: SimFrame, now: number) {
+    if (this.cur && (frame.snapshot.tick < this.cur.tick || frame.snapshot.units.some(unit => {
+      const old = this.visuals.get(unit.uid)
+      return old && (old.defId !== unit.defId || old.side !== unit.side)
+    }))) {
+      this.prev = undefined; this.cur = undefined; this.visuals.clear()
+      this.numbers = []; this.fx = []; this.coins = []; this.loot = []
+      this.ground = 0; this.lastDraw = now
+    }
     const first = !this.cur
     this.prev = this.cur ?? frame.snapshot
     if (this.cur) this.gap = Math.min(300, Math.max(50, now - this.curAt))
     this.cur = frame.snapshot; this.curAt = now
     for (const unit of frame.snapshot.units) if (!this.visuals.has(unit.uid)) {
-      const sheet = sheetOf(unit.defId) ?? sheets.chochin
+      const sheet = sheetOf(unit.defId)
+      if (!sheet) throw new Error(`Sprite sheet is not loaded: ${unit.defId}`)
       this.visuals.set(unit.uid, { uid: unit.uid, defId: unit.defId, side: unit.side, sheet, animAt: 0, flashUntil: 0, knockUntil: 0,
         spawnAt: unit.side === 'enemy' && !first ? now : 0, deadAt: unit.alive ? undefined : now - 1000 })
     }
@@ -192,7 +203,7 @@ export class Scene {
     if (!snap) return
     const alpha = Math.min(1, Math.max(0, (now - this.curAt) / this.gap))
     const renderTick = (this.prev?.tick ?? snap.tick) + alpha * (snap.tick - (this.prev?.tick ?? snap.tick))
-    if (snap.phase === 'walking') this.ground = (this.ground + dt * 0.05) % 4096
+    if (!this.paused && snap.phase === 'walking') this.ground = (this.ground + dt * gaitTiming.dotsPerSecond / 1000) % (gaitTiming.strideDots * 128)
     if (this.groundBand) {
       drawDungeonBackground(ctx, { width: this.W, height: this.H, footY: this.footY, baseX: this.baseX, depth: snap.stageNo, town: snap.phase === 'town', walkOffset: this.ground })
       this.drawGround(ctx, Math.floor((snap.stageNo - 1) / 5))
@@ -236,7 +247,7 @@ export class Scene {
   }
 
   private sprite(ctx: CanvasRenderingContext2D, sheet: Sheet | undefined, anim: string, elapsed: number, x: number, footY: number, flip: boolean, mode: 'normal' | 'flash' | 'gray' = 'normal', scale = 1, deform = { width: 0, height: 0 }) {
-    if (!sheet) return
+    if (!sheet) throw new Error(`Sprite sheet is missing for animation: ${anim}`)
     const frame = frameAt(sheet, anim, elapsed)[mode]
     const width = Math.max(1, Math.round(frame.width * scale) + deform.width), height = Math.max(1, Math.round(frame.height * scale) + deform.height)
     const left = Math.round(x), top = Math.round(footY - height * sheet.anchor[1] / sheet.height), anchor = Math.round(width * sheet.anchor[0] / sheet.width)
@@ -282,7 +293,11 @@ export class Scene {
       const motion = enemyMotion(unit.defId, unit.action, localNow, unit.uid)
       dx += motion.dx; dy += motion.dy
       ctx.fillStyle = '#11121a88'; ctx.fillRect(Math.round(x) - 6, this.footY, 12, 1)
-    } else if (!pose.active && anim === 'walk') dy = unit.defId === 'jiangshi' ? -Math.round(Math.abs(Math.sin(localNow / 120 + unit.uid)) * 4) : -(Math.floor(elapsed / (1000 / actionTiming.walkFps)) % 2)
+    } else if (!pose.active && anim === 'walk') {
+      const gait = walkPose(unit.defId, unit.slot, this.ground)
+      elapsed = gait.elapsedMs; dx += gait.dx; dy += gait.dy
+      ctx.fillStyle = '#11121a66'; ctx.fillRect(Math.round(x - gait.shadowWidth / 2), this.footY, gait.shadowWidth, 1)
+    }
     if (unit.action === 'cast') {
       const job = jobs[unit.defId as JobId]
       ctx.fillStyle = job ? job.color + '55' : '#ffffff55'

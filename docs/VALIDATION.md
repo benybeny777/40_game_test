@@ -1,5 +1,22 @@
 # ローカル検証記録
 
+## 0.6.0（2026-10-29）
+
+- 最終変更のtypecheck/lint、30ファイル377テスト成功。初回OS言語、保存一本化とrollback、装備filter、編成反映待ち、modal、strict profile/settings、実非同期storeエラー、歩行phase、全projectile素材を含む。
+- 別repoの保存APIはNode24/SQLiteで14テスト成功。ブラウザーを起動せず実HTTPで認証・別account・期限・CAS・再起動・schema保護・巨大/不正JSON・実書込障害を確認。
+- `tools/cloud-check.ts --server-root C:/00_PG/40_game_test_server`: 実CloudClientから登録→777小判upload→別client復元→409とrefresh→同SQLite再起動後revision2/777保持→未来版復元拒否/ローカル不変→別account空。結果`ok:true, cleanup:true`。mockfetch試験と区別する。
+- Codex内IABで開発用`/qa-walk/`に17人を表示し、全員5frame、輪郭・足・隣コマ切出し・人物差を目視。実ゲームの画像読込/日英設定/クラウド設定を確認。外部Chrome使用は途中で終了し、それ以降は再起動していない。
+- Native短期受入の初回はクラウドIPC登録/upload/restore/logout自体は成功したが、起動portrait raceでrenderer例外が出て**FAIL** (`2026-10-29T11-46-13-412Z-34448`)。素材読込gateと復元構築順序を修正し、再build後の実exeで初回/保存/終了/再起動とcloud bridgeがPASS (`2026-10-29T12-05-27-411Z-38340`)。これは停止中の言語再翻訳の最終修正前で、最終artifactはもう一度受入する。FAIL記録を隠さない。
+- 実I/O保存障害→停止/alert/retry/設定rollback/quit各選択は`tools/save-failure-check.mjs`で成功。選択dialogのみstub。専用lab/子を終了・削除した。SQLite/TypeScript/Viteの実験的API・config警告は消していない。
+
+最終ソースの再build後、実exe受入は`2026-10-29T12-10-34-475Z-11116/report.json`で**PASS**。初回・保存・終了・再起動の両phaseでrenderer例外0、観測した残存子0。両phaseの実main/preload IPCからアカウント登録→revision1 upload→同じ小判の復元→一時停止→logoutを本物の保存APIへ実行し成功した。これは外部Chromeの試験ではない。
+
+配布物は`release/TaskbarHyakkiko-0.6.0-portable.exe`、116,421,284 bytes、SHA256 `7cfc9149dd304b0f08e22afbfc60ebfab6a17338e881d76e090349ca3cfc8864`。release:check116ファイルPASS、未署名。旧0.5.0/0.5.1/0.5.2 portableは現行への置換を確認して削除した。
+
+Codex内IABで最終の停止中に日英を変更し、canvas ariaが`出撃中：…`→`Deployed: …`へ新しい戦闘frameなしで即更新することも確認し、日本語・通常進行へ戻した。確認用tabを閉じ、5174/8787の検証serverと実exeの終了を確認した。server側`.dev-data/acceptance/`は既知の合成SQLiteだけであること・リンクなし・非使用を検査後に削除。旧portableと合わせて331,931,648 bytesを解放、確認時空き457,708,244,992 bytes。以前に削除拒否されたout/preview等は再試行せず保持しており、全残骸を掃除済みとは扱わない。
+
+運用TLS、アカウント復旧/削除、遠隔端末、コード署名、クリーンPC、新版の30分以上の放置は別の未確認条件。購入/Steam Marketは対象外。以下は旧版の履歴。
+
 ## 0.5.1（2026-10-29）
 
 | 対象 | 結果と根拠 |

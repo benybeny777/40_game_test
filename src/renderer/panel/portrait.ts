@@ -4,6 +4,7 @@ import { h } from './dom'
 /** The panel and bestiary share the same approved portrait rendering. */
 export function spriteImage(defId: string, scale: number, silhouette = false) {
   const sheet = sheets[defId]
+  if (!sheet) throw new Error(`Sprite sheet is not loaded: ${defId}`)
   const canvas = h('canvas', { class: 'sprite', width: sheet.width * scale, height: (sheet.height - sheet.top) * scale })
   const ctx = canvas.getContext('2d')!
   ctx.imageSmoothingEnabled = false

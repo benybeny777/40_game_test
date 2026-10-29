@@ -79,7 +79,19 @@ export function loadProfile(paths: SavePaths, now = new Date()): { profile: Prof
   if (errors.length) throw new SaveRecoveryRequiredError(paths.save)
   return { profile: newProfile(now.toISOString()), source: 'new', errors }
 }
-export function loadSettings(paths: SavePaths): Settings {
-  try { return { ...defaultSettings, ...(parseSettings(JSON.parse(readFileSync(paths.settings, 'utf8'))) ?? {}) } } catch { return { ...defaultSettings } }
+export function loadSettings(paths: SavePaths, locale: 'ja' | 'en' = 'ja'): Settings {
+  let text: string
+  try { text = readFileSync(paths.settings, 'utf8') }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { ...defaultSettings, locale }
+    throw new Error(`設定を読み込めません。ファイルは変更していません。\n${paths.settings}`, { cause: error })
+  }
+  try {
+    const settings = parseSettings(JSON.parse(text))
+    if (!settings) throw new Error('設定の形式が正しくありません')
+    return { ...defaultSettings, locale, ...settings }
+  } catch (error) {
+    throw new Error(`設定が破損しているため起動を中止しました。ファイルは変更していません。\n${paths.settings}`, { cause: error })
+  }
 }
 export function saveSettings(paths: SavePaths, settings: Settings) { writeAtomic(paths.settings, JSON.stringify(settings, null, 2)) }

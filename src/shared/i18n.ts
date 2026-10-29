@@ -2,16 +2,14 @@ import { translateGameText } from './locales/en-game'
 import { platformEnglish } from './locales/en-platform'
 
 export type Locale = 'ja' | 'en'
-const localeKey = 'hyakkiko.locale'
-let locale: Locale = 'ja'
-try { if (globalThis.localStorage?.getItem(localeKey) === 'en') locale = 'en' } catch { /* Storage can be disabled. */ }
+export const systemLocale = (language: string): Locale => /^ja(?:-|$)/i.test(language) ? 'ja' : 'en'
+let locale: Locale = systemLocale(globalThis.navigator?.language ?? Intl.DateTimeFormat().resolvedOptions().locale)
 const listeners = new Set<(locale: Locale) => void>()
 export const getLocale = (): Locale => locale
 export function setLocale(next: Locale) {
-  if (next !== 'ja' && next !== 'en') return
+  if (next !== 'ja' && next !== 'en') throw new Error('Unsupported locale')
   if (next === locale) return
   locale = next
-  try { globalThis.localStorage?.setItem(localeKey, next) } catch { /* Keep this session usable. */ }
   for (const listener of listeners) listener(next)
 }
 export function onLocaleChange(listener: (locale: Locale) => void) { listeners.add(listener); return () => { listeners.delete(listener) } }

@@ -1,5 +1,6 @@
 import type { Command, CommandResult, JobId, ProfileView, SimEvent, Snapshot } from '../core/index.ts'
 import type { CommerceResult, StoreView, ThemeDefinition } from './commerce'
+import type { CloudCommand, CloudResult, CloudView } from './cloud'
 
 export const channels = {
   pointer: 'strip:pointer', panel: 'strip:panel', menu: 'strip:menu',
@@ -8,6 +9,7 @@ export const channels = {
   view: 'profile:view', getView: 'profile:get', command: 'game:cmd', navigate: 'panel:navigate',
   settings: 'settings:update', openSaveFolder: 'app:open-save-folder', exportSave: 'app:export-save', retrySave: 'app:retry-save',
   getStore: 'store:get', purchase: 'store:purchase', equipCosmetic: 'store:equip', previewCosmetic: 'store:preview',
+  getCloud: 'cloud:get', cloudCommand: 'cloud:command',
 } as const
 
 export type DisplaySize = 'small' | 'medium' | 'large'
@@ -45,6 +47,8 @@ export interface ShellApi {
   purchaseProduct(sku: string): Promise<CommerceResult>
   equipCosmetic(sku: string | null): Promise<CommerceResult>
   previewCosmetic(sku: string | null): Promise<boolean>
+  getCloud(): Promise<CloudView>
+  cloudCommand(command: CloudCommand): Promise<CloudResult>
 }
 
 declare global { interface Window { game: ShellApi } }

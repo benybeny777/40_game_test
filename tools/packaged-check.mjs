@@ -187,6 +187,24 @@ async function phase(name, durationMs, restart) {
     }
     assert(!exit, 'Game exited before acceptance operations completed')
     await panel.evaluate('window.game.command({c:"returnTown"})')
+    if (env.GAME_CLOUD_URL) {
+      const cloud = await panel.evaluate(`(async()=>{
+        const before=await window.game.getView();
+        const credentials={username:'qa_'+crypto.randomUUID().replaceAll('-','').slice(0,20),password:crypto.randomUUID()};
+        const auth=await window.game.cloudCommand({action:'register',...credentials});
+        if(!auth.ok) throw new Error(auth.message);
+        const uploaded=await window.game.cloudCommand({action:'upload',revision:0});
+        if(!uploaded.ok) throw new Error(uploaded.message);
+        const restored=await window.game.cloudCommand({action:'download',revision:uploaded.view.revision});
+        if(!restored.ok) throw new Error(restored.message);
+        const after=await window.game.getView(), state=await window.game.getState();
+        const logout=await window.game.cloudCommand({action:'logout'});
+        return {revision:uploaded.view.revision,restoredKoban:after.koban===before.koban,paused:state.paused,logout:logout.ok};
+      })()`)
+      assert(cloud.revision === 1 && cloud.restoredKoban && cloud.paused && cloud.logout, 'Native cloud save/restore failed')
+      phase.cloud = cloud
+      phase.checks.push('real-native-ipc-cloud-registration-upload-restore-logout')
+    }
     phase.lastView = await panel.evaluate('window.game.getView()')
     phase.frames = await strip.evaluate('window.__acceptanceFrames')
     assert(phase.frames.length > 0 && phase.frames.every(frame => frame.allies === 3), 'Missing frames or an incorrect active party size')
