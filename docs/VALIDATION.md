@@ -20,7 +20,9 @@
 
 親子合計working setは860.0→654.6MiB、private bytesは762.7→449.2MiB。観測1784.9秒のCPU累積差263.6秒。working setには共有ページの重複があり、専用メモリー量・全PC共通の性能・無期限の漏れなしを保証する数値ではない。
 
-自己展開portable自体もNode `spawn`で環境を明示して起動し、初回15,000msの進行保存→同ファイル再起動後29,900msへ継続、v3／17人保持、両回exit0を確認した。専用データと結果は`.dev-data/portable-launch-2026-10-29/`。先行したPowerShell `Start-Process`経由の試験は終了code0だったが指定先のセーブを確認できず失敗しており、原因は未特定。製品コードは変更せず、直接spawnによる二度の実起動結果と区別して残す。自己展開版で30分試験を行ったという意味ではなく、30分は同梱されるwin-unpacked本体で実施した。
+自己展開portable自体もNode `spawn`で環境を明示して起動し、初回15,000msの進行保存→同ファイル再起動後29,900msへ継続、v3／17人保持、両回exit0を確認した。専用データと結果は`.dev-data/portable-launch-2026-10-29/`。自己展開版で30分試験を行ったという意味ではなく、30分は同梱されるwin-unpacked本体で実施した。
+
+先行したPowerShell `Start-Process`経由の試験はexit0でもセーブがなく失敗。原因を追い、`[Environment]::SetEnvironmentVariable(name,$null,'Process')`ではこのPowerShell環境で`ELECTRON_RUN_AS_NODE`が空文字のまま存在していたと確認した。Nodeで存在を確認すると`exists:true`、値は空文字だった。ElectronのNodeモードを検査側が残していたためで、製品コードは変更せず`Remove-Item Env:ELECTRON_RUN_AS_NODE`等で実際に除去した。存在しないことを検査後、同じStart-Processで再試験し、14,900msの進行保存／v3／17人／exit0がPASS。記録は`.dev-data/portable-shell-recheck-2026-10-29/`。単に別の起動方式で失敗を隠したのではなく、同じ方式で原因を解消した。
 
 現行portableは `release/TaskbarHyakkiko-0.7.0-portable.exe`、120,845,801 bytes、SHA256 `a888600241d297baa0c70e3ea63f076209afaab829a6594a5642d81be9815e01`。`Get-AuthenticodeSignature`でNotSigned、未署名。[日本語パネル](images/play-panel.png)・[英語パネル](images/play-panel-en.png)・[帯](images/play-strip.png)は、この実行の実ゲームウィンドウから採取した。
 
