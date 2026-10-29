@@ -1631,6 +1631,7 @@ export const gameTranslationTemplates: ReadonlyArray<{ ja: string; en: string }>
   { ja: '{attribute}{required}必要（現在{current}）', en: 'Requires {attribute} {required} (current {current})' },
   { ja: '基礎性能{percent}%（85〜115%）', en: 'Base roll {percent}% (85-115%)' },
   { ja: '必要能力：{requirements}', en: 'Requirements: {requirements}' },
+  { ja: '{rarity}「{name}」', en: '{rarity}: {name}' },
   { ja: '{name}・改{tier}', en: '{name} Mk {tier}' },
   { ja: '{job}専用', en: '{job} only' },
   { ja: '攻撃力×{value}', en: 'ATK x{value}' },
@@ -1652,6 +1653,8 @@ const compiledTemplates = gameTranslationTemplates.map(template => {
   const pattern = template.ja.split(/(\{\w+\})/g).map(part => {
     if (/^\{\w+\}$/.test(part)) {
       const key = part.slice(1, -1); keys.push(key)
+      // A mark is a generated item suffix, never the closing punctuation of an enclosing loot message.
+      if (key === 'tier') return '([弐参肆伍陸漆捌玖]|\\d+)'
       return ['value', 'seconds', 'percent', 'points', 'current', 'required', 'seen', 'total', 'depth'].includes(key) ? '([+−-]?\\d+(?:[.,]\\d+)*(?:%)?)' : '(.+?)'
     }
     return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

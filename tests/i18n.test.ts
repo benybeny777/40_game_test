@@ -33,6 +33,20 @@ describe('locale and UI translations', () => {
     forget(); setLocale('ja'); presentation.translate()
     expect(floating.textContent).toBe(english)
   })
+  it('translates rare drops with marked item names through both battle banner and floating label paths', () => {
+    const screen = { dataset: {}, setAttribute: vi.fn() } as unknown as HTMLCanvasElement
+    const banner = { textContent: '' } as HTMLElement, floating = { textContent: '' } as HTMLElement
+    const presentation = createBattleText(screen, banner)
+    const source = '特上「金運招福守・改弐」'
+    setLocale('en')
+    presentation.banner(source); presentation.label(floating, source)
+    expect(banner.textContent).toBe('Rare: Good Fortune Charm Mk II')
+    expect(floating.textContent).toBe(banner.textContent)
+    expect(translatedLabel('伝説の装備！ 金運招福守・改弐')).toBe('Legendary equipment! Good Fortune Charm Mk II')
+    setLocale('ja'); presentation.translate()
+    expect(banner.textContent).toBe(source)
+    expect(floating.textContent).toBe(source)
+  })
   it.each([['ja-JP', 'ja'], ['en-US', 'en'], ['fr-FR', 'en']])('uses system language %s for a fresh profile', async (language, expected) => {
     vi.stubGlobal('localStorage', { getItem: () => null })
     vi.stubGlobal('navigator', { language })

@@ -1,7 +1,58 @@
 import { describe, expect, it } from 'vitest'
-import { advance, computeOffline, createGame, newProfile, validateProfile } from '../../src/core/index.ts'
+import { advance, computeOffline, createGame, newProfile, perMinute, validateProfile } from '../../src/core/index.ts'
+import { prepareCloudRestore } from '../../src/shared/cloudProfile.ts'
 
 describe('real-time tempo accounting', () => {
+  it('keeps the minute clock through ten half-minute save/restart and import cycles', () => {
+    let profile = newProfile('2026-10-30T00:00:00Z', 7)
+    for (let session = 0; session < 10; session++) {
+      const game = createGame(profile, 7)
+      for (let tick = 0; tick < 600; tick++) advance(game)
+      const saved = JSON.parse(JSON.stringify(profile))
+      profile = session % 2 ? prepareCloudRestore(saved, Date.parse(saved.savedAt)) : validateProfile(saved)
+      expect(profile.rates.elapsedMs).toBe(session % 2 ? 0 : 30000)
+      expect(profile.rates.minutes).toHaveLength(Math.floor((session + 1) / 2))
+      expect(profile.rates).toEqual(game.profile.rates)
+    }
+    expect(profile.stats.playMs).toBe(300000)
+    expect(profile.rates.minutes.reduce((sum, gain) => sum + gain.koban, 0)).toBe(profile.stats.totalKoban)
+    expect(perMinute(profile).koban).toBe(profile.stats.totalKoban / 5)
+  })
+  it('preserves old unmeasured earnings explicitly without adding them to a newly timed minute', () => {
+    const original = newProfile('2026-10-30T00:00:00Z', 7)
+    original.koban = 500; original.party.members.samurai.exp = 10
+    original.rates.current = { koban: 674, exp: 970 }
+    original.rates.minutes = [{ koban: 10, exp: 20 }]
+    const raw = JSON.parse(JSON.stringify(original)); delete raw.rates.elapsedMs; delete raw.rates.legacyUnmeasuredGain
+    const profile = validateProfile(raw)
+    expect(profile.koban).toBe(500); expect(profile.party).toEqual(original.party)
+    expect(profile.rates).toEqual({ current: { koban: 0, exp: 0 }, minutes: original.rates.minutes,
+      elapsedMs: 0, legacyUnmeasuredGain: { koban: 674, exp: 970 } })
+    expect(raw.rates.current).toEqual(original.rates.current)
+    const game = createGame(profile, 7)
+    for (let tick = 0; tick < 1200; tick++) advance(game)
+    expect(profile.rates.minutes[1].koban).toBe(profile.stats.totalKoban)
+    const restored = prepareCloudRestore(JSON.parse(JSON.stringify(profile)), Date.parse(profile.savedAt))
+    expect(restored.rates).toEqual(profile.rates)
+    expect(restored.rates.legacyUnmeasuredGain).toEqual({ koban: 674, exp: 970 })
+  })
+  it.each([null, -1, 60000, Infinity, NaN, '30000'])('rejects present invalid elapsed time %s', invalid => {
+    const raw = newProfile('2026-10-30T00:00:00Z', 7) as unknown as { rates: Record<string, unknown> }
+    raw.rates.elapsedMs = invalid
+    expect(() => validateProfile(raw)).toThrow('bad earnings elapsed time')
+  })
+  it.each([{}, { koban: -1, exp: 0 }, { koban: 0, exp: Infinity }, []])('rejects malformed historical unmeasured earnings', invalid => {
+    const raw = newProfile('2026-10-30T00:00:00Z', 7) as unknown as { rates: Record<string, unknown> }
+    raw.rates.legacyUnmeasuredGain = invalid
+    expect(() => validateProfile(raw)).toThrow('bad legacy earnings')
+  })
+  it('rejects overflow rather than discarding or capping legacy earnings', () => {
+    const raw = JSON.parse(JSON.stringify(newProfile('2026-10-30T00:00:00Z', 7)))
+    delete raw.rates.elapsedMs
+    raw.rates.legacyUnmeasuredGain = { koban: Number.MAX_SAFE_INTEGER, exp: 0 }
+    raw.rates.current.koban = 1
+    expect(() => validateProfile(raw)).toThrow('legacy earnings exceed supported range')
+  })
   it('preserves combat and RNG while completing the same progression in half the real time', () => {
     const current = createGame(newProfile('2026-10-30T00:00:00Z', 7), 7)
     const previous = createGame(structuredClone(current.profile), 7)

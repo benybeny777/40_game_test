@@ -12,7 +12,7 @@ import type { JobId, SimEvent, World } from './sim/types.ts'
 import { createWorld, refreshParty, requestOrder, requestStage, returnToTown, step } from './sim/world.ts'
 
 /** World + Profile wired together. Shared by the Electron main loop and the headless simulator. */
-export interface Game { world: World; profile: Profile; autoFarmClears: number; minuteMs: number; playMsRemainder: number }
+export interface Game { world: World; profile: Profile; autoFarmClears: number; playMsRemainder: number }
 export type Command =
   | { c: 'setLoop'; loop: boolean }
   | { c: 'selectStage'; stageNo: number; depthRank?: Difficulty }
@@ -41,7 +41,7 @@ export function createGame(profile: Profile, seed: number): Game {
     dojo: profile.dojo, gear: gearMap(profile), allocated: allocationMap(profile), loop: profile.progress.loop, depthRank: profile.progress.depthRank, dungeonSeed: profile.dungeonSeed, eventDepths: profile.progress.eventDepths })
   if (profile.progress.inTown) returnToTown(world)
   profile.offlineJobs = actualJobs(world)
-  return { world, profile, autoFarmClears: 0, minuteMs: 0, playMsRemainder: 0 }
+  return { world, profile, autoFarmClears: 0, playMsRemainder: 0 }
 }
 export function advance(game: Game, elapsedMs = REAL_TICK_MS): { events: SimEvent[]; changed: boolean; stageCleared: boolean } {
   if (!Number.isFinite(elapsedMs) || elapsedMs <= 0 || elapsedMs > pb.minuteMs) throw new Error('Invalid simulation step elapsed time')
@@ -72,8 +72,8 @@ export function accountElapsed(game: Game, elapsedMs: number): void {
     profile.stats.playMs = cappedAmount(profile.stats.playMs + wholeMs)
     game.playMsRemainder = elapsed - wholeMs
   }
-  game.minuteMs += elapsedMs
-  while (game.minuteMs + 1e-8 >= pb.minuteMs) { game.minuteMs = Math.max(0, game.minuteMs - pb.minuteMs); closeMinute(profile) }
+  profile.rates.elapsedMs += elapsedMs
+  while (profile.rates.elapsedMs + 1e-8 >= pb.minuteMs) { profile.rates.elapsedMs = Math.max(0, profile.rates.elapsedMs - pb.minuteMs); closeMinute(profile) }
 }
 export function runCommand(game: Game, command: Command): CommandResult & { events?: SimEvent[] } {
   const { world, profile } = game

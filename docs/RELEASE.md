@@ -1,6 +1,6 @@
 # Windows配布とSteam公開の準備
 
-更新：2026-10-29。すべてローカルで検証する。GitHub Actionsは使用しない。
+更新：2026-10-30。すべてローカルで検証する。GitHub Actionsは使用しない。
 
 ## 配布物を作る
 
@@ -14,7 +14,7 @@ pnpm release:check
 
 `package.json` の版と `build` 設定を正本とし、`release/` へWindows x64のportable exeと`win-unpacked/`を生成する。Node.jsやpnpmは開発用で、利用者PCへ別途導入させない。アイコンは現行のゲーム用`party-atlas.png`のサムライを切り出して生成する。
 
-現行バージョンは0.7.0。portableのファイル名は`TaskbarHyakkiko-0.7.0-portable.exe`。表示名を変更しても既存セーブとの互換性のため実行ファイル名・保存先は維持する。初回の配布構成確認後にもソースを変更した場合、最終検証時に必ず`pnpm dist`と`pnpm release:check`を再実行し、古いexeの検査結果を新版の根拠へ使わない。
+現行バージョンは0.7.1。portableのファイル名は`TaskbarHyakkiko-0.7.1-portable.exe`。表示名を変更しても既存セーブとの互換性のため実行ファイル名・保存先は維持する。初回の配布構成確認後にもソースを変更した場合、最終検証時に必ず`pnpm dist`と`pnpm release:check`を再実行し、古いexeの検査結果を新版の根拠へ使わない。
 
 `release-check.mjs`はアプリ本体のPE/x64形式、portable起動部のWindows PE形式、実asar内の起動ファイル、開発用セーブ・ソース・SteamテストAppID・秘密鍵の混入、既知のAPIキー形式、Windowsのkoffiネイティブモジュールを確認し、配布ファイルのサイズとSHA-256を`release/release-manifest.json`へ出力する。NSISのportable起動部はx86でも、中に入るアプリ本体とkoffiはx64であるため、二つを別々に判定する。既知形式の検査であり、秘密情報がないことを完全に証明するものではない。SteamCMDや外部サービスは起動しない。
 
@@ -46,6 +46,8 @@ pnpm release:check
 未使用portを取得して127.0.0.1へCDPを開き、自分が起動したゲームのfile URLのstrip/panelだけへ接続する。17人／3出撃、購入不可・Market無効、en/ja設定同期、街帰還とglobal pauseの区別、通常終了のコードと保存、再起動後の街・設定・周回・言語復元を確認する。ネイティブトレイの一時停止操作はShellApiから実行できないため、このツールで操作済みとは扱わない。
 
 連続実行中は周回をOFFにして実際の階層進行を記録する。最後に保存済みチェックポイントを確定した後、合成のruntimeエラーをAPIから報告し、原因表示・操作と再保存の拒否・保存ファイルの不変・明示リロード後の一時停止を検査する。この意図的なエラーは自然発生したrenderer例外と分けて記録する。main内の例外・オフライン計算・遅延したクラウド復元は別途単体テストで検証する。
+
+v0.7.1の受入には、実保存JSONのpreload/main IPC取込、プレビューとの一致、復元後の一時停止、取消・不正JSON・未来版の拒否と保存不変、runtime障害中の取込拒否も含む。これはOS標準ファイル選択画面を実クリックした検査とは区別する。
 
 15秒間隔で実exe親子のCPU累積時間・working set・private bytes・handlesを記録し、JSONレポート、stdout/stderr、ゲームウィンドウのみのPNGを実行フォルダーへ残す。CDPと起動したプロセスを終了し、port閉鎖を確認する。異常時の強制終了は失敗として記録する。CPU・メモリーの記録は測定値で、漏れや性能目標を自動判定する基準にはしない。スリープ、DPI、全画面、クリーンPC、署名、Steamは別途検証する。
 

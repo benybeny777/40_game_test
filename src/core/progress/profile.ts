@@ -32,7 +32,7 @@ export interface Profile {
   nextItemId: number
   options: { autoSellMaxRarity: Rarity | null; autoEquip: boolean }
   stats: { kills: number; wipes: number; bossKills: number; stageClears: number; playMs: number; totalKoban: number; drops: number }
-  rates: { current: Gain; minutes: Gain[] }        // Last 10 closed minutes, for offline rewards.
+  rates: { current: Gain; minutes: Gain[]; elapsedMs: number; legacyUnmeasuredGain: Gain | null } // Real minute clock is saved with its earnings.
   seenEnemies: string[]
   seenItems: string[]
   offlineJobs: JobId[]                              // Actually deployed, not a queued formation change.
@@ -47,7 +47,7 @@ export function newProfile(savedAt: string, seed = 1): Profile {
     koban: 0, dojo: { atk: 0, hp: 0, walk: 0, drop: 0, offline: 0 }, inventory: [], nextItemId: 1,
     options: { autoSellMaxRarity: null, autoEquip: true },
     stats: { kills: 0, wipes: 0, bossKills: 0, stageClears: 0, playMs: 0, totalKoban: 0, drops: 0 },
-    rates: { current: { koban: 0, exp: 0 }, minutes: [] }, seenEnemies: [], seenItems: [], offlineJobs: deployedJobs(defaultFormation), pendingOffline: null }
+    rates: { current: { koban: 0, exp: 0 }, minutes: [], elapsedMs: 0, legacyUnmeasuredGain: null }, seenEnemies: [], seenItems: [], offlineJobs: deployedJobs(defaultFormation), pendingOffline: null }
 }
 export const expToNext = (lv: number) => Math.floor(b.expBase * lv ** b.expPow)
 export const levels = (profile: Profile) => Object.fromEntries(partyOrder.map((id) => [id, profile.party.members[id].lv])) as Record<JobId, number>
@@ -214,6 +214,21 @@ export function buyDojo(profile: Profile, key: DojoKey): { ok: true } | { ok: fa
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 const count = (value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+function validateRates(raw: unknown): Profile['rates'] {
+  const gain = (value: unknown): value is Gain => isObject(value) && count(value.koban) && count(value.exp)
+  if (!isObject(raw) || !gain(raw.current) || !Array.isArray(raw.minutes) || !raw.minutes.every(gain)) throw new Error('bad earnings')
+  if (raw.legacyUnmeasuredGain !== undefined && raw.legacyUnmeasuredGain !== null && !gain(raw.legacyUnmeasuredGain)) throw new Error('bad legacy earnings')
+  const legacy = raw.legacyUnmeasuredGain === undefined || raw.legacyUnmeasuredGain === null ? null : { ...raw.legacyUnmeasuredGain as Gain }
+  if (raw.elapsedMs === undefined) {
+    // Old saves retained the partial gain but not its duration. Preserve it as historical,
+    // unmeasured earnings instead of fabricating a minute length or counting it again.
+    const unmeasured = { koban: (legacy?.koban ?? 0) + raw.current.koban, exp: (legacy?.exp ?? 0) + raw.current.exp }
+    if (!gain(unmeasured)) throw new Error('legacy earnings exceed supported range')
+    return { current: { koban: 0, exp: 0 }, minutes: raw.minutes.map(value => ({ ...value })), elapsedMs: 0, legacyUnmeasuredGain: unmeasured }
+  }
+  if (!count(raw.elapsedMs, 0) || (raw.elapsedMs as number) >= pb.minuteMs) throw new Error('bad earnings elapsed time')
+  return { current: { ...raw.current }, minutes: raw.minutes.map(value => ({ ...value })), elapsedMs: raw.elapsedMs as number, legacyUnmeasuredGain: legacy }
+}
 /** Old save versions are upgraded one step at a time. Each step has a test. */
 export const migrations: Record<number, (old: Record<string, unknown>) => Record<string, unknown>> = {
   1: (old) => {
@@ -303,9 +318,8 @@ export function validateProfile(input: unknown): Profile {
     autoSellMaxRarity: Number.isInteger(options.autoSellMaxRarity) && count(options.autoSellMaxRarity, 0, rarities.length - 1) ? options.autoSellMaxRarity as Rarity : null }
   profile.dojo = { ...fresh.dojo, ...(dojo as Profile['dojo']) }
   if (raw.stats !== undefined && !isObject(raw.stats)) throw new Error('bad statistics')
-  if (raw.rates !== undefined && (!isObject(raw.rates) || !Array.isArray(raw.rates.minutes))) throw new Error('bad earnings')
   profile.stats = { ...fresh.stats, ...(raw.stats as Partial<Profile['stats']> | undefined) }
-  profile.rates = raw.rates === undefined ? fresh.rates : raw.rates as Profile['rates']
+  profile.rates = raw.rates === undefined ? fresh.rates : validateRates(raw.rates)
   profile.progress = { ...fresh.progress, ...(progress as unknown as Profile['progress']), loop: progress.loop === true }
   if (progress.depthRank !== undefined && (!Number.isInteger(progress.depthRank) || !count(progress.depthRank, 0, 2))) throw new Error('bad difficulty')
   if (progress.unlockedDepths !== undefined && (!Array.isArray(progress.unlockedDepths) || progress.unlockedDepths.length !== 3 || !progress.unlockedDepths.every((depth, index) => Number.isSafeInteger(depth) && count(depth, index === 0 ? 1 : 0, maxFloor(index as Difficulty))))) throw new Error('bad dungeon progress')
@@ -330,7 +344,6 @@ export function validateProfile(input: unknown): Profile {
     && (!isObject(raw.pendingOffline) || !count(raw.pendingOffline.koban) || !count(raw.pendingOffline.exp) || !count(raw.pendingOffline.ms))) throw new Error('bad offline rewards')
   profile.pendingOffline = raw.pendingOffline === undefined || raw.pendingOffline === null ? null : raw.pendingOffline as unknown as OfflineResult
   if (!Object.values(profile.stats).every((value) => count(value))) throw new Error('bad statistics')
-  if (!isObject(profile.rates.current) || !count(profile.rates.current.koban) || !count(profile.rates.current.exp) || !profile.rates.minutes.every((gain) => isObject(gain) && count(gain.koban) && count(gain.exp))) throw new Error('bad earnings')
   if (profile.pendingOffline && (profile.pendingOffline.items !== undefined && (!Number.isSafeInteger(profile.pendingOffline.items) || !count(profile.pendingOffline.items)))) throw new Error('bad offline items')
   const recordedJobs = raw.offlineJobs
   if (recordedJobs !== undefined && (!Array.isArray(recordedJobs) || recordedJobs.length !== deployedJobs(profile.party.order).length || new Set(recordedJobs).size !== recordedJobs.length || !recordedJobs.every(job => typeof job === 'string' && Object.hasOwn(jobs, job)))) throw new Error('bad offline recipients')

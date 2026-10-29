@@ -74,6 +74,9 @@ try {
   let endpoint = await start()
   let localA: Profile = newProfile(new Date().toISOString(), 11)
   localA.koban = 777
+  localA.rates.elapsedMs = 30000
+  localA.rates.current = { koban: 123, exp: 456 }
+  localA.rates.legacyUnmeasuredGain = { koban: 10, exp: 20 }
   const clientA = new CloudClient(endpoint, { readProfile: () => localA, restoreProfile: raw => { localA = prepareCloudRestore(raw) } })
   const account = await succeed(clientA, { action: 'register', ...credentials }, 'First account registration')
   assert.equal(account.revision, 0)
@@ -89,7 +92,9 @@ try {
   localB.koban = 4
   await succeed(clientB, { action: 'download', revision: 1 }, 'Cross-client restore')
   assert.equal(localB.koban, 777)
+  assert.deepEqual(localB.rates, localA.rates, 'Cross-client restore must preserve the partial minute and legacy earnings')
   checks.push('second-client-restores-777-koban')
+  checks.push('second-client-preserves-partial-minute-and-legacy-earnings')
 
   await succeed(clientA, { action: 'upload', revision: 1 }, 'Second revision upload')
   const conflict = await clientB.execute({ action: 'upload', revision: 1 })
@@ -111,6 +116,7 @@ try {
   assert.equal(restarted.view().revision, 2)
   await succeed(restarted, { action: 'download', revision: 2 }, 'Restore after server restart')
   assert.equal(restored.koban, 777)
+  assert.deepEqual(restored.rates, localA.rates, 'SQLite restart must retain the complete earnings interval')
   checks.push('sqlite-restart-retains-revision-2-and-777-koban')
 
   const future = { ...restored, version: 999 }

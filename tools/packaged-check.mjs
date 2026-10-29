@@ -6,6 +6,7 @@ import { createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } 
 import { createServer } from 'node:net'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 import { setTimeout as delay } from 'node:timers/promises'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -222,8 +223,10 @@ async function phase(name, durationMs, restart) {
     assert(preview.koban === importProfile.koban && preview.party.length === 3, 'Native import preview does not match the saved file')
     await panel.evaluate(`window.game.confirmSaveImport(${JSON.stringify(preview.token)})`)
     const afterImport = await panel.evaluate('(async()=>({view:await window.game.getView(),state:await window.game.getState()}))()')
-    assert(afterImport.state.paused && JSON.stringify(afterImport.view) === JSON.stringify(beforeImport), 'Native file import did not restore the checkpoint paused')
+    phase.fileImportObservation = { before: beforeImport, after: afterImport }
+    assert(afterImport.state.paused && isDeepStrictEqual(afterImport.view, beforeImport), 'Native file import did not restore the checkpoint paused')
     const importCheckpoint = readFileSync(savePath, 'utf8')
+    assert(isDeepStrictEqual(JSON.parse(importCheckpoint).rates, importProfile.rates), 'Native import changed the partial earnings interval')
     const importFailures = await panel.evaluate(`(async()=>{
       const errorOf=async fn=>{try{await fn();return null}catch(error){return error.message}};
       const candidate=await window.game.prepareSaveImport(${JSON.stringify(importText)});
@@ -234,7 +237,7 @@ async function phase(name, durationMs, restart) {
     })()`)
     assert(importFailures.cancelled?.includes('expired') && importFailures.malformed?.includes('not valid JSON') && importFailures.future, 'Native import rejection or English error translation failed')
     assert(readFileSync(savePath, 'utf8') === importCheckpoint, 'Cancelled or invalid import changed the saved file')
-    phase.fileImport = { kind: 'real-native-ipc', roundtripPaused: true, previewMatchesFile: true, cancelledAndInvalidUnchanged: true, errors: importFailures }
+    phase.fileImport = { kind: 'real-native-ipc', roundtripPaused: true, previewMatchesFile: true, earningsIntervalPreserved: true, cancelledAndInvalidUnchanged: true, errors: importFailures }
     phase.checks.push('native-file-import-roundtrip-paused', 'native-file-import-cancel-malformed-future-preserve-save')
     const checkpointView = await panel.evaluate('window.game.getView()')
     const checkpointBytes = readFileSync(savePath, 'utf8')
@@ -260,7 +263,7 @@ async function phase(name, durationMs, restart) {
     await until(() => panel.evaluate('Boolean(!window.__runtimeCheckBeforeReload && window.game && document.querySelector(".card"))'), 10000)
     const recovered = await panel.evaluate('(async()=>({state:await window.game.getState(),view:await window.game.getView(),notice:Boolean(document.querySelector(".runtime-failure"))}))()')
     assert(recovered.state.paused && !recovered.state.runtimeError && !recovered.notice, 'Explicit runtime recovery did not reload paused')
-    assert(JSON.stringify(recovered.view) === JSON.stringify(checkpointView), 'Recovered view did not match the saved checkpoint')
+    assert(isDeepStrictEqual(recovered.view, checkpointView), 'Recovered view did not match the saved checkpoint')
     assert(readFileSync(savePath, 'utf8') === checkpointBytes, 'Reload overwrote the saved checkpoint')
     const recoveredStrip = await until(async () => {
       const state = await strip.evaluate('window.game.getState()')
@@ -285,7 +288,8 @@ async function phase(name, durationMs, restart) {
     phase.checks.push('observed-game-processes-exited')
     const save = JSON.parse(readFileSync(join(dataDir, 'save/save.json'), 'utf8'))
     assert(save.version === 3 && save.progress.inTown && save.progress.loop && save.options.autoEquip === false && Object.keys(save.party.members).length === 17, 'Normal quit did not persist the expected save')
-    phase.saved = { version: save.version, savedAt: save.savedAt, inTown: save.progress.inTown, members: Object.keys(save.party.members).length, playMs: save.stats.playMs }
+    assert(Number.isFinite(save.rates.elapsedMs) && save.rates.elapsedMs >= 0 && save.rates.elapsedMs < 60000, 'Partial earnings interval was not persisted')
+    phase.saved = { version: save.version, savedAt: save.savedAt, inTown: save.progress.inTown, members: Object.keys(save.party.members).length, playMs: save.stats.playMs, rates: save.rates }
     phase.exit = exit; phase.ok = true
   } catch (error) {
     phase.error = error.message; phase.ok = false
