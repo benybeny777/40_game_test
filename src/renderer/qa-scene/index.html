@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>戦闘演出・開発確認</title>
+<link rel="stylesheet" href="../font.css"><style>
+*{box-sizing:border-box}body{margin:24px;background:#111521;color:#eae7dd;font:15px var(--font-ui);max-width:1100px}h1{font-size:24px}p{line-height:1.65;color:#bdc8d7}.controls{display:flex;gap:12px;flex-wrap:wrap;align-items:end}label{display:grid;gap:5px}select,button{font:inherit;background:#242e40;color:#fff;border:1px solid #596d89;border-radius:5px;padding:10px;min-height:44px}button:hover{background:#344662}input[type=range]{width:300px;max-width:80vw}.stage{border:1px solid #586477;margin:18px 0;background:repeating-conic-gradient(#1c2330 0 25%,#252e3d 0 50%) 0/16px 16px;overflow:auto}canvas{display:block;image-rendering:pixelated}#scene{width:768px;height:224px;max-width:none}#events{white-space:pre-wrap;color:#ecd39c;min-height:48px}#error{white-space:pre-wrap;color:#ffb9a5}.contact{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,408px),1fr));gap:12px}.contact article{border:1px solid #455267;padding:10px;overflow:auto}.contact canvas{width:100%;max-width:384px;height:auto;aspect-ratio:384/112}.contact h2{font-size:14px;margin:0 0 8px}.clock{margin-top:16px}a{color:#bcd7ff}
+</style></head><body>
+<h1>戦闘演出・開発確認</h1>
+<p>製品と同じ Scene・素材・歩行・アクションを使用。セーブ／アカウントへの接続はありません。イベントは比較用の固定データで、ゲームバランスや実プレイの証拠とは区別します。</p>
+<div class="controls">
+<label>主役（17人）<select id="job"></select></label>
+<label>背景区域<select id="biome"></select></label>
+<label>演出<select id="mode"><option value="attack">通常攻撃</option><option value="walking">歩行</option><option value="skill">スキル</option><option value="ultimate">奥義</option><option value="loot">伝説・神話ドロップ</option><option value="numbers">会心と同時ダメージ</option><option value="boss">ボス予兆→発動</option><option value="interrupt">ボス予兆→押し出し中断</option></select></label>
+<label>表示倍率<select id="scale"><option value="2">2倍</option><option value="1">等倍</option><option value="3">3倍</option></select></label>
+<label><span>背景・縁取り</span><input id="background" type="checkbox" checked></label>
+<button id="replay" type="button">最初から再生</button><button id="pause" type="button">一時停止</button>
+</div>
+<div class="clock"><label for="time">表示時間 <output id="clock">0 ms</output></label><input id="time" type="range" min="0" max="3200" step="10" value="0"></div>
+<div class="stage"><canvas id="scene" width="384" height="112" aria-label="選択したキャラクターの演出"></canvas></div>
+<div id="events" role="status" aria-live="polite"></div><p id="error" role="alert"></p>
+<h2>固定時刻の比較（同じイベント列）</h2><div id="contact" class="contact"></div>
+<p>通常攻撃：0 / 60 / 100 / 180 / 320 / 600ms。伝説・神話：0 / 450 / 1100 / 1600 / 2200 / 2900ms。<a href="../qa-walk/">17人の歩行一覧へ</a></p>
+<script type="module" src="./index.ts"></script></body></html>

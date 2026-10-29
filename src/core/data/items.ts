@@ -53,11 +53,13 @@ export const weaponNames: Record<JobId, string[]> = {
 export const armorNames = ['着流し', '鎖帷子', '陣羽織']
 export const charmNames = ['交通安全守', '学業成就守', '金運招福守']
 export const itemBalance = {
-  baseRollMin: 0.85, baseRollMax: 1.15, uniqueRarity: 5 as Rarity, maxIlvl: 60, dropChance: 0.03, bossMinRarity: 1 as Rarity, growth: 1.12, nameBand: 5,
+  baseRollMin: 0.85, baseRollMax: 1.15, uniqueRarity: 5 as Rarity, maxIlvl: Number.MAX_SAFE_INTEGER,
+  softIlvl: 60, deepRankSpan: 40, maxRequirementRank: 160, activeWeaponShare: 0.7,
+  dropChance: 0.03, bossMinRarity: 2 as Rarity, nameBand: 5,
   weaponAtk: 3, jobAtkMul: { samurai: 1.2, ninja: 1, jirai: 1.2, otaku: 0.7, pachipro: 1, miko: 0.7, bancho: 1.1, gyaru: 0.8, sukeban: 1.2, farmer: 1, maid: 0.9, jiangshi: 1.1, vagabond: 0.8, rikishi: 1.1, sister: 0.7, tono: 0.6, gariben: 0.7 } as Record<JobId, number>,
   armorHp: 15, armorDef: 2, charmExtraAffix: 1,
   lukRarityDiv: 500, pachiLukDrop: 0.0005, lukScalePerIlvl: 0.1,
-  sellBase: 5, sellGrowth: 1.15, inventoryMax: 100,
+  sellBase: 5, inventoryMax: 100,
   offlineDropEveryMs: 10 * 60 * 1000, offlineMaxRarity: 1 as Rarity,
 }
 /** Auto-equip / ↑↓ comparison weights per job: what each role values (03-progression-save.md §3.4). */

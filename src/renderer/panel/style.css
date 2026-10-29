@@ -1,6 +1,7 @@
+@import '../font.css';
 @import './store.css';
 @import './help.css';
-:root { color-scheme: dark; font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; color: #e7eaf0; background: #121723;
+:root { color-scheme: dark; font-family: var(--font-ui); color: #e7eaf0; background: #121723;
   --gold: #d9b25f; --line: #343e50; --card: #1b2231; --muted: #8d9eb7; --text: #f3ead6; }
 * { box-sizing: border-box; }
 body { margin: 0; height: 100vh; overflow: hidden; }
@@ -33,6 +34,7 @@ button:disabled { cursor: default; opacity: .45; }
 .exp { margin-top: 6px; height: 5px; background: #0d1118; border: 1px solid var(--line); width: 140px; }
 .exp i { display: block; height: 100%; background: #9df07a; }
 .card-head small { font-size: 10px; color: var(--muted); }
+.card-head .unspent-points { display:block; color:#ffe27a; font-weight:bold; }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 8px; margin: 0; }
 .stats div, .record div { display: flex; flex-direction: column; }
 .stats dt, .record dt { font-size: 10px; color: var(--muted); }
@@ -109,14 +111,14 @@ button:disabled { cursor: default; opacity: .45; }
 /* Night-paper palette; character art is the focal point. */
 :root { --gold: #d9b878; --line: #393442; --card: #201f2c; --muted: #a39cae; --text: #f7edda; background: #12111b; }
 header { padding: 18px 26px; background: linear-gradient(110deg, #23202e, #161522); }
-h1 { font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; letter-spacing: 2px; }
+h1 { font-family: var(--font-ui); letter-spacing: 2px; }
 nav { background: #191722; padding: 0 24px; gap: 10px; }
 nav button { padding: 13px 14px; transition: color .15s, background .15s; }
 nav button.active { background: #d9b8780b; }
 main { background: radial-gradient(ellipse at top right, #34243c55, transparent 65%); padding: 22px 26px 32px; }
 .journey { border: 1px solid #665044; border-left: 3px solid var(--gold); background: linear-gradient(110deg,#332431,#201d2a); padding: 20px 22px; margin-bottom: 18px; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
 .eyebrow { color: var(--gold); font-size: 10px; letter-spacing: 3px; }
-.journey h2 { font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; font-size: 23px; margin: 7px 0; font-weight: 600; letter-spacing: 1px; color: var(--text); }
+.journey h2 { font-family: var(--font-ui); font-size: 23px; margin: 7px 0; font-weight: 600; letter-spacing: 1px; color: var(--text); }
 .journey p { color: #bfb3c4; font-size: 11px; margin: 0; line-height: 1.8; }
 .journey-link { white-space: nowrap; background: #d9b87815; color: #efd7a9; border: 1px solid #8a714d; padding: 10px 14px; font-size: 12px; }
 .cards { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
@@ -185,3 +187,37 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   .card-head small { display: block; line-height: 1.5; }
   .settings label { gap: 12px; min-height: 44px; }
 }
+
+.next-choice { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:18px; margin-bottom:16px; border:1px solid #927446; border-left:4px solid #e1b766; background:linear-gradient(110deg,#332c23,#201d29); }
+.next-choice h3 { margin:6px 0 12px; font-size:17px; }
+.next-choice p { margin:10px 0 0; color:var(--muted); font-size:12px; line-height:1.6; }
+.next-choice button { flex-shrink:0; min-height:44px; padding:10px 16px; }
+.next-choice button.primary { background:var(--gold); color:#211b20; border:1px solid #f1d599; font-weight:700; }
+.next-choice button.primary:hover { background:#edca82; }
+.next-choice button.primary:focus-visible { outline:2px solid #fff0ce; outline-offset:3px; }
+.loot-comparison { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.loot-comparison > div { padding:10px; border:1px solid var(--line); background:#171620; }
+.loot-comparison small, .loot-comparison strong, .loot-comparison span { display:block; }
+.loot-comparison small { color:var(--muted); margin-bottom:6px; }
+.loot-comparison strong { color:var(--rarity,var(--text)); font-size:14px; }
+.loot-comparison span { color:var(--rarity); font-size:11px; margin-top:4px; }
+.equipment-comparison { border-top:1px solid var(--line); padding:8px 0; }
+.equipment-comparison > small { color:var(--muted); }
+.equipment-comparison dl { margin:6px 0 0; display:grid; gap:5px; }
+.equipment-comparison dl > div { display:flex; justify-content:space-between; gap:12px; font-size:12px; }
+.equipment-comparison dd { margin:0; text-align:right; font-variant-numeric:tabular-nums; }
+.equipment-comparison .improved dd { color:#b3edbd; }
+.equipment-comparison .reduced dd { color:#ffb4a5; }
+.equipment-comparison p { font-size:12px; color:var(--muted); }
+.item.compare-target { border-color:var(--gold); box-shadow:inset 3px 0 var(--gold); }
+.reserve-gear { display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:12px; color:var(--muted); }
+.gear-management { border:1px solid var(--line); padding:8px 12px; }
+.gear-management summary { cursor:pointer; color:var(--muted); font-size:12px; }
+.gear-management[open] summary { margin-bottom:12px; }
+.gear-management .hint { margin-top:10px; }
+.reserve-gear select { background:var(--card); border:1px solid var(--line); padding:8px; color:var(--text); font:inherit; }
+.selected-comparison { border:1px solid var(--gold); padding:12px; background:#282331; }
+.selected-comparison h3 { margin:0 0 8px; font-size:14px; color:var(--gold); }
+.member-details > summary { cursor:pointer; color:var(--gold); padding:8px 0; }
+.member-details[open] > summary { margin-bottom:10px; }
+@media(max-width:540px) { .next-choice { flex-direction:column; align-items:stretch; padding:14px; } }

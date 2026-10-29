@@ -79,7 +79,7 @@ describe('装備（03 §3）', () => {
     for (let index = 0; index < 100; index++) receiveItem(profile, { ...weapon(profile, 'samurai', 1), locked: true })
     profile.options.autoEquip = true
     const incoming = weapon(profile, 'samurai', 20)
-    expect(receiveItem(profile, incoming)).toEqual({ sold: true })
+    expect(receiveItem(profile, incoming)).toMatchObject({ sold: true, sale: { item: incoming, reason: 'capacity' } })
     expect(profile.inventory).toHaveLength(100)
     expect(profile.inventory.every((item) => item.locked)).toBe(true)
     expect(profile.party.members.samurai.equip.weapon).toBeNull()
@@ -171,7 +171,7 @@ describe('エリア2・3の敵（05 §2・§3）', () => {
     const world = battleAt(10, 10)
     const boss = world.units.find((unit) => unit.defId === 'manekitaisho')!
     boss.x = 14; boss.skillReadyTick = 0
-    const events = Array.from({ length: 5 }, () => step(world)).flat()
+    const events = Array.from({ length: 30 }, () => step(world)).flat()
     expect(events.some((event) => event.t === 'skill' && event.skillId === 'shoufuku')).toBe(true)
     const kyubiWorld = battleAt(30, 10)
     const kyubi = kyubiWorld.units.find((unit) => unit.defId === 'denno_kyubi')!
@@ -188,5 +188,32 @@ describe('エリア2・3の敵（05 §2・§3）', () => {
     const last = world.units.filter((unit) => unit.side === 'ally').at(-1)!
     expect(events.some((event) => event.t === 'attack' && event.uid === fig.uid && event.targetUid === last.uid)).toBe(true)
     expect(fig.x).toBe(x)
+  })
+})
+
+describe('capacity sale reporting', () => {
+  it('reports the displaced old item even when the new drop is kept and auto sell is disabled', () => {
+    const profile = newProfile('t'); profile.options.autoEquip = false; profile.options.autoSellMaxRarity = null
+    const old = weapon(profile, 'samurai', 1); old.name = '容量で売る旧刀'
+    profile.inventory.push(old)
+    for (let index = 1; index < 100; index++) profile.inventory.push({ ...weapon(profile, 'samurai', 1), locked: true })
+    const incoming = { ...weapon(profile, 'samurai', 20), rarity: 4 as const }, before = profile.koban
+    const result = receiveItem(profile, incoming, true)
+    expect(result.sold).toBe(false)
+    expect(result.sale).toMatchObject({ reason: 'capacity', item: old })
+    expect(result.sale!.koban).toBe(profile.koban - before)
+    expect(profile.inventory).toContain(incoming); expect(profile.inventory).not.toContain(old)
+    expect(profile.inventory).toHaveLength(100)
+  })
+  it('marks a guaranteed rare drop as sold when every existing item is protected', () => {
+    const profile = newProfile('t'); profile.options.autoSellMaxRarity = null
+    for (let index = 0; index < 100; index++) profile.inventory.push({ ...weapon(profile, 'samurai', 1), locked: true })
+    const events: SimEvent[] = [], before = profile.koban
+    const result = dropItem(profile, 10, 0, events, { min: 4, max: 4, holdForReview: true })
+    expect(result.sold).toBe(true)
+    expect(events[0]).toMatchObject({ t: 'drop', rarity: 4, sold: true, sale: { reason: 'capacity', rarity: 4, koban: profile.koban - before } })
+    expect(events[0].t === 'drop' && events[0].sale!.name).toBe(result.sale!.item.name)
+    expect(profile.inventory).toHaveLength(100)
+    expect(profile.inventory.every(item => item.locked)).toBe(true)
   })
 })

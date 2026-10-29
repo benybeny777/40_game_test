@@ -37,6 +37,7 @@ function browser(storage = new MemoryStorage(), hidden = false) {
   const document = new BrowserDocument(), window = new BrowserWindow()
   document.hidden = hidden
   vi.stubGlobal('window', window); vi.stubGlobal('document', document); vi.stubGlobal('localStorage', storage)
+  vi.stubGlobal('sessionStorage', new MemoryStorage())
   vi.stubGlobal('navigator', { language: 'ja-JP', userActivation: { isActive: true } })
   vi.stubGlobal('crypto', { getRandomValues: (values: Uint32Array) => { for (let i = 0; i < values.length; i++) values[i] = ++randomValue; return values } })
   return { document, window, storage }
@@ -302,5 +303,44 @@ describe('ブラウザー保存・復帰・操作', () => {
     view.koban = 99999; state.paused = true
     expect((await api.getView()).koban).toBe(0)
     expect((await api.getState()).paused).toBe(false)
+  })
+})
+
+describe('runtime failure isolation', () => {
+  it('removes a broken state subscriber before notifying the remaining subscribers', async () => {
+    const { storage } = browser(), api = initializePlatform(), checkpoint = storage.getItem(storageKey)
+    const broken = vi.fn(() => { throw new Error('broken panel renderer') }), healthy = vi.fn()
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    api.onState(broken); api.onState(healthy)
+    await Promise.resolve()
+    expect(broken).toHaveBeenCalledTimes(1)
+    expect((await api.getState()).runtimeError).toContain('broken panel renderer')
+    expect((await api.getState()).storageError).toBeUndefined()
+    expect((await api.getState()).paused).toBe(true)
+    expect(healthy).toHaveBeenCalled()
+    vi.advanceTimersByTime(60000)
+    expect(storage.getItem(storageKey)).toBe(checkpoint)
+    api.openMenu(); expect((await api.getState()).paused).toBe(true)
+    expect((await api.command({ c: 'returnTown' })).ok).toBe(false)
+    log.mockRestore()
+  })
+  it('keeps the first cause and permits save export after stopping', async () => {
+    browser(); const api = initializePlatform()
+    await api.reportRuntimeError('first failure'); await api.reportRuntimeError('secondary failure')
+    expect((await api.getState()).runtimeError).toBe('first failure')
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:export')
+    api.exportSave(); expect(create).toHaveBeenCalledOnce(); create.mockRestore()
+  })
+  it('reloads the previous checkpoint paused without overwriting the saved profile', async () => {
+    const { window, storage } = browser(), api = initializePlatform(), checkpoint = storage.getItem(storageKey)
+    const reload = vi.fn(); Object.assign(window, { location: { reload } })
+    await api.reportRuntimeError('draw failure'); api.reloadAfterRuntimeError()
+    expect(reload).toHaveBeenCalledOnce(); expect(storage.getItem(storageKey)).toBe(checkpoint)
+    const session = sessionStorage
+    browser(storage); vi.stubGlobal('sessionStorage', session)
+    const next = initializePlatform()
+    expect((await next.getState()).paused).toBe(true)
+    expect((await next.getState()).runtimeError).toBeUndefined()
+    expect(JSON.parse(storage.getItem(storageKey)!).profile).toEqual(JSON.parse(checkpoint!).profile)
   })
 })

@@ -1,3 +1,4 @@
+import { reportRendererError } from '../errors'
 import type { CommerceResult, StoreProduct, StoreView, ThemeDefinition } from '../../shared/commerce.ts'
 import './translations'
 import { textElement as element } from './dom'
@@ -64,8 +65,7 @@ export function renderStore(view: StoreView, hooks: StoreHooks): HTMLElement {
         else if (success) hooks.toast(success)
       }
     } catch (error) {
-      console.error('Store operation response failed; purchase is not retried', error)
-      hooks.toast('ストアとの通信を確認できませんでした。購入を繰り返さず、状態の更新をお待ちください。')
+      hooks.toast(reportRendererError('ストアとの通信を確認できませんでした。購入を繰り返さず、状態の更新をお待ちください。', error))
       // Readback only: never retry a purchase after an uncertain response.
       next = await refresh()
     } finally {

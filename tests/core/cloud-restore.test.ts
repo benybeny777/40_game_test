@@ -22,7 +22,7 @@ describe('cloud restore boundary', () => {
   })
   it('constructs a replacement before changing the running game, then adopts that exact prepared game', () => {
     const original = newProfile('2026-10-29T00:00:00Z')
-    const callbacks = { frame() {}, viewChanged() {}, save() {}, offline() {} }
+    const callbacks = { frame() {}, viewChanged() {}, save() { return true }, offline() {}, failed(error: Error) { throw error } }
     const host = new GameHost(original, 1, callbacks)
     const invalid = { ...newProfile(original.savedAt), rng: 0.5 }
     expect(() => host.prepareProfile(invalid)).toThrow('seed must be uint32')

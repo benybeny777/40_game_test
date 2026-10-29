@@ -1,3 +1,4 @@
+import { reportRendererError } from '../errors'
 import type { CloudCommand, CloudResult, CloudView } from '../../shared/cloud'
 import { getLocale, registerTranslations, registerTranslationTemplates, translatedLabel } from '../../shared/i18n'
 import { h } from './dom'
@@ -159,8 +160,7 @@ export function createCloudSettings(api: CloudSettingsApi) {
       const next = await api.getCloud()
       if (generation === operationGeneration && JSON.stringify(next) !== JSON.stringify(view)) { view = next; changed = true }
     } catch (failure) {
-      console.error('Cloud settings could not be read', failure)
-      if (generation === operationGeneration) { error = 'クラウドの状態を確認できませんでした。接続を確認し、状態を再確認してください。'; changed = true }
+      if (generation === operationGeneration) { error = reportRendererError('クラウドの状態を確認できませんでした。接続を確認し、状態を再確認してください。', failure, false); changed = true }
     } finally { reading = false; if (!quiet) busy = false; if (changed || !quiet) paint() }
   }
   async function run(command: CloudCommand) {
@@ -179,8 +179,7 @@ export function createCloudSettings(api: CloudSettingsApi) {
         message = successes[command.action]
       }
     } catch (failure) {
-      console.error('Cloud operation result could not be confirmed', failure)
-      error = '通信結果を確認できませんでした。送信を繰り返す前に、クラウドの状態を確認してください。'
+      error = reportRendererError('通信結果を確認できませんでした。送信を繰り返す前に、クラウドの状態を確認してください。', failure, false)
     } finally { busy = false; paint() }
   }
   return () => {

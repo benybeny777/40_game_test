@@ -1,0 +1,2 @@
+.audio-error { position:fixed; right:10px; top:8px; max-width:min(440px,calc(100vw - 20px)); z-index:90; padding:8px 12px; border:1px solid #d29b72; background:#362724; color:#ffe2c4; font:12px/1.5 var(--font-ui); white-space:pre-wrap; pointer-events:none; }
+.audio-error[hidden] { display:none; }

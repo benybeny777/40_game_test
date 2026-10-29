@@ -3,21 +3,23 @@ import { attributesOf, availablePoints } from './attributes.ts'
 import { balance as b } from '../data/balance.ts'
 import { difficulties, dungeonBalance as db, dungeons, floorFeature, floorLimit, type Difficulty, type FloorFeature } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
-import { rarities, slots, type Rarity, type SlotId } from '../data/items.ts'
-import { deployedJobs, jobs, partyOrder, partySize, roleLabels, type JobRole } from '../data/jobs.ts'
+import { itemBalance, rarities, slots, type Rarity, type SlotId } from '../data/items.ts'
+import { deployedJobs, jobs, partySize, roleLabels, type JobRole } from '../data/jobs.ts'
 import { dojo as dojoDefs, type DojoKey } from '../data/progress.ts'
 import { stageLabel } from '../data/stages.ts'
-import type { JobId } from '../sim/types.ts'
-import { describe, equipCheck, ownerOf, requirementsOf, scoreDelta, sellPrice, statsOf, type Item } from './items.ts'
-import { dojoCost, expToNext, perMinute, type OfflineResult, type Profile } from './profile.ts'
+import type { JobId, Stats } from '../sim/types.ts'
+import { createEquipmentComparison, describe, ownerOf, requirementsOf, sellPrice, statsOf, type Item } from './items.ts'
+import { activeExperienceMultiplier, dojoCost, expToNext, perMinute, type OfflineResult, type Profile } from './profile.ts'
 
 export interface ItemView {
   id: string; name: string; slot: SlotId; slotName: string; job?: JobId; jobName?: string; ilvl: number
   rarity: Rarity; rarityName: string; color: string; lines: string[]; sellPrice: number; locked: boolean; isNew: boolean
   requirements: string[]; rollLabel: string; marketEligible: false; equipable: Record<JobId, { ok: true } | { ok: false; reason: string }>
   owner?: JobId; delta: Partial<Record<JobId, number>>                 // Power change if that job equipped it (null = cannot).
+  comparison: Partial<Record<JobId, Partial<Record<keyof Stats, { before: number; after: number }>>>>
 }
 export interface MemberView {
+  experienceMultiplier: number
   active: boolean; fighting: boolean; job: JobId; name: string; role: string; roleId: JobRole; color: string; lv: number; exp: number; expNext: number
   attributes: Attributes; baseAttributes: Attributes; allocated: Attributes; availablePoints: number; autoStats: boolean; mainAttribute: AttributeKey; autoWeights: Attributes
   stats: { hp: number; atk: number; def: number; interval: number; cri: number; eva: number; luk: number; range: string }
@@ -32,6 +34,7 @@ export interface ProfileView {
   formationPending: boolean
   party: MemberView[]
   inventory: ItemView[]
+  reserveEquipment: ItemView[]
   inventoryMax: number
   options: Profile['options']
   rarityNames: string[]
@@ -44,18 +47,24 @@ export interface ProfileView {
 }
 const round = (value: number, digits = 0) => Math.round(value * 10 ** digits) / 10 ** digits
 
-function itemView(profile: Profile, item: Item): ItemView {
+function itemView(profile: Profile, item: Item, compare: ReturnType<typeof createEquipmentComparison>): ItemView {
   const rarity = rarities[item.rarity]
+  const checked = compare(item)
+  const comparisons = checked.flatMap(({ job, comparison }) => comparison ? [{ job, ...comparison }] : [])
   return { id: item.id, name: item.name, slot: item.slot, slotName: slots[item.slot].name, job: item.job, jobName: item.job ? jobs[item.job].name : undefined,
     ilvl: item.ilvl, rarity: item.rarity, rarityName: rarity.name, color: rarity.color, lines: describe(item), sellPrice: sellPrice(item),
-    locked: item.locked, isNew: item.isNew, requirements: attributeKeys.filter((key) => requirementsOf(item)[key] > 0).map((key) => attributeLabels[key] + requirementsOf(item)[key]), rollLabel: `基礎性能${Math.round((item.baseRoll ?? 1) * 100)}%（85〜115%）`, marketEligible: false, equipable: Object.fromEntries(partyOrder.map((job) => [job, equipCheck(profile, job, item)])) as ItemView['equipable'], owner: ownerOf(profile, item.id),
-    delta: Object.fromEntries(partyOrder.map((job) => [job, scoreDelta(profile, job, item)]).filter(([, delta]) => delta !== null).map(([job, delta]) => [job, round(delta as number, 1)])) }
+    locked: item.locked, isNew: item.isNew, requirements: attributeKeys.filter((key) => requirementsOf(item)[key] > 0).map((key) => attributeLabels[key] + requirementsOf(item)[key]), rollLabel: `基礎性能${Math.round((item.baseRoll ?? 1) * 100)}%（85〜115%）`, marketEligible: false, equipable: Object.fromEntries(checked.map(({ job, check }) => [job, check])) as ItemView['equipable'], owner: ownerOf(profile, item.id),
+    comparison: Object.fromEntries(comparisons.map(({ job, before, after }) => [job,
+      Object.fromEntries((Object.keys(before) as Array<keyof Stats>).filter(key => Math.abs(after[key] - before[key]) > .000001)
+        .map(key => [key, { before: before[key], after: after[key] }]))])),
+    delta: Object.fromEntries(comparisons.map(({ job, delta }) => [job, round(delta, 1)])) }
 }
 
 export function buildView(profile: Profile, loop: boolean): ProfileView {
   const current = stageLabel(profile.progress.currentStage)
   const rate = perMinute(profile)
-  const views = new Map(profile.inventory.map((item) => [item.id, itemView(profile, item)]))
+  const compare = createEquipmentComparison(profile)
+  const views = new Map(profile.inventory.map((item) => [item.id, itemView(profile, item, compare)]))
   const rank = profile.progress.depthRank, limit = floorLimit(rank), best = profile.progress.unlockedDepths[rank]
   const visibleFloors = limit === null ? [...new Set([1, best, ...Array.from({ length: db.stageWindow * 2 + 1 }, (_, index) => profile.progress.currentStage - db.stageWindow + index)])].filter((depth) => Number.isSafeInteger(depth) && depth >= 1 && depth <= best).sort((a, z) => a - z)
     : Array.from({ length: limit }, (_, index) => index + 1)
@@ -71,6 +80,7 @@ export function buildView(profile: Profile, loop: boolean): ProfileView {
     party: profile.party.order.map((id) => {
       const job = jobs[id], member = profile.party.members[id], stats = statsOf(profile, id)
       return { active: deployedJobs(profile.party.order).includes(id), fighting: profile.offlineJobs.includes(id), job: id, name: job.name, role: roleLabels[job.role], roleId: job.role, color: job.color, lv: member.lv, exp: member.exp, expNext: expToNext(member.lv), attributes: attributesOf(id, member.allocated), baseAttributes: { ...attributeDefs[id].base }, allocated: { ...member.allocated }, availablePoints: availablePoints(member), autoStats: member.autoStats, mainAttribute: attributeDefs[id].main, autoWeights: { ...attributeDefs[id].auto },
+        experienceMultiplier: activeExperienceMultiplier(profile, id, profile.offlineJobs),
         stats: { hp: round(stats.maxHp), atk: round(stats.atk, 1), def: round(stats.def, 1), interval: round(stats.intervalMs / 1000, 2),
           cri: round(stats.cri * 100, 1), eva: round(stats.eva * 100, 1), luk: round(stats.luk, 1), range: job.attack.kind === 'melee' ? '近接' : '遠隔' },
         skills: [
@@ -82,7 +92,8 @@ export function buildView(profile: Profile, loop: boolean): ProfileView {
         equip: Object.fromEntries((Object.keys(slots) as SlotId[]).map((slot) => [slot, member.equip[slot] ? views.get(member.equip[slot]!) ?? null : null])) as MemberView['equip'] }
     }),
     inventory: [...views.values()].filter((item) => !item.owner).sort((a, z) => z.rarity - a.rarity || z.ilvl - a.ilvl),
-    inventoryMax: 100, options: { ...profile.options }, rarityNames: rarities.map((rarity) => rarity.name),
+    reserveEquipment: [...views.values()].filter(item => item.owner && !deployedJobs(profile.party.order).includes(item.owner)),
+    inventoryMax: itemBalance.inventoryMax, options: { ...profile.options }, rarityNames: rarities.map((rarity) => rarity.name),
     dojo: (Object.keys(dojoDefs) as DojoKey[]).map((key) => {
       const def = dojoDefs[key], level = profile.dojo[key], cost = dojoCost(key, level)
       const maxed = def.max !== null && level >= def.max

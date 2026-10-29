@@ -1,5 +1,39 @@
 # ローカル検証記録
 
+## 0.7.0（2026-10-29）
+
+下記を旧版の記録より優先する。レビュー原文・対応表は [reviews](reviews/2026-10-29-review-resolution.md)。Claude CLIの静的評価、コアの高速シミュレーション、実画面、実配布exeを区別する。
+
+| 対象 | 結果と根拠 |
+|---|---|
+| 型・Lint・単体 | 最終ソースでtypecheck/lint成功、46ファイル470テスト。ボス中断・装備成長・比較・経験値・保存／復元・描画／音声の障害境界を含む |
+| 配布・Web | `pnpm dist` / `pnpm web:build`成功、release:check116ファイルPASS。開発専用qa-scene/qa-walkは製品に含めない |
+| 実ブラウザー | Codex内IAB、320/375/960px × 日本語／英語 × 8画面。横はみ出しなし、console error 0。実装備の増減・無料reset/全振り/自動振り・交代後の参加者のみ成長・ストア試着を確認。詳細は [UI記録](reviews/2026-10-29-ui-validation.md) |
+| フォント・画像 | 同梱BIZ UDPGothicの400/700を製品Web画面で読込確認。パネル画像は戦闘用を除いた6PNG、展開量66→36MiB。これはプロセス全体の使用量ではない |
+| ゲーム進行 | 実コア＋実ドロップを使う3seedで通常B100、修羅B100、深淵B101突破。初回通常B100は166.69〜175.64分。深淵の最長約20分の足止めを含め [進行記録](reviews/2026-10-29-progression-validation.md) に記載。人間の実時間プレイや全編成の保証とは異なる |
+| 保存API | 最終CloudClient＋別repoの本物HTTP/SQLiteで登録→保存→別client復元→競合拒否→DB再起動→未来版拒否→別account分離PASS。専用tmp削除済み。遠隔HTTPS運用や今回のnative cloud IPCの証明ではない |
+| 破損保存 | 終了時の正本／前世代不変・選択後の一時停止は単体試験。実exeの警告／原因／進行喪失／2選択肢はnative AXで確認。ネイティブ撮影・入力はOSアクセス拒否のため、実クリック確認とは扱わない |
+
+最終実exeの30分受入は `.dev-data/packaged-acceptance/2026-10-29T14-19-30-662Z-33660/report.json` で**PASS**。初回・再起動の両phaseでrenderer例外0、観測した残存子プロセス0、終了code0、デバッグport閉鎖。周回OFF・自動装備OFFでB12へ進み、435体撃破・大ボス1体・全滅2回からの立て直しを記録した。17人保持／実出撃3人、日英同期、通常版のsandbox／購入拒否も確認した。
+
+両phaseで合成runtime障害を明示APIから通知し、原因表示・操作／保存retry拒否・保存ファイル不変・チェックポイントと同じ表示への明示リロード・帯とパネルの一時停止がPASS。これは自然発生した障害や全例外経路の実機再現とは区別する。実行本体SHA256は`dd950fa5f6058125511f2aa71b846d5856208b9f3864829ecdda000959832cee`、asarは`01922d2e61d3fa14a6a160a887e948c0db206fffea82b5e39bad911c2ccf3ed6`。
+
+親子合計working setは860.0→654.6MiB、private bytesは762.7→449.2MiB。観測1784.9秒のCPU累積差263.6秒。working setには共有ページの重複があり、専用メモリー量・全PC共通の性能・無期限の漏れなしを保証する数値ではない。
+
+自己展開portable自体もNode `spawn`で環境を明示して起動し、初回15,000msの進行保存→同ファイル再起動後29,900msへ継続、v3／17人保持、両回exit0を確認した。専用データと結果は`.dev-data/portable-launch-2026-10-29/`。先行したPowerShell `Start-Process`経由の試験は終了code0だったが指定先のセーブを確認できず失敗しており、原因は未特定。製品コードは変更せず、直接spawnによる二度の実起動結果と区別して残す。自己展開版で30分試験を行ったという意味ではなく、30分は同梱されるwin-unpacked本体で実施した。
+
+現行portableは `release/TaskbarHyakkiko-0.7.0-portable.exe`、120,845,801 bytes、SHA256 `a888600241d297baa0c70e3ea63f076209afaab829a6594a5642d81be9815e01`。`Get-AuthenticodeSignature`でNotSigned、未署名。[日本語パネル](images/play-panel.png)・[英語パネル](images/play-panel-en.png)・[帯](images/play-strip.png)は、この実行の実ゲームウィンドウから採取した。
+
+途中版の `2026-10-29T13-43-17-013Z-40680/report.json` は、最終版への置換のため約633秒で検査者が終了させた記録で、`ok:false`。自然発生の不具合や最終PASSへ読み替えない。
+
+自動承認レビューは `.font-tools`（18,005,782 bytes）、フォント変換元TTF2本（計9,310,284 bytes）の削除を拒否した。理由は「blocked by policy」で、詳細は提示されていない。別手段で再試行せず未削除のまま、製品／コミット対象から除外する。以前に拒否されたout/preview等も再試行していない。全残骸の後片付け済みとは扱わない。
+
+追加で `.dev-data/recovery-ui-2026-10-29` の削除も同じ自動承認レビューに拒否された。対象はこの作業で作った合成セーブ／設定／キャッシュで、使用プロセスは終了済み。未削除として保持し、別手段での再試行はしない。
+
+最終確認後、旧0.6.0 portableは実パス・非リンク・非使用を確認して削除（116,421,284 bytes）。自己展開版の一時展開先は起動ランチャーによって削除され、残存ゲームプロセスなし。IAB3タブとviewport指定、5177/4177の検証サーバーも終了した。削除後の空きは455,061,147,648 bytes。最新の検査report／画面と現行配布物は維持する。
+
+実スマホ、クリーンPC、署名・Steam・実決済、外部クラウド運用は本記録の合格範囲ではない。GitHub ActionsはAPIで無効を確認し、検証に使用していない。
+
 ## 0.6.0（2026-10-29）
 
 - 最終変更のtypecheck/lint、30ファイル377テスト成功。初回OS言語、保存一本化とrollback、装備filter、編成反映待ち、modal、strict profile/settings、実非同期storeエラー、歩行phase、全projectile素材を含む。

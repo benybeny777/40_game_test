@@ -1,3 +1,8 @@
+import { loadUiFonts } from '../fonts'
+import { runtimeFailure } from '../runtimeFailure'
+import { AudioSession } from '../audioSession'
+import { createAudioNotice } from '../audioNotice'
+import { reportRendererError } from '../errors'
 import { initializePlatform } from '../platform'
 import type { JobId } from '../../core/index.ts'
 import type { ShellState } from '../../shared/api'
@@ -9,6 +14,7 @@ import { createBattleText } from '../battleText'
 
 async function start() {
   const api = initializePlatform()
+  const runtime = runtimeFailure(api)
   const screen = document.querySelector<HTMLCanvasElement>('#mobile-screen')!
   const banner = document.querySelector<HTMLElement>('#mobile-banner')!
   const pause = document.querySelector<HTMLButtonElement>('#mobile-pause')!
@@ -21,6 +27,8 @@ async function start() {
     if (bannerTimer) clearTimeout(bannerTimer)
     bannerTimer = setTimeout(() => banner.classList.remove('show'), 2200)
   }
+  const audio = new AudioSession({ desktop: false, onChange: createAudioNotice(), onError: error => { reportRendererError('通知音を再生できませんでした。', error) } })
+  audio.configure(state)
   const scene = new Scene({ banner: message, label: text => message(text) })
   const logical = document.createElement('canvas'), ctx = screen.getContext('2d')!, off = logical.getContext('2d')!
   let dotPx = 1, needsDraw = true
@@ -39,7 +47,7 @@ async function start() {
     api.openPanel({ tab: 'stage' })
   })
   api.onState(next => {
-    state = next; translateControls()
+    state = next; audio.configure(next); translateControls()
   })
   function translateControls() {
     needsDraw = true
@@ -51,13 +59,14 @@ async function start() {
     battleText.translate()
   }
   onLocaleChange(translateControls); translateControls()
-  await artReady
-  api.onFrame(frame => {
+  await Promise.all([artReady, loadUiFonts()])
+  api.onFrame(frame => runtime.run(() => {
+    audio.consume(frame)
     scene.ingest(frame, performance.now())
     needsDraw = true
     const allies = frame.snapshot.units.filter(unit => unit.side === 'ally')
     battleText.party(allies.map(unit => unit.defId as JobId))
-  })
+  }))
   screen.addEventListener('click', event => {
     const rect = screen.getBoundingClientRect(), dpr = window.devicePixelRatio || 1
     const hit = scene.hitTest((event.clientX - rect.left) * dpr / dotPx,
@@ -69,7 +78,6 @@ async function start() {
   resize()
   let lastDraw = 0
   function draw(now: number) {
-    requestAnimationFrame(draw)
     if (document.hidden || now - lastDraw < 1000 / state.settings.fpsCap - 2) return
     if (state.paused && !needsDraw && !scene.busy(now)) return
     lastDraw = now; needsDraw = false; scene.groundBand = state.settings.groundBand; scene.appearance = state.appearance
@@ -78,13 +86,14 @@ async function start() {
     ctx.clearRect(0, 0, screen.width, screen.height); ctx.imageSmoothingEnabled = false
     ctx.drawImage(logical, 0, screen.height - scene.H * dotPx, scene.W * dotPx, scene.H * dotPx)
   }
-  requestAnimationFrame(draw)
+  runtime.animate(draw)
   await import('../panel/index')
 }
 void start().catch(error => {
+  if (window.game) { runtimeFailure(window.game).fail(error); return }
   console.error(error)
   if (!document.querySelector('.browser-load-error')) {
     const root = document.querySelector('#app')!
-    root.textContent = tr('ゲームを読み込めませんでした。保存データを消さずに、ページを読み直してください。')
+    root.textContent = reportRendererError('ゲームを読み込めませんでした。保存データを消さずに、ページを読み直してください。', error)
   }
 })

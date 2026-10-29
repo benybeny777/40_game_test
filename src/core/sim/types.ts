@@ -12,7 +12,7 @@ export interface Effect { kind: EffectKind; value: number; untilTick: number; so
 export interface Unit {
   uid: number; side: Side; defId: string; slot: number; x: number; hp: number; lv: number
   stats: Stats; base: Stats; alive: boolean
-  action: { kind: 'none' | 'move' | 'windup' | 'cast'; untilTick: number; targetUid?: number; skillId?: string; roll?: number }
+  action: { kind: 'none' | 'move' | 'windup' | 'cast'; untilTick: number; targetUid?: number; skillId?: string; roll?: number; targetUids?: number[]; originX?: number; interruptSource?: { uid: number; skillId: string } }
   attackReadyTick: number; skillReadyTick: number; ult: number; gauges: { jonen?: number; phantoms?: number; split?: number; raised?: number; wardUsed?: number }
   effects: Effect[]; aggro: number
 }
@@ -29,6 +29,7 @@ export interface World {
 export interface SnapshotUnit {
   uid: number; side: Side; defId: string; slot: number; x: number; hpRatio: number; hp: number; maxHp: number; alive: boolean; lv: number
   action: Unit['action']['kind']; ult: number; ultOn: boolean; skillReady: number; jonen?: number; effects: string[]
+  bossCast?: { skillId: string; targetUids: number[]; resolveTick: number }
 }
 export interface Snapshot {
   tick: number; phase: Phase; stageNo: number; depthRank: import('../data/dungeon.ts').Difficulty; wave: number; koban: number; loop: boolean
@@ -37,6 +38,8 @@ export interface Snapshot {
   mines: Array<{ id: number; x: number; explodeTick: number }>
 }
 export type SimEvent =
+  | { t: 'bossTell'; uid: number; skillId: string; targetUids: number[]; resolveTick: number }
+  | { t: 'bossInterrupt'; uid: number; skillId: string; sourceUid?: number; interruptSkillId?: string }
   | { t: 'attack'; uid: number; targetUid: number; kind: 'melee' | 'ranged' }
   | { t: 'damage'; uid: number; sourceUid: number; amount: number; crit: boolean; tags?: string[] }
   | { t: 'miss'; uid: number; sourceUid: number }
@@ -49,7 +52,7 @@ export type SimEvent =
   | { t: 'kakuhen'; uid: number; hit: boolean }
   | { t: 'reward'; koban: number; exp: number; enemyId: string; x: number; stageNo?: number }
   | { t: 'explode'; x: number; radius: number }
-  | { t: 'drop'; x: number; rarity: number; name: string; equippedBy?: JobId }
+  | { t: 'drop'; x: number; rarity: number; name: string; equippedBy?: JobId; sold?: boolean; sale?: { reason: 'auto' | 'capacity'; name: string; rarity: number; koban: number } }
   | { t: 'levelUp'; job: JobId; lv: number }
 export interface AttackDef { kind: 'melee' | 'ranged'; mul: number; projectile?: string; targeting: Targeting }
 /** What an equipped item contributes to stats (full item metadata lives in progress/items.ts). */

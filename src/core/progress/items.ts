@@ -1,4 +1,4 @@
-import { cappedAmount } from '../data/dungeon.ts'
+import { cappedAmount, depthScale, progressionDepth, type Difficulty } from '../data/dungeon.ts'
 import { balance as b } from '../data/balance.ts'
 import { attributeDefs, attributeKeys, attributeLabels, requirementsBalance as rb, emptyAttributes, type Attributes } from '../data/attributes.ts'
 import { attributesOf } from './attributes.ts'
@@ -27,10 +27,16 @@ export function itemName(slot: SlotId, job: JobId | undefined, ilvl: number) {
   const names = slot === 'weapon' ? weaponNames[job!] : slot === 'armor' ? armorNames : charmNames
   const base = names[Math.min(band, names.length - 1)]
   const extra = band - (names.length - 1)
-  return extra > 0 ? `${base}・改${'弐参肆伍陸漆捌玖'[Math.min(extra, 8) - 1] ?? ''}` : base
+  const tier = extra <= 8 ? '弐参肆伍陸漆捌玖'[extra - 1] : String(extra + 1)
+  return extra > 0 ? `${base}・改${tier}` : base
 }
 
-export interface RollOptions { ilvl: number; luk: number; jobs: readonly JobId[]; minRarity?: Rarity; maxRarity?: Rarity }
+/** Quality continues across difficulty transitions; it is never a character-level requirement. */
+export const lootRank = (floor: number, difficulty: Difficulty) => progressionDepth(floor, difficulty)
+const deepRanks = (rank: number) => Math.log2(1 + Math.max(0, rank - ib.softIlvl) / ib.deepRankSpan)
+const scaledRank = (rank: number) => Math.min(rank, ib.softIlvl) + deepRanks(rank) * 5
+
+export interface RollOptions { ilvl: number; luk: number; jobs: readonly JobId[]; activeJobs?: readonly JobId[]; slot?: SlotId; minRarity?: Rarity; maxRarity?: Rarity }
 /** Rarity weights r≥1 grow with party LUK (03 §3.1). Uses the profile's own RNG stream, separate from the battle. */
 export function rollItem(state: { rng: number }, id: string, options: RollOptions): Item {
   options = { ...options, ilvl: Math.max(1, Math.min(ib.maxIlvl, Math.floor(options.ilvl))) }
@@ -40,31 +46,37 @@ export function rollItem(state: { rng: number }, id: string, options: RollOption
   const rarity = pick(state, candidates, (entry) => entry.weight).index
   const uniqueEntry = rarity === ib.uniqueRarity ? pick(state, Object.entries(uniqueDefs).filter(([, def]) => !def.main || options.jobs.some((job) => attributeDefs[job].main === def.main)), () => 1) : undefined
   const unique = uniqueEntry?.[1]
-  const slot = unique?.slot ?? pick(state, slotIds, (key) => slots[key].weight)
+  const slot = unique?.slot ?? options.slot ?? pick(state, slotIds, (key) => slots[key].weight)
   const availableJobs = unique?.main ? options.jobs.filter((job) => attributeDefs[job].main === unique.main) : options.jobs
-  const job = slot === 'weapon' ? availableJobs[Math.floor(random(state) * availableJobs.length)] : undefined
+  const active = availableJobs.filter(job => options.activeJobs?.includes(job))
+  const reserves = availableJobs.filter(job => !active.includes(job))
+  const weaponPool = slot === 'weapon' && active.length && reserves.length
+    ? (random(state) < ib.activeWeaponShare ? active : reserves) : availableJobs
+  const job = slot === 'weapon' ? weaponPool[Math.floor(random(state) * weaponPool.length)] : undefined
   const equipmentClass = unique ? 'unique' : slot === 'armor' ? pick(state, ['heavy', 'light', 'robe'] as const, () => 1) : undefined
   const baseRoll = round3(ib.baseRollMin + random(state) * (ib.baseRollMax - ib.baseRollMin))
-  const growth = ib.growth ** (options.ilvl - 1) * rarities[rarity].mul
+  // Weapon output tracks enemy HP; protection tracks enemy attack/defense separately.
+  // Stored items retain their rolled numbers; only newly generated equipment uses this curve.
+  const growth = depthScale(options.ilvl), rarityMul = rarities[rarity].mul
   const count = rarities[rarity].affixes + (slot === 'charm' ? ib.charmExtraAffix : 0)
   const rolled: Item['affixes'] = unique ? unique.affixes.map((affix) => ({ ...affix })) : []
   const pool = affixKeys.filter((key) => !rolled.some((affix) => affix.k === key))
   for (let index = rolled.length; index < count && pool.length; index++) {
     const key = pool.splice(Math.floor(random(state) * pool.length), 1)[0], def = affixes[key]
-    const value = (def.min + (def.max - def.min) * random(state)) * rarities[rarity].mul * (def.scale ? 1 + options.ilvl * ib.lukScalePerIlvl : 1)
+    const value = (def.min + (def.max - def.min) * random(state)) * rarities[rarity].mul * (def.scale ? 1 + scaledRank(options.ilvl) * ib.lukScalePerIlvl : 1)
     rolled.push({ k: key, v: def.percent ? round3(value) : Math.round(value * 10) / 10 })
   }
   const item: Item = { id, slot, job, ilvl: options.ilvl, rarity, name: unique?.name ?? itemName(slot, job, options.ilvl), locked: false, isNew: true, baseRoll, equipmentClass, uniqueId: uniqueEntry?.[0], marketEligible: false,
-    atk: slot === 'weapon' ? round3(ib.weaponAtk * ib.jobAtkMul[job!] * growth * baseRoll * (unique?.atkMul ?? 1)) : 0,
-    hp: slot === 'armor' ? round3(ib.armorHp * growth * baseRoll * (unique?.hpMul ?? 1)) : 0, def: slot === 'armor' ? round3(ib.armorDef * growth * baseRoll * (unique?.defMul ?? 1)) : 0, affixes: rolled }
+    atk: slot === 'weapon' ? round3(ib.weaponAtk * ib.jobAtkMul[job!] * growth.hp * rarityMul * baseRoll * (unique?.atkMul ?? 1)) : 0,
+    hp: slot === 'armor' ? round3(ib.armorHp * growth.atk * rarityMul * baseRoll * (unique?.hpMul ?? 1)) : 0, def: slot === 'armor' ? round3(ib.armorDef * growth.def * rarityMul * baseRoll * (unique?.defMul ?? 1)) : 0, affixes: rolled }
   item.requirements = requirementsOf(item)
   return item
 }
-export const sellPrice = (item: Item) => Math.floor(ib.sellBase * ib.sellGrowth ** (item.ilvl - 1) * rarities[item.rarity].sell)
+export const sellPrice = (item: Item) => Math.floor(cappedAmount(ib.sellBase * depthScale(item.ilvl).reward * rarities[item.rarity].sell))
 export function requirementsOf(item: Item): Attributes {
   if (item.requirements) return { ...item.requirements }
   if (item.uniqueId && uniqueDefs[item.uniqueId]) return { ...uniqueDefs[item.uniqueId].requirements }
-  const req = emptyAttributes(), n = Math.max(0, item.ilvl - 1)
+  const req = emptyAttributes(), n = Math.max(0, Math.min(ib.maxRequirementRank, scaledRank(item.ilvl)) - 1)
   if (item.slot === 'weapon' && item.job) { const def = attributeDefs[item.job]; req[def.main] = Math.max(0, def.base[def.main] - 2) + Math.floor(n * rb.weaponPerRank) }
   else if (item.slot === 'armor') {
     if (item.equipmentClass === 'heavy') { req.str = rb.heavyStr + Math.floor(n * rb.heavyPerRank); req.vit = rb.heavyVit + Math.floor(n * rb.heavyPerRank) }
@@ -76,11 +88,14 @@ export function requirementsOf(item: Item): Attributes {
 /** Class-only compatibility; use equipCheck for the complete attribute check. */
 export const canEquip = (job: JobId, item: Item) => (item.slot !== 'weapon' || item.job === job)
   && (item.equipmentClass !== 'heavy' || attributeDefs[job].main === 'str') && (item.equipmentClass !== 'robe' || attributeDefs[job].main === 'int')
-export function equipCheck(profile: Profile, job: JobId, item: Item): { ok: true } | { ok: false; reason: string } {
+type EquipmentEligibility = { ok: true } | { ok: false; reason: string }
+function checkAttributes(job: JobId, item: Item, attrs: Attributes, req: Attributes): EquipmentEligibility {
   if (!canEquip(job, item)) return { ok: false, reason: 'このジョブでは扱えない種類の装備です' }
-  const attrs = attributesOf(job, profile.party.members[job].allocated), req = requirementsOf(item)
   const missing = attributeKeys.filter((key) => attrs[key] < req[key])
   return missing.length ? { ok: false, reason: missing.map((key) => attributeLabels[key] + req[key] + '必要（現在' + attrs[key] + '）').join('、') } : { ok: true }
+}
+export function equipCheck(profile: Profile, job: JobId, item: Item): EquipmentEligibility {
+  return checkAttributes(job, item, attributesOf(job, profile.party.members[job].allocated), requirementsOf(item))
 }
 export function reconcileEquipment(profile: Profile) {
   for (const job of partyOrder) for (const slot of slotIds) {
@@ -124,11 +139,42 @@ export function power(job: JobId, stats: Stats) {
     + tank * w.tank + stats.luk * w.luk
 }
 /** Power change if `item` replaced what `job` wears in that slot. */
-export function scoreDelta(profile: Profile, job: JobId, item: Item) {
+export function compareEquipment(profile: Profile, job: JobId, item: Item) {
   if (!equipCheck(profile, job, item).ok) return null
   const current = equipped(profile, job)
+  return compareWithCurrent(profile, job, item, current, statsOf(profile, job, current))
+}
+function compareWithCurrent(profile: Profile, job: JobId, item: Item, current: Item[], before: Stats) {
   const swapped = [...current.filter((worn) => worn.slot !== item.slot && worn.id !== item.id), item]
-  return power(job, statsOf(profile, job, swapped)) - power(job, statsOf(profile, job, current))
+  const after = statsOf(profile, job, swapped)
+  return { before, after, replaced: current.find(worn => worn.slot === item.slot), delta: power(job, after) - power(job, before) }
+}
+/** Synchronous view-build scope only. Never retain this context across profile mutations. */
+export function createEquipmentComparison(profile: Profile) {
+  const members = partyOrder.map((job) => {
+    const current = equipped(profile, job)
+    return { job, current, before: statsOf(profile, job, current), attrs: attributesOf(job, profile.party.members[job].allocated) }
+  })
+  return (item: Item) => {
+    const requirements = requirementsOf(item)
+    return members.map(({ job, current, before, attrs }) => {
+      const check = checkAttributes(job, item, attrs, requirements)
+      return { job, check, comparison: check.ok ? compareWithCurrent(profile, job, item, current, before) : null }
+    })
+  }
+}
+export function scoreDelta(profile: Profile, job: JobId, item: Item) {
+  return compareEquipment(profile, job, item)?.delta ?? null
+}
+/** Automation only accepts an upgrade without sacrificing another stat or a chosen unique build. */
+function automaticUpgrade(profile: Profile, job: JobId, item: Item): number | null {
+  const comparison = compareEquipment(profile, job, item)
+  if (!comparison || comparison.delta <= 0 || item.uniqueId) return null
+  const { before, after, replaced, delta } = comparison
+  if (replaced?.uniqueId || replaced?.locked) return null
+  const higher: Array<keyof Stats> = ['atk', 'maxHp', 'def', 'cri', 'criMul', 'eva', 'luk', 'kobanMul', 'dropMul']
+  const lower: Array<keyof Stats> = ['intervalMs', 'cooldownMul', 'dmgTakenMul']
+  return higher.every(key => after[key] >= before[key]) && lower.every(key => after[key] <= before[key]) ? delta : null
 }
 export function equipItem(profile: Profile, job: JobId, slot: SlotId, itemId: string | null): { ok: true } | { ok: false; reason: string } {
   const member = profile.party.members[job]
@@ -153,26 +199,34 @@ export function sellItems(profile: Profile, ids: readonly string[]): { ok: true;
   profile.koban = cappedAmount(profile.koban + koban); profile.stats.totalKoban = cappedAmount(profile.stats.totalKoban + koban)
   return { ok: true, koban }
 }
-/** Auto-equip → auto-sell → inventory cap (03 §3.4). Returns who equipped it, or whether it was sold. */
-export function receiveItem(profile: Profile, item: Item): { equippedBy?: JobId; sold: boolean } {
+export interface ItemSale { item: Item; reason: 'auto' | 'capacity'; koban: number }
+/** Auto-equip → auto-sell → inventory cap. Records the actual sold item, including displaced inventory. */
+export function receiveItem(profile: Profile, item: Item, holdForReview = false, activeJobs = deployedJobs(profile.party.order)): { equippedBy?: JobId; sold: boolean; sale?: ItemSale } {
   profile.inventory.push(item)
-  const best = profile.options.autoEquip
-    ? partyOrder.map((job) => ({ job, delta: scoreDelta(profile, job, item) }))
+  const best = profile.options.autoEquip && !holdForReview
+    ? activeJobs.map((job) => ({ job, delta: automaticUpgrade(profile, job, item) }))
       .filter((entry): entry is { job: JobId; delta: number } => entry.delta !== null && entry.delta > 0)
       .sort((a, z) => z.delta - a.delta)[0]
     : undefined
   const limit = profile.options.autoSellMaxRarity
-  if (!best && limit !== null && item.rarity <= limit && !item.locked) { sellItems(profile, [item.id]); return { sold: true } }
+  if (!holdForReview && !best && limit !== null && item.rarity <= limit && !item.locked) {
+    const result = sellItems(profile, [item.id])
+    if (!result.ok) throw new Error(result.reason)
+    return { sold: true, sale: { item, reason: 'auto', koban: result.koban } }
+  }
+  let sale: ItemSale | undefined
   if (profile.inventory.length > ib.inventoryMax) {
     // Make room before equipping: otherwise a full, locked bag can grow past the cap.
     const spare = profile.inventory.filter((candidate) => (!best || candidate.id !== item.id) && !candidate.locked && !ownerOf(profile, candidate.id))
       .sort((a, z) => a.rarity - z.rarity || a.ilvl - z.ilvl)[0]
     const target = spare ?? item
     const result = sellItems(profile, [target.id])
-    if (result.ok && target === item) return { sold: true }
+    if (!result.ok) throw new Error(result.reason)
+    sale = { item: target, reason: 'capacity', koban: result.koban }
+    if (target === item) return { sold: true, sale }
   }
-  if (best) { equipItem(profile, best.job, item.slot, item.id); item.isNew = true; return { equippedBy: best.job, sold: false } }
-  return { sold: false }
+  if (best) { equipItem(profile, best.job, item.slot, item.id); item.isNew = true; return { equippedBy: best.job, sold: false, ...(sale ? { sale } : {}) } }
+  return { sold: false, ...(sale ? { sale } : {}) }
 }
 /** Drop chance for one defeated enemy, with dojo, gear dropPct and the pachipro's LUK (03 §3.1). */
 export function dropChance(profile: Profile, boss: boolean, activeJobs = deployedJobs(profile.party.order)) {

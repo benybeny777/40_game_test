@@ -1,5 +1,8 @@
 import { join } from 'node:path'
 
+// This directory is a compatibility identifier, not the current public game title.
+export const legacyUserData = (appData: string) => join(appData, 'タスクバー百鬼行')
+
 // The sole authority for runtime, renderer and profile paths. No writes on import.
 // dataDir (env GAME_DATA_DIR) is only for local verification of a packaged build, so testing never writes the real user save.
 export function resolvePaths(projectRoot: string, userData: string, profile: string | undefined, dataDir?: string) {

@@ -1,8 +1,8 @@
 {
   "name": "taskbar-hyakkiko",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
-  "description": "タスクバー百鬼行：タスクバー直上の和風放置RPG",
+  "description": "はぐれものダンジョン — 3人編成の装備収集・放置RPG",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
@@ -47,7 +47,7 @@
   },
   "build": {
     "appId": "local.taskbar.hyakkiko",
-    "productName": "タスクバー百鬼行",
+    "productName": "はぐれものダンジョン",
     "executableName": "TaskbarHyakkiko",
     "directories": {
       "output": "release",

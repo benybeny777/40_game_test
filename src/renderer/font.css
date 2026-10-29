@@ -1,0 +1,10 @@
+@font-face {
+  font-family: 'BIZ UDPGothic'; font-style: normal; font-weight: 400;
+  src: url('../../assets/fonts/BIZUDPGothic-Regular.woff2') format('woff2'); font-display: block;
+}
+@font-face {
+  font-family: 'BIZ UDPGothic'; font-style: normal; font-weight: 700;
+  src: url('../../assets/fonts/BIZUDPGothic-Bold.woff2') format('woff2'); font-display: block;
+}
+:root { --font-ui: 'BIZ UDPGothic', sans-serif; font-family: var(--font-ui); }
+button, input, select, textarea { font-family: inherit; }

@@ -101,6 +101,17 @@ describe('explicit cloud save client', () => {
     expect(result.ok).toBe(true); expect(result.view.account).toBeNull()
     expect(fetcher.mock.calls[3][1]?.headers).toEqual({ Authorization: 'Bearer private-bearer' })
   })
+  it('allows a new login after the server confirms logout session is expired', async () => {
+    const { client, fetcher, login } = setup(); await login()
+    fetcher.mockResolvedValueOnce(response({ error: { code: 'UNAUTHORIZED', message: 'Session expired' } }, 401))
+    const result = await client.execute({ action: 'logout' })
+    expect(result.ok).toBe(true)
+    expect(result.view.account).toBeNull()
+    expect(result.view.revision).toBeNull()
+    expect(result.view.error).toBeNull()
+    await login()
+    expect(fetcher.mock.calls[3][1]?.headers).toEqual({ 'Content-Type': 'application/json' })
+  })
   it('rechecks the selected download revision and refuses absent or changed saves', async () => {
     const { client, fetcher, login, restoreProfile } = setup(); await login()
     fetcher.mockResolvedValueOnce(response(empty))

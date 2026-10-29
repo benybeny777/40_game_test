@@ -24,3 +24,6 @@
 *.mp4 binary
 *.glb binary
 *.fbx binary
+*.woff2 binary
+# Preserve the upstream license text, including its original end-of-line space.
+assets/fonts/OFL.txt text eol=lf whitespace=-blank-at-eol

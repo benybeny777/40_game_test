@@ -2,8 +2,9 @@ import { balance as b } from '../data/balance.ts'
 import { depthScale } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
 import { jobs } from '../data/jobs.ts'
-import { addEffect, aoe, healUnit, passiveOn, strike } from './actions.ts'
-import { friends, living, opponents } from './combat.ts'
+import { addEffect, aoe, healUnit, passiveOn, pushEnemy, strike } from './actions.ts'
+import { canStartBossSkill } from './boss.ts'
+import { friends, hasActiveTag, living, opponents } from './combat.ts'
 import { random } from './rng.ts'
 import { sumEffects, withEffects } from './stats.ts'
 import { FOREVER, ticks } from './time.ts'
@@ -55,15 +56,35 @@ const examDebuff = ({ world, self, events }: SkillContext, kind: 'skill' | 'ulti
   for (const enemy of opponents(world, self)) addEffect(enemy, { kind: 'intervalPct', tag: kind === 'skill' ? 'nanmon' : 'tetsuya', value: q.interval, untilTick, sourceUid: self.uid }, events)
   if (q.cri) for (const ally of friends(world, self)) addEffect(ally, { kind: 'criAdd', tag: 'examAnswer', value: q.cri, untilTick, sourceUid: self.uid }, events)
 }
+/** Retarget each throw after kills; the marked target enables a single opening critical. */
+const knifeVolley = ({ world, self, events }: SkillContext, kind: 'skill' | 'ultimate') => {
+  const q = p('maid', kind)
+  for (let hit = 0; hit < q.hits; hit++) {
+    const target = opponents(world, self).sort((a, z) => Number(hasActiveTag(world, z, 'attention')) - Number(hasActiveTag(world, a, 'attention'))
+      || Math.abs(a.x - self.x) - Math.abs(z.x - self.x))[0]
+    if (!target) break
+    const markedOpening = hit === 0 && hasActiveTag(world, target, 'attention')
+    strike(world, self, target, { mul: q.mul, forceCrit: markedOpening,
+      tags: [kind === 'skill' ? 'knifevolley' : 'knifecurtain', ...(markedOpening ? ['markedOpening'] : [])] }, events)
+  }
+}
 export const skills: Record<string, { canUse(ctx: SkillContext): boolean; use(ctx: SkillContext): void }> = {
   nanmon: { canUse: hasFoes, use: (ctx) => examDebuff(ctx, 'skill') },
   saihai: { canUse: hasFoes, use: (ctx) => tonoCheer(ctx, 'skill') },
-  harite: { canUse: ({ world, self }) => opponents(world, self).some((target) => target.x >= self.x && target.x - self.x <= p('rikishi', 'skill').range),
+  harite: { canUse: ({ world, self }) => {
+      const q = p('rikishi', 'skill')
+      const reachable = opponents(world, self).filter((target) => target.x >= self.x && target.x - self.x <= q.range)
+      if (!reachable.length) return false
+      if (reachable.some((target) => target.action.kind === 'cast')) return true
+      // Hold briefly for an imminent charge instead of spending the interrupt on an escort.
+      return !reachable.some((target) => canStartBossSkill(world, target) && target.skillReadyTick <= world.tick + ticks(q.bossReserveMs))
+    },
     use: ({ world, self, events }) => {
-      const q = p('rikishi', 'skill'), target = opponents(world, self).filter((enemy) => enemy.x >= self.x && enemy.x - self.x <= q.range).sort((a, z) => a.x - z.x)[0]
+      const q = p('rikishi', 'skill'), target = opponents(world, self).filter((enemy) => enemy.x >= self.x && enemy.x - self.x <= q.range)
+        .sort((a, z) => Number(z.action.kind === 'cast') - Number(a.action.kind === 'cast') || a.x - z.x)[0]
       if (!target) return
       strike(world, self, target, { mul: q.mul, aoeDots: q.range, tags: ['harite'] }, events)
-      if (living(target)) target.x += q.push
+      if (living(target)) pushEnemy(self, target, q.push, 'harite')
       addEffect(self, { kind: 'dmgTakenPct', tag: 'harite', value: q.dmgTaken, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
     } },
   prayer: { canUse: ({ world, self }) => friends(world, self).some((unit) => unit.hp / unit.stats.maxHp < p('sister', 'skill').below),
@@ -79,14 +100,7 @@ export const skills: Record<string, { canUse(ctx: SkillContext): boolean; use(ct
         strike(world, self, target, { mul: q.mul, aoeDots: q.range, tags: ['kushizashi'] }, events)
       }
     } },
-  knifevolley: { canUse: hasFoes, use: ({ world, self, events }) => {
-    const q = p('maid', 'skill')
-    for (let hit = 0; hit < q.hits; hit++) {
-      const target = opponents(world, self).sort((a, z) => Math.abs(a.x - self.x) - Math.abs(z.x - self.x))[0]
-      if (!target) break
-      strike(world, self, target, { mul: q.mul, tags: ['knifevolley'] }, events)
-    }
-  } },
+  knifevolley: { canUse: hasFoes, use: (ctx) => knifeVolley(ctx, 'skill') },
   hoppalm: { canUse: ({ world, self }) => opponents(world, self).some((target) => Math.abs(target.x - self.x) <= p('jiangshi', 'skill').range),
     use: ({ world, self, events }) => {
       const q = p('jiangshi', 'skill'), target = opponents(world, self).filter((enemy) => Math.abs(enemy.x - self.x) <= q.range).sort((a, z) => Math.abs(a.x - self.x) - Math.abs(z.x - self.x))[0]
@@ -161,7 +175,7 @@ export const ultimates: Record<string, (ctx: SkillContext, roll?: number) => voi
   ooichiban: ({ world, self, events }) => {
     const q = p('rikishi', 'ultimate')
     aoe(world, self, q.mul, events, ['ooichiban'])
-    for (const enemy of opponents(world, self)) enemy.x += q.push
+    for (const enemy of opponents(world, self)) pushEnemy(self, enemy, q.push, 'ooichiban')
     addEffect(self, { kind: 'dmgTakenPct', tag: 'ooichiban', value: q.dmgTaken, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
   },
   sanctuary: ({ world, self, events }) => {
@@ -175,9 +189,10 @@ export const ultimates: Record<string, (ctx: SkillContext, roll?: number) => voi
   houjou: ({ world, self, events }) => {
     const q = p('farmer', 'ultimate'); aoe(world, self, q.mul, events, ['houjou']); healUnit(self, self.stats.maxHp * q.heal, self.uid, events)
   },
-  knifecurtain: ({ world, self, events }) => {
+  knifecurtain: (ctx) => {
+    const { world, self, events } = ctx
     const q = p('maid', 'ultimate')
-    aoe(world, self, q.mul, events, ['knifecurtain'])
+    knifeVolley(ctx, 'ultimate')
     addEffect(self, { kind: 'intervalPct', tag: 'knifecurtain', value: q.interval, untilTick: world.tick + ticks(q.ms), sourceUid: self.uid }, events)
   },
   hyakki: ({ world, self, events }) => {
@@ -195,7 +210,12 @@ export const ultimates: Record<string, (ctx: SkillContext, roll?: number) => voi
     for (const ally of friends(world, self)) addEffect(ally, { kind: 'intervalPct', tag: 'buzzlive', value: q.interval, untilTick, sourceUid: self.uid }, events)
   },
   kyouka: (ctx) => { aoe(ctx.world, ctx.self, p('sukeban', 'ultimate').mul, ctx.events, ['kyouka']); intimidate(ctx, 'ultimate') },
-  issen: ({ world, self, events }) => aoe(world, self, p('samurai', 'ultimate').mul, events, ['issen']),
+  issen: ({ world, self, events }) => {
+    const q = p('samurai', 'ultimate')
+    for (const enemy of opponents(world, self).sort((a, z) => a.x - z.x).slice(0, q.targets)) {
+      strike(world, self, enemy, { mul: q.mul, aoeDots: b.rangedRange, tags: ['issen'] }, events)
+    }
+  },
   mijin: ({ world, self, events }) => {
     aoe(world, self, p('ninja', 'ultimate').mul, events, ['mijin'])
     addEffect(self, { kind: 'invuln', tag: 'mijin', value: 1, untilTick: world.tick + ticks(p('ninja', 'ultimate').ms), sourceUid: self.uid }, events)

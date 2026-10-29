@@ -41,10 +41,10 @@ electron.app.whenReady().then(async () => {
   const panel = electron.BrowserWindow.getAllWindows().find((win) => win !== strip)
   await panel.webContents.executeJavaScript(`document.querySelector('.modal .buy')?.click()`)   // おかえり報酬を受け取る
   await wait(800)
-  assert.equal(await panel.webContents.executeJavaScript(`document.documentElement.dataset.artSheets`), '29')
+  assert.equal(await panel.webContents.executeJavaScript(`document.querySelectorAll('.card .sprite').length`), 17, 'all companion portraits rendered without battle sheets')
   assert.equal(await panel.webContents.executeJavaScript(`document.querySelectorAll('.deployed-cards .card').length`), 3)
   assert.equal(await panel.webContents.executeJavaScript(`document.querySelectorAll('.reserve-cards .card').length`), 14)
-  assert.equal(await panel.webContents.executeJavaScript(`getComputedStyle(document.querySelector('h1')).fontFamily.includes('Mincho')`), false)
+  assert.equal(await panel.webContents.executeJavaScript(`getComputedStyle(document.querySelector('h1')).fontFamily.includes('BIZ UDPGothic') && document.fonts.check('700 16px "BIZ UDPGothic"')`), true)
   assert.equal(await panel.webContents.executeJavaScript(`document.querySelector('main').scrollWidth <= document.querySelector('main').clientWidth`), true, 'panel must not overflow horizontally')
   const tabs = await panel.webContents.executeJavaScript(`[...document.querySelectorAll('nav button')].map((button) => button.textContent)`)
   for (let index = 0; index < tabs.length; index++) {

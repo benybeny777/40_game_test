@@ -39,11 +39,17 @@
 
 ## UI・アイコン・フォント
 
-- 管理画面・戦闘帯・スマホ入口は本プロジェクトのHTML/CSS・Canvasによる表示。共通のゴシック系システムフォント（Yu Gothic UI、Meiryo、sans-serif）を参照し、明朝体を指定しない。フォントファイルは同梱していない。初期設計のDotGothic16同梱案は現行採用ではない。
+- 管理画面・戦闘帯・スマホ入口は本プロジェクトのHTML/CSS・Canvasによる表示。BIZ UDPGothic Regular/BoldをWOFF2で同梱し、OSの日本語フォントに依存しない。共通定義は`src/renderer/font.css`。初期設計のDotGothic16同梱案は現行採用ではない。
 - Windowsトレイの16×16ピクセル図形は本プロジェクトで作成し、`src/main/index.ts`から生成。
 - exeアイコンは現行`party-atlas.png`のサムライから`tools/make-icon.ts`で切り出し・縮小して生成。別の手描きイラストや外部アイコン素材とは記さない。
-- 32色パレット`assets/palettes/base32.txt`と、3×5ドット文字の基礎`src/renderer/strip/font.ts`は本プロジェクトで作成。日本語のオーバーレイはシステムフォントを使用する。
+- 32色パレット`assets/palettes/base32.txt`と、3×5ドット文字の基礎`src/renderer/strip/font.ts`は本プロジェクトで作成。日本語のオーバーレイも同梱BIZ UDPGothicを使用する。
 - 効果音・音楽・音声は現行製品へ同梱していない。
+
+### 同梱ゴシックのライセンスと取得元
+
+- Copyright 2022 The BIZ UDGothic Project Authors。モリサワの[公式公開リポジトリ](https://github.com/googlefonts/morisawa-biz-ud-gothic)より、固定commit `18934af56b9c003ca58c54bffbf226848cb11032` の `fonts/ttf/BIZUDPGothic-Regular.ttf` / `BIZUDPGothic-Bold.ttf` を取得。
+- ライセンスは[SIL Open Font License 1.1](../assets/fonts/OFL.txt)。著作権表示を含む公式原文を変更せず同梱し、ゲームの「あそびかた」末尾から全文を読める。
+- FontToolsで全字形のままWOFF2へ圧縮。サブセット化・輪郭改変・名称改変なし。配布用WOFF2と[再現手順](../assets/fonts/README.md)を保持。再取得可能な変換入力TTF・一時変換環境の削除は自動承認レビューに拒否され、未削除（製品からは参照しない）。外部Webフォント配信やOSへのインストールは不要。
 
 ## 実画面と過去の参考画像
 

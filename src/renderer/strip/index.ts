@@ -1,12 +1,19 @@
+import { loadUiFonts } from '../fonts'
+import { runtimeFailure } from '../runtimeFailure'
+import { AudioSession } from '../audioSession'
+import { createAudioNotice } from '../audioNotice'
 import { enemies, jobs, stageLabel, type JobId } from '../../core/index.ts'
-import type { ShellState, StripLayout } from '../../shared/api'
+import type { Frame, ShellState, StripLayout } from '../../shared/api'
 import { Scene, type HitTarget } from './scene'
 import { PLAY_DOTS } from '../../shared/art'
 import { artReady } from './sprites/sheet'
+import { VisibleFrames } from './visibleFrames'
 import { onLocaleChange, setLocale, translatedLabel as tr } from '../../shared/i18n'
 import '../../shared/locales/system'
 import { createBattleText } from '../battleText'
+import { reportRendererError } from '../errors'
 
+const runtime = runtimeFailure(window.game)
 const screen = document.querySelector<HTMLCanvasElement>('#screen')!
 const tooltip = document.querySelector<HTMLElement>('#tooltip')!
 const banner = document.querySelector<HTMLElement>('#banner')!
@@ -18,6 +25,9 @@ const ctx = screen.getContext('2d')!
 
 let layout: StripLayout = { dotPx: 3, playDots: PLAY_DOTS, scaleFactor: window.devicePixelRatio || 1, headroomDip: 72 }
 let state: ShellState | undefined
+let layoutEvents = 0, stateEvents = 0
+let pendingFrame: Frame | undefined
+const visibleFrames = new VisibleFrames()
 let hover: HitTarget | null = null
 let interactive = false
 let bannerTimer: ReturnType<typeof setTimeout> | undefined
@@ -58,7 +68,7 @@ onLocaleChange(() => {
   if (hover) showTooltip(hover)
 })
 function loop(now: number) {
-  requestAnimationFrame(loop)
+  if (!visibleFrames.shown) return
   const cap = state?.settings.fpsCap ?? 30
   if (now - lastDraw < 1000 / cap - 2) return
   if (state?.paused && !scene.busy(now) && !needsDraw) return
@@ -107,14 +117,16 @@ function hitAt(clientX: number, clientY: number) {
   return scene.hitTest(dotX, dotY)
 }
 window.addEventListener('mousemove', (event) => {
+  if (runtime.stopped) return
   hover = hitAt(event.clientX, event.clientY)
   setInteractive(hover !== null)
   if (hover) showTooltip(hover); else tooltip.classList.remove('show')
 })
-const leave = () => { hover = null; setInteractive(false); tooltip.classList.remove('show') }
+const leave = () => { if (runtime.stopped) return; hover = null; setInteractive(false); tooltip.classList.remove('show') }
 window.addEventListener('mouseleave', leave)
 window.addEventListener('blur', leave)
 window.addEventListener('click', (event) => {
+  if (runtime.stopped) return
   const target = hitAt(event.clientX, event.clientY)
   if (!target) return
   if (target.kind === 'hud') window.game.openPanel({ tab: 'stage' })
@@ -124,19 +136,51 @@ window.addEventListener('click', (event) => {
 window.addEventListener('contextmenu', (event) => { event.preventDefault(); if (hitAt(event.clientX, event.clientY)) window.game.openMenu() })
 
 window.addEventListener('resize', resize)
-window.game.onLayout((next) => { layout = next; resize() })
-window.game.onState((next) => { state = next; setLocale(next.settings.locale ?? 'ja'); document.documentElement.lang = next.settings.locale ?? 'ja'; needsDraw = true })
+const audio = new AudioSession({ desktop: true, onChange: createAudioNotice(), onError: error => { reportRendererError('通知音を再生できませんでした。', error) } })
+window.game.onLayout((next) => { layoutEvents++; layout = next; resize() })
+window.game.onState((next) => { stateEvents++; state = next; syncVisibility(); audio.configure(next); setLocale(next.settings.locale ?? 'ja'); document.documentElement.lang = next.settings.locale ?? 'ja'; needsDraw = true })
+function syncVisibility() {
+  const accepted = visibleFrames.setVisible(Boolean(state?.visible && !state.fullscreenHidden))
+  if (!visibleFrames.shown) {
+    hover = null; setInteractive(false); tooltip.classList.remove('show')
+    banner.className = ''; labels.replaceChildren()
+    if (bannerTimer) { clearTimeout(bannerTimer); bannerTimer = undefined }
+  }
+  if (accepted) {
+    if (artLoaded) present(accepted)
+    else pendingFrame = accepted.frame
+  }
+  needsDraw = true
+}
 let artLoaded = false
-window.game.onFrame((frame) => {
-  if (!artLoaded) return
-  scene.ingest(frame, performance.now())
+function ingest(frame: Frame) {
+  const accepted = visibleFrames.accept(frame)
+  if (accepted) present(accepted)
+}
+function present({ frame, fresh }: { frame: Frame; fresh: boolean }) {
+  audio.consume(frame)
+  if (fresh) scene.resume(frame.snapshot, performance.now())
+  else scene.ingest(frame, performance.now())
   const allies = frame.snapshot.units.filter(unit => unit.side === 'ally')
   battleText.party(allies.map(unit => unit.defId as JobId))
+  needsDraw = true
+}
+window.game.onFrame((frame) => {
+  if (!artLoaded) { pendingFrame = frame; return }
+  runtime.run(() => ingest(frame))
 })
-void Promise.all([window.game.getLayout(), window.game.getState()]).then(([nextLayout, nextState]) => {
-  layout = nextLayout; state = nextState; setLocale(nextState.settings.locale ?? 'ja'); resize()
-})
-resize()
-void artReady.then(() => { artLoaded = true; requestAnimationFrame(loop) }).catch(() => {
-  battleText.banner('画像を読み込めませんでした。再起動してください。'); banner.className = 'show bad'
+const initialEvents = { layout: layoutEvents, state: stateEvents }
+void Promise.all([window.game.getLayout(), window.game.getState(), artReady, loadUiFonts()]).then(([nextLayout, nextState]) => {
+  if (layoutEvents === initialEvents.layout) layout = nextLayout
+  if (stateEvents === initialEvents.state) state = nextState
+  syncVisibility()
+  audio.configure(state!);
+  setLocale(state!.settings.locale ?? 'ja'); resize()
+  artLoaded = true
+  if (pendingFrame) { ingest(pendingFrame); pendingFrame = undefined }
+  runtime.animate(loop)
+}).catch(error => {
+  runtime.fail(error)
+  banner.textContent = reportRendererError('ゲームを読み込めませんでした。データは削除せず、再起動をお試しください。', error)
+  banner.className = 'show bad'
 })

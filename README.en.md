@@ -1,12 +1,12 @@
-# Taskbar Hyakkiko (working title)
+# Dungeon Oddballs (working title)
 
 [日本語](README.md) · [Game specification](docs/GAME_SPEC.md) · [Technical specification](docs/TECH_SPEC.md)
 
 A Japanese folklore idle RPG about choosing three companions from a roster of 17, descending into a dungeon, and finding equipment. On Windows, battles run just above the taskbar while a separate panel handles your party, equipment, and attributes. The browser edition shares the same game core and provides a portrait layout for phones.
 
-Normal and Nightmare each have 100 floors. Only the highest difficulty, Abyss, continues without a gameplay floor limit. Future updates are intended to introduce dungeons with different themes and separate progress. Switch between Japanese and English in Settings.
+Normal and Nightmare each have 100 floors. Only the highest difficulty, Abyss, continues without a gameplay floor limit. Future updates are intended to introduce dungeons with different themes and separate progress. The first launch follows your OS or browser language, choosing Japanese or English. You can override it in Settings.
 
-![Party management in the running game](docs/images/play-panel.png)
+![Party management in the running game](docs/images/play-panel-en.png)
 
 ![Battle above the Windows taskbar](docs/images/play-strip.png)
 
@@ -22,9 +22,11 @@ These are captures of the game's own windows. Current character and enemy artwor
 - Combine attackers, tanks, healers, buffers, and debuffers. The roster includes Samurai, Ninja, Jirai Girl, Otaku, Pachinko Pro, Shrine Maiden, Bancho, Gyaru, Sukeban, Farmer, Maid, Jiangshi, Vagabond, Sumo Wrestler, Sister, Goofy Lord, and Bookworm.
 - Allocate STR, DEX, VIT, and INT manually or automatically. Reset allocations for free. Equipment requires suitable jobs and attributes, with no character-level requirement.
 - Find weapons, armor, and charms with random base values and modifiers, including Mythic equipment for specialized builds.
+- Your first floor clear awards a usable weapon for an active companion. First clears of every tenth floor award Epic or better gear; floor 100 awards Legendary or better gear. Compare actual stat changes before equipping. Gear strength continues across difficulty boundaries.
+- Read boss warnings and targets, then adjust your party. Sumo Wrestler can interrupt casts; Maid follows marked targets, Sukeban punishes slowed enemies, and Bancho counters harder while warded.
 - Fight ten waves per floor. Every tenth floor ends with a boss; other final waves contain elites. Find treasure and altars, return to town, revisit unlocked floors, or farm a floor repeatedly.
 - Compare, equip, lock, and sell gear, configure automatic equipment and selling, train at the dojo, and read the 12-enemy codex and in-game help.
-- On Windows, hover over a companion for details and click to open the panel. Use the system tray to pause, hide the battle strip, or quit. Closing the panel keeps the game running. There is currently no sound.
+- On Windows, hover over a companion for details and click to open the panel. Use the system tray to pause, hide the battle strip, or quit. Closing the panel keeps the game running. Notification sounds are off by default. Enable them in Settings for short cues at rare finds and major milestones.
 
 ## Running locally
 
@@ -49,7 +51,7 @@ See [Mobile and browser setup](docs/MOBILE.md) for connecting a phone on the sam
 
 ## Saves and the store
 
-Windows saves automatically every 30 seconds, after floor clears and commands, and when quitting. It can recover from the previous valid save. Unsupported future formats and unrecoverable files stop startup without resetting progress. Save formats v1 and v2 migrate to v3.
+Windows saves automatically every 30 seconds, after floor clears and commands, and when quitting. Recovering a damaged save from its previous valid version requires confirmation explaining that later progress may be lost. Recovery starts paused; choosing Exit leaves the original files unchanged. Unsupported future formats and unrecoverable files stop startup without resetting progress. Save formats v1 and v2 migrate to v3.
 
 A failed save pauses progression and displays recovery actions. On Windows, retry saving or export the current progress to another location. If saving still fails when quitting, choose to return to the game, export, or explicitly exit without saving. Progress is never silently discarded by that dialog.
 

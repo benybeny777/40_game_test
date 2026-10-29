@@ -1,3 +1,4 @@
+import { reportRendererError } from './errors'
 /** Browser adapter for the shared panel and simulation. Electron's preload API remains authoritative when present. */
 import { addOffline, advance, balance, buildView, computeOffline, createGame, newProfile, PROFILE_VERSION, runCommand, snapshot, validateProfile,
   type CommandResult, type Game, type Profile, type ProfileView, type SimEvent } from '../core/index.ts'
@@ -12,6 +13,7 @@ import { DEVELOPMENT_CLOUD_ENDPOINT, parseCloudCommand } from '../shared/cloud'
 import { prepareCloudRestore } from '../shared/cloudProfile'
 
 const STORAGE_KEY = 'hyakkiko.web.save'
+const RUNTIME_PAUSED_KEY = 'hyakkiko.runtime-paused'
 const LEGACY_LOCALE_KEY = 'hyakkiko.locale'
 const STORAGE_FORMAT = 1
 const AUTOSAVE_MS = 5000, SLEEP_GAP_MS = 60000, VIEW_INTERVAL_MS = 400, MAX_STEPS = 50, PREVIEW_MS = 30000
@@ -58,6 +60,7 @@ export function initializePlatform(): ShellApi {
       profile = newProfile(new Date(now).toISOString(), seed)
       settings = { ...defaultSettings, locale: initialLocale, hideOnFullscreen: false, autoStart: false }
     }
+    if (sessionStorage.getItem(RUNTIME_PAUSED_KEY) === '1') { paused = true; sessionStorage.removeItem(RUNTIME_PAUSED_KEY) }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'このブラウザーの保存データを読み込めません。'
     showLoadError(message)
@@ -72,8 +75,12 @@ export function initializePlatform(): ShellApi {
     layout: new Set<(layout: StripLayout) => void>(), navigate: new Set<(target: PanelTarget) => void>(),
   }
   const emit = <T>(listeners: Set<(value: T) => void>, value: T) => {
-    for (const listener of listeners) {
-      try { listener(copy(value)) } catch (error) { console.error('Browser view update failed', error) }
+    for (const listener of [...listeners]) {
+      if (!listeners.has(listener)) continue
+      try { listener(copy(value)) } catch (error) {
+        listeners.delete(listener)
+        stopRuntime(reportRendererError('Browser view update failed', error, false))
+      }
     }
   }
   const currentFrame = (events: SimEvent[] = []): Frame => ({ snapshot: snapshot(game.world, game.profile.koban), events })
@@ -86,11 +93,18 @@ export function initializePlatform(): ShellApi {
   let suspendedAt: number | null = document.hidden ? now : null
   let previewTimer: ReturnType<typeof setTimeout> | undefined
 
+  let tickTimer: ReturnType<typeof setInterval> | undefined = undefined
+  function stopRuntime(message: string) {
+    if (state.runtimeError) return
+    state.runtimeError = message; state.paused = true; accumulated = 0
+    if (tickTimer !== undefined) clearInterval(tickTimer)
+    publishState()
+  }
   function blockStorage(message: string) {
     storageBlocked = true; state.paused = true; state.storageError = message; publishState()
   }
   function persist(at = Date.now()): boolean {
-    if (storageBlocked) return false
+    if (storageBlocked || state.runtimeError) return false
     try {
       if (localStorage.getItem(STORAGE_KEY) !== stored) {
         blockStorage('別の画面で保存データが更新されました。重複した画面を閉じ、読み直してください。'); return false
@@ -103,20 +117,20 @@ export function initializePlatform(): ShellApi {
       localStorage.setItem(STORAGE_KEY, text)
       stored = text; game.profile.savedAt = savedAt; lastSave = at
       return true
-    } catch {
-      blockStorage('保存できなかったため、一時停止しました。端末の空き容量を確認し、必要なら保存データを書き出してください。')
+    } catch (error) {
+      blockStorage(reportRendererError('保存できなかったため、一時停止しました。端末の空き容量を確認し、必要なら保存データを書き出してください。', error, false))
       return false
     }
   }
   function offline(elapsedMs: number) {
-    if (state.paused || game.profile.progress.inTown || elapsedMs <= 0) return
+    if (state.paused || elapsedMs <= 0) return
     const reward = computeOffline(game.profile, elapsedMs)
     if (reward) addOffline(game.profile, reward)
   }
   offline(now - Date.parse(game.profile.savedAt))
   if (persist(now) && legacyLocale !== null) {
     try { localStorage.removeItem(LEGACY_LOCALE_KEY) }
-    catch { blockStorage('言語設定の移行を完了できませんでした。保存データを書き出してから読み直してください。') }
+    catch (error) { blockStorage(reportRendererError('言語設定の移行を完了できませんでした。保存データを書き出してから読み直してください。', error, false)) }
   }
 
   const storeView = (): StoreView => ({ mode: 'unavailable', message: '外観を試着できます。ブラウザー版では購入・Steam取引は利用できません。',
@@ -131,7 +145,7 @@ export function initializePlatform(): ShellApi {
   }
   function downloadProfile() {
     if (navigator.userActivation && !navigator.userActivation.isActive) {
-      state.storageError = '保存データの書き出しボタンを押してください。'; publishState(); return
+      throw new Error('保存データの書き出しボタンを押してください。')
     }
     const file = new Blob([JSON.stringify({ ...game.profile, savedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(file), anchor = document.createElement('a')
@@ -140,13 +154,13 @@ export function initializePlatform(): ShellApi {
   }
   const subscribe = <T>(listeners: Set<(value: T) => void>, listener: (value: T) => void, initial?: () => T) => {
     listeners.add(listener)
-    if (initial) queueMicrotask(() => { if (listeners.has(listener)) listener(copy(initial())) })
+    if (initial) queueMicrotask(() => { if (listeners.has(listener)) { try { listener(copy(initial())) } catch (error) { listeners.delete(listener); stopRuntime(reportRendererError('Browser initial view failed', error, false)) } } })
     return () => { listeners.delete(listener) }
   }
   const cloud = new CloudClient(import.meta.env.VITE_CLOUD_URL ?? (import.meta.env.DEV ? DEVELOPMENT_CLOUD_ENDPOINT : undefined), {
     readProfile: () => ({ ...copy(game.profile), savedAt: new Date().toISOString() }),
     restoreProfile: raw => {
-      if (storageBlocked) throw new Error(state.storageError)
+      if (storageBlocked || state.runtimeError) throw new Error(state.runtimeError ?? state.storageError)
       const restored = prepareCloudRestore(raw), next = createGame(restored, restored.rng), previous = game
       game = next; state.paused = true; accumulated = 0; lastTick = Date.now()
       if (!persist()) {
@@ -158,11 +172,11 @@ export function initializePlatform(): ShellApi {
   })
   const api: ShellApi = {
     getCloud: async () => cloud.view(),
-    cloudCommand: async command => cloud.execute(parseCloudCommand(command)),
+    cloudCommand: async command => { if (state.runtimeError) throw new Error(state.runtimeError); return cloud.execute(parseCloudCommand(command)) },
     pointer: () => {},
     openPanel: target => emit(subscribers.navigate, parseTarget(target)),
     openMenu: () => {
-      if (storageBlocked) return
+      if (storageBlocked || state.runtimeError) return
       state.paused = !state.paused; accumulated = 0; lastTick = Date.now(); persist(); publishState()
     },
     getLayout: async () => copy(currentLayout()),
@@ -173,6 +187,7 @@ export function initializePlatform(): ShellApi {
     getView: async () => copy(currentView()),
     onView: listener => subscribe(subscribers.view, listener, currentView),
     command: async value => {
+      if (state.runtimeError) return { ok: false, reason: state.runtimeError }
       if (storageBlocked) return { ok: false, reason: '保存できないため操作を止めています。保存データを書き出してから読み直してください。' }
       const command = parseCommand(value)
       if (!command) return { ok: false, reason: '操作を読み取れませんでした。' }
@@ -184,6 +199,7 @@ export function initializePlatform(): ShellApi {
       return (result.ok ? { ok: true } : { ok: false, reason: result.reason }) as CommandResult
     },
     updateSettings: async value => {
+      if (state.runtimeError) throw new Error(state.runtimeError)
       if (storageBlocked) {
         if (state.settings.locale) setLocale(state.settings.locale)
         throw new Error(state.storageError)
@@ -203,14 +219,18 @@ export function initializePlatform(): ShellApi {
     openSaveFolder: downloadProfile,
     exportSave: downloadProfile,
     // Reload after exporting: retrying here could overwrite another tab's newer checkpoint.
+    reportRuntimeError: async message => stopRuntime(message),
+    reloadAfterRuntimeError: () => { if (state.runtimeError) { sessionStorage.setItem(RUNTIME_PAUSED_KEY, '1'); window.location.reload() } },
     retrySave: async () => false,
     getStore: async () => storeView(),
     purchaseProduct: async () => declinePurchase(),
     equipCosmetic: async sku => {
+      if (state.runtimeError) throw new Error(state.runtimeError)
       if (sku !== null) return { ok: false, reason: '購入済みの外観がありません。試着をご利用ください。', view: storeView() }
       clearPreview(); return { ok: true, view: storeView() }
     },
     previewCosmetic: async sku => {
+      if (state.runtimeError) throw new Error(state.runtimeError)
       if (sku === null) { clearPreview(); return true }
       const product = catalog.find(entry => entry.sku === sku)
       if (!product) return false
@@ -222,7 +242,7 @@ export function initializePlatform(): ShellApi {
   window.game = api
   const tick = () => {
     const at = Date.now(), elapsed = Math.max(0, at - lastTick); lastTick = at
-    if (suspendedAt !== null || state.paused || storageBlocked) return
+    if (suspendedAt !== null || state.paused || storageBlocked || state.runtimeError) return
     if (elapsed >= SLEEP_GAP_MS) { offline(elapsed); accumulated = 0; persist(at); publishView(); return }
     accumulated += elapsed
     let steps = 0, changed = false, cleared = false
@@ -244,9 +264,9 @@ export function initializePlatform(): ShellApi {
     if (document.hidden || suspendedAt === null) return
     const at = Date.now(), elapsed = at - suspendedAt
     suspendedAt = null; lastTick = at; accumulated = 0
-    if (!storageBlocked) { offline(elapsed); persist(at); publishView(); emit(subscribers.frame, currentFrame()) }
+    if (!storageBlocked && !state.runtimeError) { offline(elapsed); persist(at); publishView(); emit(subscribers.frame, currentFrame()) }
   }
-  setInterval(tick, balance.tickMs)
+  tickTimer = setInterval(() => { try { tick() } catch (error) { stopRuntime(reportRendererError('Game update failed', error, false)) } }, balance.tickMs)
   window.addEventListener('pagehide', suspend)
   window.addEventListener('pageshow', resume)
   document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); else resume() })
@@ -255,7 +275,7 @@ export function initializePlatform(): ShellApi {
     try {
       if (event.storageArea !== null && event.storageArea !== localStorage) return
       if ((event.key === STORAGE_KEY || event.key === null) && localStorage.getItem(STORAGE_KEY) !== stored) blockStorage('別の画面で保存データが更新されました。重複した画面を閉じ、読み直してください。')
-    } catch { blockStorage('保存領域にアクセスできなくなったため、一時停止しました。保存データを保護してから読み直してください。') }
+    } catch (error) { blockStorage(reportRendererError('保存領域にアクセスできなくなったため、一時停止しました。保存データを保護してから読み直してください。', error, false)) }
   })
   return api
 }

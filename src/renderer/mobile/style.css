@@ -1,4 +1,4 @@
-:root { font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; color: #ece6da; background: #14131e; }
+:root { font-family: var(--font-ui); color: #ece6da; background: #14131e; }
 html, body { width: 100%; height: 100%; height: 100dvh; margin: 0; overflow: hidden; overscroll-behavior: none; }
 body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); display: flex; flex-direction: column; }
 #mobile-battle { height: 140px; flex: 0 0 140px; position: relative; background: linear-gradient(#191b29,#14131e); border-bottom: 1px solid #464050; overflow: hidden; }

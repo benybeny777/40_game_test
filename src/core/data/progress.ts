@@ -11,5 +11,6 @@ export const progressBalance = {
   offlineMaxMs: 8 * 60 * 60 * 1000, offlineMinMs: 60 * 1000, offlineRate: 0.5,
   rateMinutes: 10, minuteMs: 60 * 1000,
   bossFirstKillBonus: 20,
+  catchupLevelGap: 3, catchupPerLevel: 0.25, catchupMaxMultiplier: 3,
   autoFarmClears: 2,          // After an automatic farming loop (3 wipes in a row), retry the next stage after this many clears.
 }

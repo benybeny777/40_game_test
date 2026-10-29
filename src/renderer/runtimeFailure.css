@@ -1,0 +1,4 @@
+.runtime-failure { position:fixed; z-index:2147483647; inset:8px; margin:auto; width:min(560px,calc(100% - 16px)); height:fit-content; max-height:calc(100% - 16px); overflow:auto; box-sizing:border-box; padding:16px; background:#211d27; color:#fff0da; border:2px solid #d59170; border-radius:10px; font:14px/1.5 var(--font-ui); pointer-events:auto; box-shadow:0 8px 40px #000a; }
+.runtime-failure h2 { font-size:18px; margin:0; }
+.runtime-failure pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:30vh; overflow:auto; font-size:12px; }
+.runtime-failure button { min-height:44px; margin:4px; padding:8px 14px; cursor:pointer; }

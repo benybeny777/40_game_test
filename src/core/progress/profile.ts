@@ -7,7 +7,7 @@ import { affixes, itemBalance as ib, rarities, slots, uniqueDefs, type Rarity, t
 import { defaultFormation, deployedJobs, jobs, partyOrder } from '../data/jobs.ts'
 import { dojo as dojoDefs, progressBalance as pb, type DojoKey } from '../data/progress.ts'
 import type { JobId, SimEvent } from '../sim/types.ts'
-import { dropChance, partyLuk, receiveItem, reconcileEquipment, requirementsOf, rollItem, type Item } from './items.ts'
+import { dropChance, lootRank, partyLuk, receiveItem, reconcileEquipment, requirementsOf, rollItem, type Item } from './items.ts'
 import { random } from '../sim/rng.ts'
 
 export const PROFILE_VERSION = 3
@@ -50,11 +50,28 @@ export function newProfile(savedAt: string, seed = 1): Profile {
 export const expToNext = (lv: number) => Math.floor(b.expBase * lv ** b.expPow)
 export const levels = (profile: Profile) => Object.fromEntries(partyOrder.map((id) => [id, profile.party.members[id].lv])) as Record<JobId, number>
 
-function grantExp(profile: Profile, exp: number, out: SimEvent[], recipientJobs: readonly JobId[]) {
+/** Active mentorship only: the bonus closes a gap, never overtakes the participating veteran. */
+export function activeExperienceMultiplier(profile: Profile, job: JobId, recipientJobs: readonly JobId[]): number {
+  const member = profile.party.members[job]
+  if (!recipientJobs.includes(job) || member.lv >= b.maxLevel) return 1
+  const veteranLevel = Math.max(1, ...recipientJobs.map((id) => profile.party.members[id].lv))
+  return Math.min(pb.catchupMaxMultiplier, 1 + Math.max(0, veteranLevel - pb.catchupLevelGap - member.lv) * pb.catchupPerLevel)
+}
+function catchupExperience(member: Member, exp: number, veteranLevel: number, multiplier: number) {
+  const targetLevel = veteranLevel - pb.catchupLevelGap
+  if (member.lv >= targetLevel) return exp
+  let needed = -member.exp
+  for (let level = member.lv; level < targetLevel; level++) needed += expToNext(level)
+  return exp + Math.min(Math.floor(exp * (multiplier - 1)), Math.max(0, needed - exp))
+}
+function grantExp(profile: Profile, exp: number, out: SimEvent[], recipientJobs: readonly JobId[], live = false) {
+  // Snapshot before awarding so party order cannot change the bonus.
+  const veteranLevel = Math.max(1, ...recipientJobs.map((job) => profile.party.members[job].lv))
+  const multipliers = new Map(recipientJobs.map((job) => [job, live ? activeExperienceMultiplier(profile, job, recipientJobs) : 1]))
   for (const job of new Set(recipientJobs)) {
     const member = profile.party.members[job]
     if (member.lv >= b.maxLevel) continue
-    member.exp += exp
+    member.exp += live ? catchupExperience(member, exp, veteranLevel, multipliers.get(job)!) : exp
     while (member.lv < b.maxLevel && member.exp >= expToNext(member.lv)) {
       member.exp -= expToNext(member.lv); member.lv++
       out.push({ t: 'levelUp', job, lv: member.lv })
@@ -66,14 +83,16 @@ function grantExp(profile: Profile, exp: number, out: SimEvent[], recipientJobs:
 export function addKoban(profile: Profile, koban: number) { profile.koban = cappedAmount(profile.koban + koban); profile.stats.totalKoban = cappedAmount(profile.stats.totalKoban + koban) }
 
 /** Rolls and stores one item; emits a 'drop' event for the strip. */
-export function dropItem(profile: Profile, ilvl: number, x: number, out: SimEvent[], range: { min?: Rarity; max?: Rarity } = {}, activeJobs = deployedJobs(profile.party.order)) {
+export function dropItem(profile: Profile, floor: number, x: number, out: SimEvent[], range: { min?: Rarity; max?: Rarity; slot?: SlotId; job?: JobId; holdForReview?: boolean; difficulty?: Difficulty } = {}, activeJobs = deployedJobs(profile.party.order)) {
   if (!Number.isSafeInteger(profile.nextItemId) || profile.nextItemId >= Number.MAX_SAFE_INTEGER - 1) throw new RangeError('item id sequence exhausted')
-  const item = rollItem(profile, `i${profile.nextItemId++}`, { ilvl, luk: partyLuk(profile, activeJobs), jobs: partyOrder, minRarity: range.min, maxRarity: range.max })
+  const item = rollItem(profile, `i${profile.nextItemId++}`, { ilvl: lootRank(floor, range.difficulty ?? profile.progress.depthRank), luk: partyLuk(profile, activeJobs), jobs: range.job ? [range.job] : partyOrder,
+    activeJobs, slot: range.slot, minRarity: range.min, maxRarity: range.max })
   const kind = `${item.slot}:${item.job ?? ''}:${item.name}`
   if (!profile.seenItems.includes(kind)) profile.seenItems.push(kind)
   profile.stats.drops++
-  const result = receiveItem(profile, item)
-  out.push({ t: 'drop', x, rarity: item.rarity, name: item.name, equippedBy: result.equippedBy })
+  const result = receiveItem(profile, item, range.holdForReview, activeJobs)
+  out.push({ t: 'drop', x, rarity: item.rarity, name: item.name, equippedBy: result.equippedBy, sold: result.sold,
+    ...(result.sale ? { sale: { reason: result.sale.reason, name: result.sale.item.name, rarity: result.sale.item.rarity, koban: result.sale.koban } } : {}) })
   return result
 }
 
@@ -84,7 +103,7 @@ export function applyRewards(profile: Profile, events: readonly SimEvent[], acti
   for (const event of events) {
     if (event.t === 'reward') {
       addKoban(profile, event.koban)
-      if (event.exp) grantExp(profile, event.exp, out, activeJobs)
+      if (event.exp) grantExp(profile, event.exp, out, activeJobs, true)
       profile.rates.current.koban = cappedAmount(profile.rates.current.koban + event.koban); profile.rates.current.exp = cappedAmount(profile.rates.current.exp + event.exp)
       const enemy = enemies[event.enemyId]
       if (enemy) {
@@ -99,7 +118,7 @@ export function applyRewards(profile: Profile, events: readonly SimEvent[], acti
       changed = true
     } else if (event.t === 'floorEvent') {
       profile.progress.eventDepths[event.depthRank] = Math.max(profile.progress.eventDepths[event.depthRank], event.stageNo)
-      if (event.kind === 'treasure') { const result = dropItem(profile, event.stageNo, 0, out, { min: 1 }, activeJobs); gearChanged ||= Boolean(result.equippedBy) }
+      if (event.kind === 'treasure') { const result = dropItem(profile, event.stageNo, 0, out, { min: 1, difficulty: event.depthRank }, activeJobs); gearChanged ||= Boolean(result.equippedBy) }
       changed = true
     } else if (event.t === 'phase') {
       const rank = event.depthRank ?? profile.progress.depthRank
@@ -108,6 +127,15 @@ export function applyRewards(profile: Profile, events: readonly SimEvent[], acti
       profile.progress.currentStage = event.stageNo
       profile.progress.unlockedStage = profile.progress.unlockedDepths[rank]
       if (event.phase === 'stageClear') {
+        const firstClear = event.stageNo >= profile.progress.unlockedDepths[rank]
+          && (rank === 2 ? event.stageNo < Number.MAX_SAFE_INTEGER : event.stageNo < maxFloor(rank) || profile.progress.unlockedDepths[(rank + 1) as Difficulty] === 0)
+        if (firstClear && rank === 0 && event.stageNo === 1) {
+          const job = activeJobs.find(id => !profile.party.members[id].equip.weapon) ?? activeJobs[0]
+          dropItem(profile, 1, 0, out, { min: 1, max: 1, slot: 'weapon', job, holdForReview: true, difficulty: rank }, activeJobs)
+        } else if (firstClear && event.stageNo % 10 === 0) {
+          const result = dropItem(profile, event.stageNo, 0, out, { min: event.stageNo % 100 === 0 ? 4 : 3, holdForReview: true, difficulty: rank }, activeJobs)
+          gearChanged ||= Boolean(result.equippedBy)
+        }
         profile.stats.stageClears++; stageCleared = true
         profile.progress.unlockedDepths[rank] = Math.min(maxFloor(rank), Math.max(profile.progress.unlockedDepths[rank], event.stageNo + 1))
         profile.progress.unlockedStage = profile.progress.unlockedDepths[rank]
@@ -141,6 +169,7 @@ export function freezePendingOffline(profile: Profile) {
 
 /** Offline rewards: average × elapsed minutes × 0.5, capped at 8 hours plus dojo; one 並/上 roll per 10 minutes. */
 export function computeOffline(profile: Profile, elapsedMs: number): OfflineResult | null {
+  if (profile.progress.inTown) return null
   if (!Number.isFinite(elapsedMs) || elapsedMs < pb.offlineMinMs) return null
   const ms = Math.min(elapsedMs, pb.offlineMaxMs + dojoDefs.offline.per * profile.dojo.offline)
   const rate = perMinute(profile), minutes = ms / pb.minuteMs

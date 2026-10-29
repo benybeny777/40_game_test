@@ -124,7 +124,7 @@ async function phase(name, durationMs, restart) {
   const port = await freePort(), started = Date.now()
   const phase = { name, debuggerPort: port, requestedRunMs: durationMs, startedAt: new Date().toISOString(), checks: [], samples: [], rendererErrors: [] }
   report.phases.push(phase)
-  const env = { ...process.env, GAME_PROFILE: 'user', GAME_DATA_DIR: dataDir, GAME_STORE_SANDBOX: '1', GAME_SMOKE_QUIT_MS: String(durationMs + 8000) }
+  const env = { ...process.env, GAME_PROFILE: 'user', GAME_DATA_DIR: dataDir, GAME_STORE_SANDBOX: '1', GAME_SMOKE_QUIT_MS: String(durationMs + 20000) }
   for (const key of ['GAME_SPEED', 'ELECTRON_RENDERER_URL', 'ELECTRON_RUN_AS_NODE']) delete env[key]
   phase.environment = { GAME_PROFILE: env.GAME_PROFILE, GAME_DATA_DIR: env.GAME_DATA_DIR, GAME_STORE_SANDBOX: '1', GAME_SMOKE_QUIT_MS: env.GAME_SMOKE_QUIT_MS, GAME_SPEED: 'unset' }
   const child = spawn(exe, ['--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { cwd: dirname(exe), env, windowsHide: false, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -143,7 +143,7 @@ async function phase(name, durationMs, restart) {
     await until(() => panel.evaluate('Boolean(window.game && document.querySelector(".card"))'))
     const initial = await panel.evaluate('(async()=>({state:await window.game.getState(),view:await window.game.getView(),store:await window.game.getStore()}))()')
     assert(initial.state.packaged && initial.state.profile === 'user', 'Not the packaged user profile')
-    assert(initial.state.paused === false && !initial.state.storageError, 'Unexpected initial paused/storage-error state')
+    assert(initial.state.paused === false && !initial.state.storageError && !initial.state.runtimeError, 'Unexpected initial paused/storage-error state')
     assert(initial.view.party.length === 17 && initial.view.party.filter(member => member.active).length === 3, 'Expected 17 members and 3 active')
     assert(initial.store.mode === 'unavailable' && initial.store.market.available === false, 'Packaged sandbox or Market unexpectedly enabled')
     // The desktop may currently contain an unrelated fullscreen app. Keep only this isolated test strip visible.
@@ -173,20 +173,23 @@ async function phase(name, durationMs, restart) {
     assert(town.command.ok && town.view.dungeon.town && town.state.paused === false, 'Town must stop battle without claiming global pause')
     phase.checks.push('return-town-is-not-global-pause')
     if (!restart) {
-      await panel.evaluate('(async()=>{await window.game.command({c:"setOptions",autoEquip:false});await window.game.command({c:"setLoop",loop:true});await window.game.command({c:"selectStage",stageNo:1,depthRank:0})})()')
+      await panel.evaluate('(async()=>{for(const command of [{c:"setOptions",autoEquip:false},{c:"setLoop",loop:false},{c:"selectStage",stageNo:1,depthRank:0}]){const result=await window.game.command(command);if(!result.ok)throw new Error(result.reason)}})()')
+      phase.checks.push('long-run-normal-floor-progression-loop-disabled')
     }
     while (!exit && Date.now() < started + durationMs) {
       const sample = await processSample(child.pid)
       const live = await panel.evaluate('(async()=>({state:await window.game.getState(),view:await window.game.getView()}))()')
-      assert(!live.state.storageError && live.state.paused === false, 'Unexpected pause/save failure during run')
-      sample.game = { playMs: live.view.stats.playMs, town: live.view.dungeon.town, party: live.view.party.length, active: live.view.party.filter(member => member.active).length }
+      assert(!live.state.runtimeError && !live.state.storageError && live.state.paused === false, 'Unexpected pause/save/runtime failure during run')
+      if (!restart) assert(live.view.stage.loop === false, 'Long-run acceptance must progress through floors, not loop B1')
+      sample.game = { floor: live.view.dungeon.depth, best: live.view.dungeon.best, loop: live.view.stage.loop, playMs: live.view.stats.playMs, town: live.view.dungeon.town, party: live.view.party.length, active: live.view.party.filter(member => member.active).length }
       phase.samples.push(sample)
       console.log(`${name}: ${Math.round((Date.now() - started) / 1000)}s, working set ${Math.round(sample.workingSet / 1048576)}MiB`)
       const wait = Math.min(15000, started + durationMs - Date.now())
       if (wait > 0) await Promise.race([exited, delay(wait)])
     }
     assert(!exit, 'Game exited before acceptance operations completed')
-    await panel.evaluate('window.game.command({c:"returnTown"})')
+    const finalTown = await panel.evaluate('window.game.command({c:"returnTown"})')
+    assert(finalTown.ok, 'Could not save final return to town')
     if (env.GAME_CLOUD_URL) {
       const cloud = await panel.evaluate(`(async()=>{
         const before=await window.game.getView();
@@ -208,10 +211,47 @@ async function phase(name, durationMs, restart) {
     phase.lastView = await panel.evaluate('window.game.getView()')
     phase.frames = await strip.evaluate('window.__acceptanceFrames')
     assert(phase.frames.length > 0 && phase.frames.every(frame => frame.allies === 3), 'Missing frames or an incorrect active party size')
+    // This deliberate API fault is a separate recovery test, not a renderer exception.
+    // Save the restart contract first; recovery must restore this exact checkpoint.
+    const finalLoop = await panel.evaluate('window.game.command({c:"setLoop",loop:true})')
+    assert(finalLoop.ok, 'Could not save final loop preference')
+    const checkpointView = await panel.evaluate('window.game.getView()')
+    const savePath = join(dataDir, 'save/save.json'), checkpointBytes = readFileSync(savePath, 'utf8')
+    const checkpoint = JSON.parse(checkpointBytes)
+    assert(checkpoint.progress.inTown && checkpoint.progress.loop, 'Town and loop were not successfully saved before the fault')
+    const cause = 'Synthetic packaged acceptance fault: runtime recovery'
+    await panel.evaluate(`window.game.reportRuntimeError(${JSON.stringify(cause)})`)
+    await until(async () => {
+      const stopped = await panel.evaluate('window.game.getState()')
+      const notice = await panel.evaluate('document.querySelector(".runtime-failure")?.textContent ?? ""')
+      return stopped.paused && stopped.runtimeError === cause && notice.includes(cause)
+    })
+    const blocked = await panel.evaluate('(async()=>({command:await window.game.command({c:"setLoop",loop:false}),retrySave:await window.game.retrySave(),state:await window.game.getState()}))()')
+    assert(!blocked.command.ok && blocked.retrySave === false && !blocked.state.storageError, 'Runtime failure did not independently block mutations and save retry')
+    const controls = await panel.evaluate('({inert:document.querySelector("#app").inert,buttons:document.querySelectorAll(".runtime-failure button").length})')
+    assert(controls.inert && controls.buttons === 2, 'Recovery notice did not disable gameplay or expose export/reload controls')
+    await panel.capture(join(runDir, name + '-synthetic-runtime-stopped.png'))
+    await delay(500)
+    assert(readFileSync(savePath, 'utf8') === checkpointBytes, 'Runtime failure overwrote the checkpoint')
+    await panel.evaluate('window.__runtimeCheckBeforeReload=true; setTimeout(()=>window.game.reloadAfterRuntimeError(),100); true')
+    await until(() => panel.evaluate('Boolean(!window.__runtimeCheckBeforeReload && window.game && document.querySelector(".card"))'), 10000)
+    const recovered = await panel.evaluate('(async()=>({state:await window.game.getState(),view:await window.game.getView(),notice:Boolean(document.querySelector(".runtime-failure"))}))()')
+    assert(recovered.state.paused && !recovered.state.runtimeError && !recovered.notice, 'Explicit runtime recovery did not reload paused')
+    assert(JSON.stringify(recovered.view) === JSON.stringify(checkpointView), 'Recovered view did not match the saved checkpoint')
+    assert(readFileSync(savePath, 'utf8') === checkpointBytes, 'Reload overwrote the saved checkpoint')
+    const recoveredStrip = await until(async () => {
+      const state = await strip.evaluate('window.game.getState()')
+      return state.paused && !state.runtimeError && await strip.evaluate('!document.querySelector(".runtime-failure")') ? state : false
+    })
+    assert(recoveredStrip.paused, 'Strip did not recover paused')
+    phase.runtimeRecovery = { kind: 'synthetic-api-fault', cause, commandRejected: true, retrySaveRejected: true, saveUnchanged: true,
+      viewMatchesCheckpoint: true, reloadPaused: true, stripReloadPaused: true, checkpointSha256: createHash('sha256').update(checkpointBytes).digest('hex') }
+    phase.checks.push('synthetic-runtime-stop-command-save-rejected', 'synthetic-runtime-checkpoint-preserved', 'explicit-reload-checkpoint-matches-paused')
+    phase.lastView = recovered.view
     phase.rendererErrors = [...strip.errors, ...panel.errors]
     assert(phase.rendererErrors.length === 0, 'Renderer exceptions were observed')
     strip.close(); panel.close()
-    await Promise.race([exited, delay(15000).then(() => { throw new Error('Normal smoke quit did not finish') })])
+    await Promise.race([exited, delay(30000).then(() => { throw new Error('Normal smoke quit did not finish') })])
     assert(exit.code === 0, `Packaged exit code ${exit.code}`)
     await until(() => portClosed(port), 5000)
     phase.checks.push('normal-smoke-quit-code-zero', 'debugger-port-closed')
@@ -221,7 +261,7 @@ async function phase(name, durationMs, restart) {
     assert(Array.isArray(remaining) && remaining.length === 0, 'A sampled game child process remained after normal exit')
     phase.checks.push('observed-game-processes-exited')
     const save = JSON.parse(readFileSync(join(dataDir, 'save/save.json'), 'utf8'))
-    assert(save.version === 3 && save.progress.inTown && Object.keys(save.party.members).length === 17, 'Normal quit did not persist the expected save')
+    assert(save.version === 3 && save.progress.inTown && save.progress.loop && save.options.autoEquip === false && Object.keys(save.party.members).length === 17, 'Normal quit did not persist the expected save')
     phase.saved = { version: save.version, savedAt: save.savedAt, inTown: save.progress.inTown, members: Object.keys(save.party.members).length, playMs: save.stats.playMs }
     phase.exit = exit; phase.ok = true
   } catch (error) {

@@ -48,6 +48,7 @@ export function registerTranslationTemplates(entries: Array<{ ja: string; en: st
 export function translatedLabel(source: string): string {
   if (locale === 'ja') return source
   if (Object.hasOwn(translations, source)) return translations[source]
+  if (source.includes('\n')) return source.split('\n').map(translatedLabel).join('\n')
   for (const template of templates) {
     const match = template.pattern.exec(source)
     if (match) return template.en.replace(/\{(\w+)\}/g, (token, key: string) => {

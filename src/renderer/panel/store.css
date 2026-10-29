@@ -1,4 +1,4 @@
-.store-root { display: flex; flex-direction: column; gap: 14px; font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; }
+.store-root { display: flex; flex-direction: column; gap: 14px; font-family: var(--font-ui); }
 .store-intro { border-left: 3px solid var(--gold); padding: 3px 0 3px 14px; }
 .store-eyebrow { color: var(--gold); font-size: 10px; letter-spacing: 2px; }
 .store-title { margin: 4px 0 6px; font-size: 22px; color: var(--text); letter-spacing: 1px; }

@@ -57,6 +57,8 @@ export function parseSettings(value: unknown): Partial<Settings> | null {
   if ('groundBand' in value) { if (typeof value.groundBand !== 'boolean') return null; out.groundBand = value.groundBand }
   if ('hideOnFullscreen' in value) { if (typeof value.hideOnFullscreen !== 'boolean') return null; out.hideOnFullscreen = value.hideOnFullscreen }
   if ('autoStart' in value) { if (typeof value.autoStart !== 'boolean') return null; out.autoStart = value.autoStart }
+  if ('audioEnabled' in value) { if (typeof value.audioEnabled !== 'boolean') return null; out.audioEnabled = value.audioEnabled }
+  if ('audioVolume' in value) { if (typeof value.audioVolume !== 'number' || !Number.isFinite(value.audioVolume) || value.audioVolume < 0 || value.audioVolume > 1) return null; out.audioVolume = value.audioVolume }
   if ('fpsCap' in value) { if (value.fpsCap !== 15 && value.fpsCap !== 30) return null; out.fpsCap = value.fpsCap }
   return out
 }

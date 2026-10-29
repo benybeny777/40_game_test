@@ -2,6 +2,7 @@ import { dungeons } from './dungeon.ts'
 export const balance = {
   tickMs: 100, walkMs: 1200, waveClearMs: 300, stageClearMs: 800, wipeMs: 1800,
   bossIntroMs: 900, spawnMs: 100, windupMs: 100, projectileDotsPerSecond: 360,
+  bossInterruptDots: 18,
   allyAttackIntervalMul: 0.5,
   // spawnX was 160 in the first draft; ranged allies (220) then killed everything before melee contact.
   formationGap: 18, spawnX: 40, enemyStop: 14, enemyGap: 10,

@@ -1,6 +1,7 @@
+@import '../font.css';
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; user-select: none; }
 canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; }
-#banner, .label, #tooltip { position: absolute; pointer-events: none; font-family: 'Yu Gothic UI', 'Meiryo', sans-serif; font-weight: bold; }
+#banner, .label, #tooltip { position: absolute; pointer-events: none; font-family: var(--font-ui); font-weight: bold; }
 #banner { padding: 3px 14px; font-size: 15px; letter-spacing: 2px; color: #f3ead6; background: #151824e6; border: 1px solid #d9a52c; border-radius: 2px;
   opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; white-space: nowrap; }
 #banner.show { opacity: 1; transform: none; }

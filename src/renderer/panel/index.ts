@@ -1,6 +1,8 @@
+import { loadUiFonts } from '../fonts'
+import { runtimeFailure } from '../runtimeFailure'
+import { brand } from '../../shared/brand'
 import { roleLabels, type JobRole, type ItemView, type JobId, type MemberView, type ProfileView, type SlotId } from '../../core/index.ts'
 import type { PanelTab, ShellState } from '../../shared/api'
-import { artReady } from '../strip/sprites/sheet'
 import { attributeKeys, attributeLabels } from '../../core/data/attributes.ts'
 import { renderDungeon } from './dungeon'
 import type { StoreView } from '../../shared/commerce'
@@ -12,12 +14,15 @@ import { formatNumber, getLocale, onLocaleChange, setLocale, t, translatedLabel 
 import './translations'
 import '../../shared/locales/system'
 import { h } from './dom'
-import { spriteImage } from './portrait'
+import { portraitsReady, spriteImage } from './portrait'
 import { assignFocusKeys, capturePanelPosition, restorePanelPosition, PanelPositions } from './focus'
 import { OfflineModalFocus } from './modalFocus'
 import { renderCloudSettings } from './cloud'
+import { renderNextChoice } from './nextChoice'
+import { renderEquipmentComparison } from './equipmentComparison'
+import { reportRendererError } from '../errors'
 
-initializePlatform()
+const runtime = runtimeFailure(initializePlatform())
 
 const fmt = (value: number) => formatNumber(Math.floor(value))
 
@@ -51,7 +56,7 @@ async function command(...args: Parameters<typeof window.game.command>) {
     const result = await window.game.command(...args)
     if (!result.ok) showToast(result.reason)
     view = await window.game.getView()
-  } catch { showToast('操作を完了できませんでした。少し待って再度お試しください。') }
+  } catch (error) { showToast(reportRendererError('操作を完了できませんでした。少し待って再度お試しください。', error)) }
   finally { commandPending = false; render(true) }
 }
 function showToast(text: string) {
@@ -76,11 +81,13 @@ function memberCard(member: MemberView, index: number, order: JobId[]) {
         h('div', { class: 'slot' }, member.active && !member.fighting ? '出撃予約・次のウェーブから' : !member.active && member.fighting ? '交代待ち・現在の出撃メンバー' : member.active ? index === 0 ? '出撃・前衛（先頭）' : `出撃・${index + 1}番手` : '控え・経験値なし（育成と装備を保持）'),
         h('h3', {}, member.name, h('span', { class: 'lv' }, `Lv ${member.lv}`)),
         h('span', { class: `role-badge role-${member.roleId}` }, member.role),
+        member.availablePoints > 0 ? h('small', { class: 'unspent-points' }, `未使用 ${member.availablePoints} pt`) : null,
+        member.fighting && member.experienceMultiplier > 1 ? h('small', { class: 'unspent-points' }, `出撃中の育成支援：経験値 最大${member.experienceMultiplier}倍`) : null,
         h('div', { class: 'exp' }, h('i', { style: `width:${Math.min(100, member.exp / member.expNext * 100)}%` })),
         h('small', {}, member.fighting ? '戦闘参加で経験値' : member.active ? '反映後の戦闘から経験値を獲得します' : '控えでは経験値を獲得しません'),
         h('small', {}, `次のLvまで ${fmt(member.expNext - member.exp)}`))),
-    h(member.active ? 'div' : 'details', { class: 'member-details' },
-    member.active ? null : h('summary', {}, '能力・スキルを見る'),
+    h('details', { class: 'member-details' },
+    h('summary', { 'data-focus-key': `training-${member.job}` }, member.active ? '育成・スキルを開く' : '能力・スキルを見る'),
     h('dl', { class: 'stats' },
       ...([['HP', fmt(s.hp)], ['攻撃', s.atk], ['防御', s.def], ['間隔', `${s.interval}秒`], ['会心', `${s.cri}%`], ['回避', `${s.eva}%`], ['運', s.luk], ['射程', s.range]] as const)
         .map(([k, v]) => h('div', {}, h('dt', {}, k), h('dd', {}, String(v))))),
@@ -114,8 +121,9 @@ let reserveRole: JobRole | 'all' = 'all'
 function partyTab(v: ProfileView) {
   const order = v.party.map((member) => member.job)
   return h('section', {},
+    renderNextChoice(v, (job, item) => { gearJob = job; gearFilter = item.slot; compareItem = item.id; tab = 'gear'; render() }),
     h('div', { class: 'journey' },
-      h('div', {}, h('span', { class: 'eyebrow' }, '裏・東京をゆく、三人の百鬼行'), h('h2', {}, `出撃パーティ ${v.partySize}人`),
+      h('div', {}, h('span', { class: 'eyebrow' }, '黄泉の迷宮へ、三人で潜る'), h('h2', {}, `出撃パーティ ${v.partySize}人`),
         h('p', {}, v.dungeon.town ? '街で休息中。編成・装備を整えて探索を再開しましょう。' : `${v.party.length}ジョブから3人を編成。${translatedLabel(v.stage.areaName)} ${translatedLabel(v.stage.label)} を冒険中。`)),
       h('button', { class: 'journey-link', onclick: () => { tab = 'gear'; render() } }, '装備を整える →')),
     h('div', { class: 'roster deployed-roster' }, ...v.party.filter(member => member.active).map((member) => h('button', { 'data-focus-key': `portrait-${member.job}`, style: `--job:${member.color}`, onclick: () => root.querySelector(`[data-job="${member.job}"]`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }) },
@@ -131,41 +139,52 @@ function partyTab(v: ProfileView) {
 let gearJob: JobId | undefined
 let gearFilter: SlotId | 'all' = 'all'
 let gearEquipableOnly = false
-let seenSent = false
+let compareItem: string | undefined
 const slotNames: Record<SlotId, string> = { weapon: '武器', armor: '防具', charm: 'お守り' }
 function itemCard(item: ItemView, job: JobId, worn: boolean) {
   const delta = item.delta[job] ?? 0, eligibility = item.equipable[job]
   const diff = !eligibility.ok ? h('span', { class: 'delta none' }, eligibility.reason)
     : worn ? h('span', { class: 'delta' }, '装備中')
-    : h('span', { class: `delta ${delta > 0 ? 'up' : delta < 0 ? 'down' : ''}` }, delta > 0 ? `▲ ${delta}` : delta < 0 ? `▼ ${-delta}` : '±0')
-  return h('div', { class: `item${item.isNew ? ' new' : ''}`, 'data-focus-scope': `item-${item.id}`, style: `--rarity:${item.color}` },
+    : h('span', { title: '評価差（目安）', class: `delta ${delta > 0 ? 'up' : delta < 0 ? 'down' : ''}` }, delta > 0 ? `▲ ${delta}` : delta < 0 ? `▼ ${-delta}` : '±0')
+  return h('div', { class: `item${item.isNew ? ' new' : ''}${compareItem === item.id ? ' compare-target' : ''}`, 'data-focus-scope': `item-${item.id}`, style: `--rarity:${item.color}` },
     h('div', { class: 'item-head' },
       h('span', { class: 'rarity' }, item.rarityName), h('b', {}, item.name), h('small', {}, `${item.slotName}・装備ランク${item.ilvl}`), item.isNew ? h('em', {}, 'NEW') : null, diff),
     h('p', { class: 'lines' }, item.lines.map(translatedLabel).join(' / ')),
+    !worn && item.owner ? h('p', { class: 'hint' }, `${translatedLabel(view!.party.find(member => member.job === item.owner)!.name)}：${translatedLabel('控えで装備中・装着すると付け替えます')}`) : null,
+    worn ? null : renderEquipmentComparison(item, job),
     h('div', { class: 'item-actions' },
       worn ? h('button', { onclick: () => void command({ c: 'equip', job, slot: item.slot, itemId: null }) }, '外す')
         : eligibility.ok ? h('button', { class: 'primary', onclick: () => void command({ c: 'equip', job, slot: item.slot, itemId: item.id }) }, '装備する') : null,
       h('button', { onclick: () => void command({ c: 'lock', itemId: item.id, locked: !item.locked }) }, item.locked ? '[ロック中]' : 'ロック'),
-      worn ? null : h('button', { disabled: item.locked, onclick: () => void command({ c: 'sell', itemIds: [item.id] }) }, `売る（${fmt(item.sellPrice)}）`)))
+      worn || item.owner ? null : h('button', { disabled: item.locked, onclick: () => void command({ c: 'sell', itemIds: [item.id] }) }, `売る（${fmt(item.sellPrice)}）`)))
 }
 function gearTab(v: ProfileView) {
-  if (!seenSent && v.inventory.some((item) => item.isNew)) { seenSent = true; setTimeout(() => { seenSent = false; void window.game.command({ c: 'markSeen' }) }, 4000) }
   const job = gearJob && v.party.some((member) => member.job === gearJob) ? gearJob : v.party[0].job
   const member = v.party.find((entry) => entry.job === job)!
-  const list = v.inventory.filter((item) => (gearFilter === 'all' || item.slot === gearFilter) && (!gearEquipableOnly || item.equipable[job].ok))
-    .sort((a, z) => (z.delta[job] ?? -1e9) - (a.delta[job] ?? -1e9) || z.rarity - a.rarity)
+  const available = [...v.inventory, ...v.reserveEquipment.filter(item => item.owner !== job)]
+  const highlighted = available.find(item => item.id === compareItem)
+  const list = available.filter((item) => (gearFilter === 'all' || item.slot === gearFilter) && (!gearEquipableOnly || item.equipable[job].ok))
+    .sort((a, z) => Number(z.id === compareItem) - Number(a.id === compareItem) || (z.delta[job] ?? -1e9) - (a.delta[job] ?? -1e9) || z.rarity - a.rarity)
   const sellOptions = [null, 0, 1, 2] as const
   const owned = v.inventory.length + v.party.reduce((sum, entry) => sum + Object.values(entry.equip).filter(Boolean).length, 0)
   const sellableCount = v.inventory.filter(item => item.rarity === 0 && !item.locked).length
   return h('section', { class: 'gear' },
-    h('div', { class: 'gear-options' },
-      h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: v.options.autoEquip, onchange: (event: Event) => void command({ c: 'setOptions', autoEquip: (event.target as HTMLInputElement).checked }) }), h('span', {}, '強い装備を自動で装備')),
+    h('details', { class: 'gear-management' }, h('summary', { 'data-focus-key': 'gear-management' }, '自動整理・まとめ売り'), h('div', { class: 'gear-options' },
+      h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: v.options.autoEquip, onchange: (event: Event) => void command({ c: 'setOptions', autoEquip: (event.target as HTMLInputElement).checked }) }), h('span', {}, '能力が下がらない装備を出撃者へ自動装備')),
       h('label', {}, h('span', {}, '拾ったら自動で売る：'), h('select', { onchange: (event: Event) => { const value = (event.target as HTMLSelectElement).value; void command({ c: 'setOptions', autoSellMaxRarity: value === '' ? null : Number(value) as 0 }) } },
         ...sellOptions.map((rarity) => h('option', { value: rarity === null ? '' : String(rarity), selected: v.options.autoSellMaxRarity === rarity }, rarity === null ? '売らない' : `${v.rarityNames[rarity]}以下`)))),
       h('button', { disabled: sellableCount === 0, onclick: () => void command({ c: 'sellAll', maxRarity: 0 }) }, `${v.rarityNames[0]}をまとめて売る（${sellableCount}個）`),
+      h('button', { disabled: !v.inventory.some(item => item.isNew), onclick: () => void command({ c: 'markSeen' }) }, '新着を確認済みにする'),
       h('span', { class: 'count' }, `所持 ${owned} / ${v.inventoryMax}`)),
-    h('div', { class: 'jobs' }, ...v.party.map((entry) => h('button', { 'data-focus-key': `gear-job-${entry.job}`, class: entry.job === job ? 'active' : '', style: `--job:${entry.color}`, onclick: () => { gearJob = entry.job; render() } },
+    h('p', { class: 'hint' }, '固有・ロック装備は自動で変更しません。追加効果や能力の交換条件がある装備は、自分で比較して選びます。')),
+    h('div', { class: 'jobs' }, ...v.party.filter(entry => entry.active).map((entry) => h('button', { 'data-focus-key': `gear-job-${entry.job}`, class: entry.job === job ? 'active' : '', style: `--job:${entry.color}`, onclick: () => { gearJob = entry.job; render() } },
       spriteImage(entry.job, 1), h('span', {}, entry.name), h('small', {}, `Lv${entry.lv}`)))),
+    h('label', { class: 'reserve-gear' }, '控えの装備を見る', h('select', { 'data-focus-key': 'reserve-gear', onchange: (event: Event) => { gearJob = (event.target as HTMLSelectElement).value as JobId; render(true) } },
+      h('option', { value: '', disabled: true, selected: member.active }, '控えから選択…'),
+      ...v.party.filter(entry => !entry.active).map(entry => h('option', { value: entry.job, selected: entry.job === job }, `${translatedLabel(entry.name)} · Lv${entry.lv}`)))),
+    highlighted ? h('section', { class: 'selected-comparison' }, h('h3', {}, '比べている装備'),
+      h('p', { class: 'hint' }, `${translatedLabel(member.name)} · ${translatedLabel(member.equip[highlighted.slot]?.name ?? '装備なし')} → ${translatedLabel(highlighted.name)}`),
+      itemCard(highlighted, job, false)) : null,
     h('div', { class: 'gear-body' },
       h('div', { class: 'worn' },
         h('h3', {}, `${member.name}の装備`),
@@ -176,7 +195,7 @@ function gearTab(v: ProfileView) {
       h('div', { class: 'bag' },
         h('label', { class: 'switch' }, h('input', { type: 'checkbox', 'data-focus-key': 'gear-equipable-only', checked: gearEquipableOnly, onchange: (event: Event) => { gearEquipableOnly = (event.target as HTMLInputElement).checked; render() } }), '選択中のキャラが装備できるものだけ'),
         h('div', { class: 'filters' }, ...(['all', 'weapon', 'armor', 'charm'] as const).map((key) => h('button', { 'data-focus-key': `gear-filter-${key}`, 'aria-pressed': String(gearFilter === key), class: gearFilter === key ? 'active' : '', onclick: () => { gearFilter = key; render() } }, key === 'all' ? 'すべて' : slotNames[key]))),
-        list.length ? h('div', { class: 'items' }, ...list.map((item) => itemCard(item, job, false))) : h('p', { class: 'hint' }, v.inventory.length ? 'この条件に合う装備はありません。種類や装備条件の絞り込みを変更してください。' : '持ち物はありません。敵を倒すとたまに装備を落とします（ボスは必ず）。'))))
+        list.length ? h('div', { class: 'items' }, ...list.filter(item => item.id !== highlighted?.id).map((item) => itemCard(item, job, false))) : h('p', { class: 'hint' }, v.inventory.length ? 'この条件に合う装備はありません。種類や装備条件の絞り込みを変更してください。' : '持ち物はありません。敵を倒すとたまに装備を落とします（ボスは必ず）。'))))
 }
 function dojoTab(v: ProfileView) {
   return h('section', {},
@@ -196,7 +215,7 @@ function settingsTab() {
       state = previous
       console.error('Settings update failed', error)
       try { state = await window.game.getState() } catch (readError) { console.error('Settings state could not be verified after failed update', new AggregateError([error, readError])) }
-      showToast('設定を保存できませんでした。現在の設定を確認してください。')
+      showToast(reportRendererError('設定を保存できませんでした。現在の設定を確認してください。', error))
     } finally { render(true) }
   }
   return h('section', { class: 'settings' },
@@ -205,6 +224,9 @@ function settingsTab() {
     state?.platform !== 'browser' ? h('label', {}, h('span', {}, '表示サイズ'), h('select', { onchange: (event: Event) => void update({ size: (event.target as HTMLSelectElement).value as 'small' }) },
       ...(['small', 'medium', 'large'] as const).map((size) => h('option', { value: size, selected: settings.size === size }, { small: '小', medium: '中', large: '大' }[size])))) : null,
     h('label', {}, h('span', {}, '背景と地面を表示'), h('input', { type: 'checkbox', checked: settings.groundBand, onchange: (event: Event) => void update({ groundBand: (event.target as HTMLInputElement).checked }) })),
+    h('label', {}, h('span', {}, '節目の通知音'), h('input', { type: 'checkbox', checked: settings.audioEnabled, onchange: (event: Event) => void update({ audioEnabled: (event.target as HTMLInputElement).checked }) })),
+    h('label', {}, h('span', {}, '通知音の音量'), h('input', { type: 'range', min: '0', max: '100', value: String(Math.round(settings.audioVolume * 100)), disabled: !settings.audioEnabled, 'aria-label': translatedLabel('通知音の音量'), onchange: (event: Event) => void update({ audioVolume: Number((event.target as HTMLInputElement).value) / 100 }) })),
+    h('p', { class: 'hint' }, '伝説・神話の発見、大ボス突破、10レベルごとの成長を短い音で知らせます。初期設定はOFF、1時間に最大10回です。'),
     state?.platform !== 'browser' ? h('label', {}, h('span', {}, `全画面のアプリ（ゲーム・動画・プレゼン）を使っている間は帯を隠す${state?.fullscreenSupported === false ? '（この環境では使えません）' : ''}`),
       h('input', { type: 'checkbox', checked: settings.hideOnFullscreen, disabled: state?.fullscreenSupported === false, onchange: (event: Event) => void update({ hideOnFullscreen: (event.target as HTMLInputElement).checked }) }))
       : null,
@@ -214,7 +236,7 @@ function settingsTab() {
       ...[30, 15].map((fps) => h('option', { value: String(fps), selected: settings.fpsCap === fps }, `${fps}`)))),
     h('div', { class: 'row-line' }, h('span', {}, `データ：${state?.platform === 'browser' ? 'このブラウザー内（Windows版とは別）' : state?.profile === 'dev' ? '開発用（.dev-data）' : '利用者用'}`), h('button', { onclick: () => window.game.openSaveFolder() }, state?.platform === 'browser' ? 'セーブを書き出す' : 'セーブのフォルダを開く')),
     state?.platform !== 'browser' ? h('button', { onclick: () => window.game.exportSave() }, 'セーブを書き出す') : null,
-    h('p', { class: 'hint' }, state?.platform === 'browser' ? 'ブラウザーを閉じるとゲームも終了します。次回起動時にオフライン報酬を計算します。' : '一時停止・帯の表示切り替え・終了は、タスクトレイのアイコンから行います。音は鳴りません。'),
+    h('p', { class: 'hint' }, state?.platform === 'browser' ? 'ブラウザーを閉じるとゲームも終了します。次回起動時にオフライン報酬を計算します。' : '一時停止・帯の表示切り替え・終了は、タスクトレイのアイコンから行います。'),
     renderCloudSettings())
 }
 function offlineModal(v: ProfileView) {
@@ -238,14 +260,14 @@ function render(force = false) {
   const v = artworkReady ? view : undefined
   offlineFocus.beforeRender()
   document.documentElement.lang = getLocale()
-  document.title = translatedLabel('タスクバー百鬼行')
+  document.title = translatedLabel(brand.ja)
   const position = panelPositions.select(tab, capturePanelPosition(root))
   const openDetails = [...root.querySelectorAll<HTMLElement>('[data-job]')].filter(card => card.querySelector('details')?.open).map(card => card.dataset.job)
   rendering = true
   try {
   root.replaceChildren(
     h('header', {},
-      h('div', { class: 'brand' }, h('h1', {}, 'タスクバー百鬼行'), h('span', {}, v ? `${translatedLabel(v.stage.areaName)} ${translatedLabel(v.stage.label)}` : '')),
+      h('div', { class: 'brand' }, h('h1', {}, brand.ja), h('span', {}, v ? `${translatedLabel(v.stage.areaName)} ${translatedLabel(v.stage.label)}` : '')),
       h('div', { class: 'wallet' }, h('i', { class: 'coin' }), v ? fmt(v.koban) : '—')),
     h('nav', { 'aria-label': translatedLabel('画面の切り替え') }, ...tabs.map((entry) => h('button', { 'data-focus-key': `nav-${entry.id}`, 'aria-current': entry.id === tab ? 'page' : undefined, 'aria-controls': 'panel-content', class: entry.id === tab ? 'active' : '', onclick: () => { tab = entry.id; render() } }, entry.name))),
     state?.storageError ? h('div', { class: 'storage-error', role: 'alert' }, h('p', {}, state.storageError),
@@ -253,7 +275,7 @@ function render(force = false) {
         if (commandPending) return
         commandPending = true; render(true)
         try { if (!await window.game.retrySave()) showToast('保存を再試行しましたが、保存できませんでした。保存先を確認してください。') }
-        catch { showToast('保存を再試行できませんでした。セーブを書き出して保護してください。') }
+        catch (error) { showToast(reportRendererError('保存を再試行できませんでした。セーブを書き出して保護してください。', error)) }
         finally { commandPending = false; render(true) }
       } }, '保存を再試行') : null,
       h('button', { onclick: () => window.game.exportSave() }, 'セーブを書き出す')) : '',
@@ -263,7 +285,11 @@ function render(force = false) {
   assignFocusKeys(root, tab)
   for (const job of openDetails) { const details = root.querySelector<HTMLDetailsElement>(`[data-job="${job}"] details`); if (details) details.open = true }
   restorePanelPosition(root, position)
-  if (focusJob) { root.querySelector('.card.focus')?.scrollIntoView({ block: 'nearest' }); focusJob = tab === 'party' ? focusJob : undefined }
+  if (focusJob) {
+    const card = root.querySelector('.card.focus'), details = card?.querySelector('details')
+    if (details) details.open = true
+    card?.scrollIntoView({ block: 'nearest' }); focusJob = tab === 'party' ? focusJob : undefined
+  }
   offlineFocus.sync(root)
   } finally { rendering = false }
 }
@@ -274,7 +300,7 @@ window.addEventListener('pointercancel', () => { pressing = false })
 window.addEventListener('blur', () => { pressing = false })
 root.addEventListener('focusout', () => { if (!rendering) setTimeout(render, 0) })
 window.game.onView((next) => { viewEvents++; view = next; render() })
-window.game.onState((next) => { stateEvents++; const errorChanged = state?.storageError !== next.storageError; state = next; syncNativeLocale(); if (tab === 'settings' || errorChanged) render(errorChanged) })
+window.game.onState((next) => { runtime.observe(next); if (runtime.stopped) return; stateEvents++; const errorChanged = state?.storageError !== next.storageError; state = next; syncNativeLocale(); if (tab === 'settings' || errorChanged) render(errorChanged) })
 window.game.onNavigate((target) => {
   if (target.tab) tab = target.tab
   focusJob = target.job
@@ -284,14 +310,15 @@ window.game.onNavigate((target) => {
 })
 onLocaleChange(locale => {
   render(true)
-  if (state && state.settings.locale !== locale && !applyingNativeLocale) void window.game.updateSettings({ locale }).catch(() => showToast('言語設定を保存できませんでした。'))
+  if (state && state.settings.locale !== locale && !applyingNativeLocale) void window.game.updateSettings({ locale }).catch(error => { syncNativeLocale(); showToast(reportRendererError('言語設定を保存できませんでした。', error)) })
 })
 // Artwork can finish after a live state event. An earlier initial snapshot must not erase a save error or pause change.
 const initialEvents = { view: viewEvents, state: stateEvents }
-void Promise.all([window.game.getView(), window.game.getState(), window.game.getStore(), artReady]).then(([nextView, nextState, nextStore]) => {
+void Promise.all([window.game.getView(), window.game.getState(), window.game.getStore(), portraitsReady, loadUiFonts()]).then(([nextView, nextState, nextStore]) => {
   artworkReady = true
   if (viewEvents === initialEvents.view) view = nextView
   if (stateEvents === initialEvents.state) state = nextState
+  runtime.observe(state!); if (runtime.stopped) return
   storeView = nextStore; syncNativeLocale(); render()
-}).catch(() => { root.textContent = translatedLabel('ゲームを読み込めませんでした。データは削除せず、再起動をお試しください。') })
+}).catch(error => runtime.fail(error))
 render()

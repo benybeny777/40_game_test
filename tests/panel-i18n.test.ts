@@ -46,6 +46,22 @@ describe('English panel component text', () => {
     expect(result).toContain('過去に上がったレベルは下げません')
     expect(result).not.toContain('控えも同じ経験値')
   })
+  it('uses the same help structure in both languages and includes current loot, cloud and sound guidance', () => {
+    const structure = (node: TextNode): unknown => ({ className: node.attributes.class ?? node.className,
+      children: node.children.filter(child => typeof child !== 'string').map(child => structure(child as TextNode)) })
+    const english = asNode(renderHelp()), englishText = text(english)
+    expect(englishText).toContain('first clear of B1')
+    expect(englishText).toContain('do not lower stats')
+    expect(englishText).toContain('This is not automatic sync')
+    expect(englishText).toContain('Sound is off by default')
+    setLocale('ja')
+    const japanese = asNode(renderHelp()), japaneseText = text(japanese)
+    expect(structure(japanese)).toEqual(structure(english))
+    expect(japaneseText).toContain('地下1階の初回突破')
+    expect(japaneseText).toContain('能力が下がらない')
+    expect(japaneseText).toContain('自動同期ではありません')
+    expect(japaneseText).toContain('通知音は最初はOFF')
+  })
   it('renders unavailable store products, warnings and controls in English', () => {
     const view: StoreView = { mode: 'unavailable', message: '外観を試着できます。ブラウザー版では購入・Steam取引は利用できません。',
       equippedSku: null, appearance: null, pending: true,

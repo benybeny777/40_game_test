@@ -6,6 +6,13 @@ import { parseSettings } from '../shared/validate'
 
 export interface SavePaths { save: string; previousSave: string; brokenSave: string; settings: string }
 export type LoadSource = 'save' | 'prev' | 'new'
+export interface LoadedProfile { profile: Profile; source: LoadSource; errors: string[] }
+
+/** Loading a fallback is not permission to overwrite the current save or start progression. */
+export function confirmSaveRecovery(loaded: Pick<LoadedProfile, 'source' | 'errors'>, choose: () => number): 'continue' | 'restore-paused' | 'exit' {
+  if (loaded.source !== 'prev' && loaded.errors.length === 0) return 'continue'
+  return choose() === 1 ? 'restore-paused' : 'exit'
+}
 
 export class FutureSaveVersionError extends Error {
   constructor(readonly path: string, readonly version: number) {
@@ -60,7 +67,7 @@ export function saveProfile(paths: SavePaths, profile: Profile, now = new Date()
   profile.savedAt = savedAt
 }
 /** save.json → save.prev.json → new. The first unreadable file is kept once as save.broken.json (saves are not re-creatable). */
-export function loadProfile(paths: SavePaths, now = new Date()): { profile: Profile; source: LoadSource; errors: string[] } {
+export function loadProfile(paths: SavePaths, now = new Date()): LoadedProfile {
   assertWritableVersion(paths)
   const errors: string[] = []
   let keptBroken = false

@@ -1,4 +1,4 @@
-# タスクバー百鬼行：技術仕様
+# はぐれものダンジョン：技術仕様
 
 更新：2026-10-29。現行コードと設定を基準にする。プレイヤー向けのルールは [ゲーム仕様](GAME_SPEC.md)、最新の検証結果・未確認事項は [HANDOFF](../HANDOFF.md) を参照。以下の実装説明を、実機受入やSteam本番接続の完了と読み替えない。
 
@@ -24,7 +24,9 @@
 
 `src/shared/i18n.ts`が`ja`／`en`、言語変更通知、数値書式、固定文とプレースホルダー文の表示変換を管理する。ゲーム・装備・敵説明は`shared/locales/en-game.ts`、プラットフォームの案内は`en-platform.ts`、システム文と各画面の登録辞書は`system.ts`や`panel/translations.ts`に置く。保存するジョブID・装備ID・イベント・進行値は翻訳しない。
 
-rendererは言語変更で再描画し、Canvasの通知やDOMの文字・属性を表示境界で翻訳する。Windowsは検証済み`Settings.locale`を`settings.json`へ保存し、mainのトレイ／ダイアログとrendererへ同期する。ブラウザーは`hyakkiko.locale`に選択を保持し、保存が使えないときもそのセッションの切替を可能にする。Profileの形式変更やWindows／Web間の同期は伴わない。未登録文の日本語フォールバックは翻訳完了の証拠にせず、最終画面確認で漏れ・長さ・属性・動的文を検証する。
+rendererは言語変更で再描画し、Canvasの通知やDOMの文字・属性を表示境界で翻訳する。Windowsは検証済み`Settings.locale`を`settings.json`へ保存し、mainのトレイ／ダイアログとrendererへ同期する。ブラウザーも`hyakkiko.web.save`内のsettingsへ選択を保存する。旧`hyakkiko.locale`は移行入力だけとし、保存成功後に削除する。保存失敗では選択を元へ戻して原因を表示する。初回はOS／ブラウザーの言語を使い、通常画面に言語トグルを置かない。Profileの形式変更やWindows／Web間の自動同期は伴わない。未登録文の日本語フォールバックは翻訳完了の証拠にせず、最終画面確認で漏れ・長さ・属性・動的文を検証する。
+
+UI書体は`renderer/font.css`の`--font-ui`と`assets/fonts/`のBIZ UDPGothic WOFF2へ集約する。400/700の全字形を同梱し、`fonts.ts`で実読込を待つ。欠落・decode失敗は起動エラーとして通知し、OSの代替書体で読み込み成功にしない。外部フォント配信やOSへのインストールは不要。固定出典・ハッシュ・変換方法・OFLは`assets/fonts/README.md`／`OFL.txt`、ライセンス本文はゲーム内Helpからも参照可能。
 
 ## キャラ・編成・育成の正本
 
@@ -46,13 +48,21 @@ Profileは`dungeonId`、`dungeonSeed`、`dungeonRecords`を持つ。各記録は
 
 装備は基本値85〜115%の抽選値と追加効果を保持。6希少度、神話固有4系統、所持品上限100。自動装備・売却にもジョブ／能力条件とロックを適用する。ローカル装備の`marketEligible`は常にfalse。
 
+新ドロップの基礎能力は`core/progress/items.ts:rollItem`から`core/data/dungeon.ts:depthScale`を呼び、敵と同じ成長座標を使う。通算ランクを`r = floor + difficulty × 100`とし、安全な整数上限で制限する。`n = min(r,100) − 1 + 20 × log2(1 + max(0,r−100)/20)`に対して、武器の攻撃倍率は`1 + 0.22n + 0.012n²`、防具のHP倍率は`1 + 0.075n + 0.001n²`、防具の防御倍率は`1 + 0.045n`。各基礎値に対応倍率・希少度倍率・85〜115%の抽選値・固有装備倍率を掛けて保存する。ジョブ別武器係数も維持する。敵側だけは別途難易度固有倍率を持ち、装備への二重適用はしない。
+
+旧`1.12^(min(r,60)−1)`を新ドロップの基礎能力には使用しない。装備条件とLUK追加効果に使う`scaledRank`は別責務であり、基礎戦闘能力の曲線と混同しない。`sellPrice`は`floor(cappedAmount(5 × depthScale(r,0).reward × rarities[rarity].sell))`を正本とし、旧1.15の指数を廃止する。`rankGrowth/sellGrowth/deepGrowth`の不要な旧価格定義は削除した。価格は保存しないため既存品にも同じ計算を使う。`validateProfile`は保存済みの`atk/hp/def/affixes/name`を再生成しない。旧装備の性能を保持するため、旧版セーブと新規セーブのバランスが同じになるとは保証しない。
+
+`itemName`は5ランクごとの名称帯を使い、基本名を使い切った後の接尾辞を`改弐`〜`改玖`、続いて`改10`・`改11`…へ進める。名称生成は新しい品に限る。保存済みの日本語名や内部IDを更新時に書き換えない。
+
 ## 敵の表示と図鑑
 
 `src/core/data/enemies.ts`を戦闘特性の正本とし、図鑑対象12種と非掲載の分裂片・幻影2種を持つ。`src/shared/enemyGuide.ts`は実際のboss／traitsから役割と攻略文を導出する。`src/renderer/panel/dex.ts`は区域別の図鑑表示を担当し、管理画面本体から分離する。
 
 `src/renderer/strip/enemyPresentation.ts`は整数座標の種別動作、派生の縮尺、通常／強敵／ボスの表示判定、ダメージの整数表示を集約する。分裂片0.6倍・幻影0.8倍を描画・頭上バー・クリック領域へ適用。強敵判定はコアと同じ「10階刻み以外の最終ウェーブ」、ボスは定義で判定する。描画の丸めを戦闘計算へ逆流させない。
 
-通常攻撃の予告表示はSnapshotの`action=windup`とattackイベントの対象IDに同期する。**現在のボス特殊技は同じtickで発動と効果処理を行い、事前のcastを持たない。** Scene側の演出を事前予告と呼ばない。特殊技の実予告を加える場合は、コアに予告開始・対象・解決tickを保持し、対象の生死／射程・全滅・街帰還・読込時の取消とSnapshotを含めて整合させる必要がある。これは現時点の未実装事項。
+通常攻撃の予告表示はSnapshotの`action=windup`とattackイベントの対象IDに同期する。ボス特殊技はコアの`cast`として対象ID・開始位置・解決tickを保持し、`bossTell`と`SnapshotUnit.bossCast`を描画へ渡す。予告中は敵の通常移動を止め、解決時に生存・対象・近接射程を確認する。開始位置から18ドット以上押し戻された場合は`bossInterrupt`を発行し、効果を出さない。再使用待ちは予告開始時に消費する。全滅・街帰還・ウェーブ切替ではactionを消去し、保存からWorldを復元するときに途中の詠唱を再生しない。
+
+力士の張り手は`skills.harite`が前方48ドット内の候補を選び、`cast`中の敵を距離順より優先する。射程内ボスが実際に発動可能で、スキル準備が2秒以内なら張り手を温存する。`core/sim/boss.ts`の`canStartBossSkill`・`bossSkillCandidates`・`summonCapacity`をボス発動と温存判断が共有し、行動中・近接対象の射程外・召喚上限到達では温存しない。待機時間の正本は`jobs.rikishi.skill.params.bossReserveMs`。`actions.pushEnemy`が中断閾値を越えた押し出し元をactionへ記録し、`bossInterrupt.sourceUid/interruptSkillId`で張り手と奥義を区別する。射程・再使用待ち・他の行動中という制約は維持し、描画側から中断を成立させない。
 
 ## 時刻・放置・描画
 
@@ -137,6 +147,22 @@ Windowsではmainの`CloudClient`から通信し、preloadの許可された`get
 認証セッショントークンはクライアントのメモリーだけに保持する。パスワードは送信後にフォームから消去し、ゲームのセーブ・設定・localStorageへ保存しない。再起動後は再ログインする。アカウント別に進行セーブを一つ持ち、アップロード時は取得済みrevisionを`baseRevision`としてサーバーの現在値と比較するCASを使う。他端末の保存と競合したら409で拒否し、古い状態を自動で押し込まない。結果不明のuploadはrevisionを未確認へ戻し、利用者が最新状態を確認するまで再保存できない。
 
 同期は手動で、設定・外観ストアの所有権やSteam取引状態を同期対象に含めない。読込は対象revisionを固定した2段階確認後にGETし、確認時から版が変わっていたら拒否する。取得profileはゲームのvalidatorを通し、ローカル保存が成功してから実行中のゲームへ反映する。保存失敗時は元の実行状態を保持し、保存障害を表示する。正常復元後は一時停止する。未知のサーバーエラー本文は原文を保持し、既知の状態説明とHTTPエラーの周辺文だけを表示層で翻訳する。既知のAPI error.codeには日本語の説明を付け、診断用の元メッセージも保持する。
+
+## 装備比較・演出・通知音の責務
+
+`sourceArt.ts`は原本decodeと切出しを共有する。管理パネルは6枚の原本から29portraitだけを読み、歩行・攻撃・背景は読み込まない。戦闘側は`art.ts`／`sheet.ts`で必要なanimationを生成する。mobileの同一realmでは同時decodeとportrait canvasを共有し、完了済み原本Imageをcacheに保持しない。原画や切出し寸法は変更しない。`VisibleFrames`は帯を隠した間の描画を止め、再表示時は最新snapshotから局所演出をリセットして再開する。シミュレーション・保存は描画とは独立して継続する。
+
+実行時異常は`runtimeFailure.ts`と`GameHost.attempt`の境界で原因を保持して停止する。mainはruntimeError中のコマンド・自動保存・終了時保存・遅延したcloud復元を拒否する。明示的な読み直しだけが復旧checkpointへ戻し、停止状態で開く。起動時とsleep復帰のoffline報酬は通知前にcheckpointへ含め、保存失敗では元ファイルとsavedAtを保つ。保存の失敗と実行時異常、音の失敗はそれぞれ別に表示する。
+
+装備評価は`core/progress/items.ts`の`compareEquipment`へ集約し、自動装備と表示用比較が同じ前後能力を使う。`buildView`は呼出内だけ`createEquipmentComparison`を生成し、17名の現在装備・変更前能力・属性を再利用して各品の適格判定を一度行う。永続キャッシュは使わず、次回の表示作成では装備交換・ステ振りを反映する。`buildView`は変化した能力だけを送信し、rendererが評価計算を複製しない。`panel/equipmentComparison.ts`が増減と単位を表示し、`nextChoice.ts`が未確認の出撃者向け装備へ案内する。新着を時間だけで確認済みにする処理は廃止した。
+
+日英ヘルプは`helpContent.ts`の同一構造データと`help.ts`の単一描画処理を使う。通知音は`audio.ts`がWeb Audioと回数制限、`audioSession.ts`がホスト状態・入力操作・ページ復帰・終了を管理する。`audioNotice.ts`は原因を保持した独立表示を担当する。保存エラーや戦闘バナーで音の障害を消さない。
+
+ボスの対象と解決tickはシミュレーションが確定し、Snapshot/SimEventで描画へ渡す。rendererは予兆と残り時間を表示し、命中判定や中断条件を再計算しない。`/qa-scene/`は製品と同じSceneへ固定イベントを渡す開発専用比較ページであり、製品buildの入口に含めない。合成画像は実進行の証明と区別する。
+
+敵と装備の進行尺度は`progressionDepth`で共有し、表示する階数と内部の難易度通算を分離する。通常B1〜100の敵成長は維持し、新ドロップの基礎能力だけ上記曲線へ修正した。上位難度の開始時に装備品質と敵強度が巻き戻らない。[実進行の検証記録](reviews/2026-10-29-progression-validation.md)では、固定装備の編成比較と実際のドロップを使う進行測定を区別する。
+
+表示名称は`shared/brand.ts`で管理する。互換性のため既存のAppDataフォルダー・アプリID・実行ファイル名・保存キーは変更しない。
 
 ## ローカル検証と配布
 

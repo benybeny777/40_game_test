@@ -8,6 +8,7 @@ import { damageText, enemyMotion, enemyRank, enemyScale } from './enemyPresentat
 import { drawDungeonBackground } from './background'
 import { actionPose, actionTiming, hitRecoil, meleeDashDistance, normalWindupMs } from './actionPresentation'
 import { gaitTiming, walkPose } from './gait'
+import { bossCue, lootPresentation, placeCombatLabel, SynergyFeedback } from './feedbackPresentation'
 
 /** Vertical layout inside the 32-dot play area (02-strip.md §3). Everything above it is headroom. */
 const PLAY = PLAY_DOTS, FOOT_FROM_TOP = PLAY_DOTS - 3
@@ -29,7 +30,7 @@ interface Visual { uid: number; defId: string; side: SnapshotUnit['side']; sheet
   flashUntil: number; knockUntil: number; deadAt?: number; spawnAt: number; targetUid?: number
   windupMs?: number; ranged?: boolean; hitAt?: number; hitX?: number; critical?: boolean
   normalMelee?: boolean; dashTargetX?: number; drawX?: number; drawY?: number }
-interface Floater { uid: number; text: string; x: number; y: number; color: string; start: number; dur: number; big?: boolean }
+interface Floater { uid: number; text: string; x: number; y: number; width: number; height: number; color: string; start: number; dur: number; scale: number }
 interface Fx { kind: 'smoke' | 'boom' | 'slash' | 'flash' | 'sparkle' | 'impact'; x: number; y: number; start: number; dur: number; radius: number; color: string }
 interface Coin { x: number; y: number; vx: number; vy: number; start: number }
 export type HitTarget = { kind: 'unit'; unit: SnapshotUnit } | { kind: 'hud' }
@@ -48,7 +49,9 @@ export class Scene {
   private numbers: Floater[] = []
   private fx: Fx[] = []
   private coins: Coin[] = []
-  private loot: Array<{ x: number; y: number; start: number; color: string }> = []
+  private loot: Array<{ x: number; y: number; start: number; color: string; rarity: number }> = []
+  private rims = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>()
+  private synergy = new SynergyFeedback()
   private ground = 0
   private lastDraw = 0
   private hud = { x: 0, y: 0, w: 0, h: 0 }
@@ -60,14 +63,24 @@ export class Scene {
   // Enemies are drawn a few dots further right so melee contact (14 dots in the sim) does not overlap sprites.
   private screenX(x: number, enemy = false) { return this.baseX + x * PARTY_SPACING_SCALE + (enemy ? ENEMY_DRAW_OFFSET : 0) }
 
+  private clearPresentation(now: number) {
+    this.prev = undefined; this.cur = undefined; this.visuals.clear()
+    this.numbers = []; this.fx = []; this.coins = []; this.loot = []
+    this.synergy.clear()
+    this.ground = 0; this.lastDraw = now
+  }
+  /** Resume from the current world, without interpolating a hidden interval or replaying loot. */
+  resume(snapshot: Snapshot, now: number) {
+    this.clearPresentation(now)
+    this.ingest({ snapshot, events: [] }, now)
+  }
+
   ingest(frame: SimFrame, now: number) {
     if (this.cur && (frame.snapshot.tick < this.cur.tick || frame.snapshot.units.some(unit => {
       const old = this.visuals.get(unit.uid)
       return old && (old.defId !== unit.defId || old.side !== unit.side)
     }))) {
-      this.prev = undefined; this.cur = undefined; this.visuals.clear()
-      this.numbers = []; this.fx = []; this.coins = []; this.loot = []
-      this.ground = 0; this.lastDraw = now
+      this.clearPresentation(now)
     }
     const first = !this.cur
     this.prev = this.cur ?? frame.snapshot
@@ -80,6 +93,7 @@ export class Scene {
         spawnAt: unit.side === 'enemy' && !first ? now : 0, deadAt: unit.alive ? undefined : now - 1000 })
     }
     const alive = new Set(frame.snapshot.units.map((unit) => unit.uid))
+    this.synergy.retain(alive)
     for (const uid of this.visuals.keys()) if (!alive.has(uid)) this.visuals.delete(uid)
     for (const event of frame.events) this.event(event, now)
   }
@@ -96,11 +110,14 @@ export class Scene {
   private number(text: string, uid: number, color: string, now: number, big = false) {
     const unit = this.unit(uid), x = this.posX(uid, 1)
     if (!unit || x === undefined) return
+    this.numbers = this.numbers.filter(number => now - number.start < number.dur)
     if (this.numbers.length >= MAX_NUMBERS) this.numbers.shift()
-    const jitter = ((uid * 7 + this.numbers.length * 5) % 7) - 3
-    // Recent numbers on the same target stack upward instead of overprinting each other.
-    const stacked = this.numbers.filter((number) => number.uid === uid && now - number.start < 350).length % 4
-    this.numbers.push({ uid, text, x: x + jitter, y: this.headY(unit) - 3 - stacked * 7, color, start: now, dur: big ? 650 : 440, big })
+    const scale = big ? 2 : 1, width = textWidth(text) * scale, height = 5 * scale
+    // Reserve the entire upward travel so labels on neighbouring enemies cannot collide later.
+    const occupied = this.numbers.map(number => ({ x: number.x, y: number.y - 6, width: number.width, height: number.height + 6 }))
+    const box = placeCombatLabel(x, this.headY(unit) - 3, width, height + 6, this.W, occupied)
+    if (!box) return
+    this.numbers.push({ uid, text, ...box, y: box.y + 6, height, color, start: now, dur: big ? 760 : 580, scale })
   }
 
   private event(event: SimEvent, now: number) {
@@ -123,6 +140,13 @@ export class Scene {
         }
         const big = event.crit || Boolean(event.tags?.length)
         this.number(damageText(event.amount), event.uid, event.crit ? colors.crit : colors.dmg, now, big)
+        if (event.amount > 0) {
+          const source = this.unit(event.sourceUid), x = this.posX(event.sourceUid, 1)
+          if (source?.side === 'ally' && x !== undefined) {
+            const cue = this.synergy.take(event.sourceUid, event.tags, now)
+            if (cue) this.hooks.label(cue.text, x, this.headY(source) - 14, cue.color)
+          }
+        }
         break
       }
       case 'miss': this.number('MISS', event.uid, colors.miss, now); break
@@ -132,6 +156,21 @@ export class Scene {
         const unit = this.unit(event.uid), x = this.posX(event.uid, 1)
         const name = unit?.side === 'ally' ? jobs[unit.defId as JobId].skill.name : event.skillId === 'phantom' ? '幻影分身' : enemies[unit?.defId ?? '']?.boss?.skill.name
         if (unit && x !== undefined && name && event.skillId !== 'kakuhen') this.hooks.label(name, x, this.headY(unit) - 6, unit.side === 'ally' ? jobs[unit.defId as JobId].color : '#ff8a6a')
+        break
+      }
+      case 'bossTell': {
+        const cue = bossCue(event.skillId, this.unit(event.uid))
+        if (cue.actorPresent && vis) { vis.anim = 'attack'; vis.animAt = now; vis.windupMs = cue.skill.castMs; vis.normalMelee = false; vis.ranged = cue.attack.kind === 'ranged' }
+        this.hooks.banner(`${cue.skill.name} 準備中`, 'boss')
+        break
+      }
+      case 'bossInterrupt': {
+        const cue = bossCue(event.skillId, this.unit(event.uid))
+        if (cue.actorPresent) {
+          if (vis) { vis.anim = undefined; vis.windupMs = 0 }
+          this.number('BREAK', event.uid, colors.heal, now)
+        }
+        this.hooks.banner(`${cue.skill.name} 中断！`, 'good')
         break
       }
       case 'ultimate': {
@@ -177,8 +216,16 @@ export class Scene {
       }
       case 'explode': this.fx.push({ kind: 'boom', x: this.screenX(event.x, true), y: this.footY - 6, start: now, dur: 380, radius: Math.min(16, event.radius), color: '#ffe27a' }); break
       case 'drop': {
+        lootPresentation(event.rarity) // Reject invalid events instead of substituting another rarity.
         const rarity = rarities[event.rarity]
-        this.loot.push({ x: this.screenX(event.x, true), y: this.footY - 10, start: now, color: rarity.color })
+        if (event.sale) {
+          const reason = event.sale.reason === 'capacity' ? '満杯で売却' : '自動売却'
+          this.hooks.label(`${reason}：${event.sale.name}（小判 +${Math.floor(event.sale.koban)}）`, this.screenX(event.x, true), this.footY - 18, colors.gold)
+        }
+        // A sold drop never entered the bag; do not celebrate an item the player cannot equip.
+        if (event.sold) break
+        if (this.loot.length >= 24) this.loot.shift()
+        this.loot.push({ x: this.screenX(event.x, true), y: this.footY - 10, start: now, color: rarity.color, rarity: event.rarity })
         if (event.rarity >= 2) this.hooks.label(`${rarity.name}「${event.name}」`, this.screenX(event.x, true), this.footY - 26, rarity.color)
         if (event.rarity >= 3) this.hooks.banner(`${rarity.name}の装備！ ${event.name}`, 'good')
         if (event.equippedBy) {
@@ -208,7 +255,7 @@ export class Scene {
       drawDungeonBackground(ctx, { width: this.W, height: this.H, footY: this.footY, baseX: this.baseX, depth: snap.stageNo, town: snap.phase === 'town', walkOffset: this.ground })
       this.drawGround(ctx, Math.floor((snap.stageNo - 1) / 5))
     }
-    this.drawThreats(ctx, snap, alpha)
+    this.drawThreats(ctx, snap, alpha, renderTick)
     for (const mine of snap.mines) {
       const blink = mine.explodeTick - renderTick < 10 ? Math.floor(now / 80) % 2 : Math.floor(now / 250) % 2
       this.sprite(ctx, sheets.projectiles, 'mine', blink * 250, this.screenX(mine.x, true), this.footY, false)
@@ -246,12 +293,27 @@ export class Scene {
     }
   }
 
-  private sprite(ctx: CanvasRenderingContext2D, sheet: Sheet | undefined, anim: string, elapsed: number, x: number, footY: number, flip: boolean, mode: 'normal' | 'flash' | 'gray' = 'normal', scale = 1, deform = { width: 0, height: 0 }) {
+  private sprite(ctx: CanvasRenderingContext2D, sheet: Sheet | undefined, anim: string, elapsed: number, x: number, footY: number, flip: boolean, mode: 'normal' | 'flash' | 'gray' = 'normal', scale = 1, deform = { width: 0, height: 0 }, rim = false) {
     if (!sheet) throw new Error(`Sprite sheet is missing for animation: ${anim}`)
     const frame = frameAt(sheet, anim, elapsed)[mode]
     const width = Math.max(1, Math.round(frame.width * scale) + deform.width), height = Math.max(1, Math.round(frame.height * scale) + deform.height)
     const left = Math.round(x), top = Math.round(footY - height * sheet.anchor[1] / sheet.height), anchor = Math.round(width * sheet.anchor[0] / sheet.width)
-    if (!flip) { ctx.drawImage(frame, left - anchor, top, width, height); return }
+    if (!flip) {
+      if (rim && mode === 'normal') {
+        let outline = this.rims.get(frame)
+        if (!outline) {
+          outline = document.createElement('canvas'); outline.width = frame.width + 2; outline.height = frame.height + 2
+          const ink = outline.getContext('2d')!
+          for (const [dx, dy] of [[0, 1], [2, 1], [1, 0], [1, 2]]) ink.drawImage(frame, dx, dy)
+          ink.globalCompositeOperation = 'source-in'; ink.fillStyle = '#d4c9a6'; ink.fillRect(0, 0, outline.width, outline.height)
+          ink.globalCompositeOperation = 'destination-out'; ink.drawImage(frame, 1, 1)
+          this.rims.set(frame, outline)
+        }
+        ctx.save(); ctx.globalAlpha *= 0.42
+        ctx.drawImage(outline, left - anchor - 1, top - 1, width + 2, height + 2); ctx.restore()
+      }
+      ctx.drawImage(frame, left - anchor, top, width, height); return
+    }
     ctx.save(); ctx.translate(left, 0); ctx.scale(-1, 1); ctx.drawImage(frame, -anchor, top, width, height); ctx.restore()
   }
 
@@ -311,7 +373,7 @@ export class Scene {
     }
     const blink = unit.effects.includes('mijin') && Math.floor(now / 70) % 2 === 0
     ctx.globalAlpha = spawnFade * (blink ? 0.45 : 1) * (PHANTOMS.has(unit.defId) ? 0.55 : 1)
-    this.sprite(ctx, vis.sheet, anim, elapsed, x + dx, this.footY + dy, flip, now < vis.flashUntil ? 'flash' : 'normal', scale, pose)
+    this.sprite(ctx, vis.sheet, anim, elapsed, x + dx, this.footY + dy, flip, now < vis.flashUntil ? 'flash' : 'normal', scale, pose, unit.side === 'ally' && this.groundBand)
     vis.drawX = x + dx; vis.drawY = dy
     ctx.globalAlpha = 1
     if (pose.attack && unit.side === 'ally') this.drawActionStroke(ctx, pose.style, x + dx, this.footY + dy, vis.normalMelee ? vis.dashTargetX : undefined)
@@ -337,15 +399,51 @@ export class Scene {
     else if (style === 'palm' || style === 'fist') { stroke(17, y, 4, 2); stroke(19, y - 3, 2, 1) }
     else if (style === 'fan') { stroke(13, y - 3, 4, 1); stroke(15, y, 4, 1) }
     else if (style === 'book') { stroke(8, y - 6, 1, 3); stroke(10, y - 5, 2, 1) }
+    else if (style === 'spell') {
+      // A small hand-level seal makes the release legible even without a large projectile.
+      ctx.fillStyle = '#c0d9f0'
+      stroke(12, y - 5, 5, 1); stroke(12, y + 1, 5, 1)
+      stroke(10, y - 3, 1, 3); stroke(18, y - 3, 1, 3); stroke(14, y - 3, 1, 3)
+    } else if (style === 'toss') {
+      // Directional hand trail, not another projectile or another damage effect.
+      ctx.fillStyle = '#dce2ec'
+      stroke(10, y - 3, 3, 1); stroke(14, y - 2, 2, 1); stroke(17, y - 1, 1, 1)
+    } else if (style === 'hop') {
+      ctx.fillStyle = '#b8d8b3'
+      stroke(10, y + 4, 2, 1); stroke(13, y + 2, 2, 1)
+    }
   }
 
-  /** Normal-attack windups come from the simulation. Boss specials need a core cast before showing a forecast. */
-  private drawThreats(ctx: CanvasRenderingContext2D, snap: Snapshot, alpha: number) {
+  /** Telegraph only authoritative targets and resolve ticks, never guessed attacks. */
+  private drawThreats(ctx: CanvasRenderingContext2D, snap: Snapshot, alpha: number, renderTick: number) {
     for (const unit of snap.units) {
-      if (unit.side !== 'enemy' || !unit.alive || unit.action !== 'windup') continue
+      if (unit.side !== 'enemy' || !unit.alive) continue
       const x = this.posX(unit.uid, alpha)
       if (x === undefined) continue
       const left = Math.round(x), head = this.headY(unit) - 10
+      if (unit.bossCast) {
+        const boss = enemies[unit.defId]?.boss
+        if (!boss) throw new Error(`Boss cast has no boss definition: ${unit.defId}`)
+        const remaining = Math.max(0, (unit.bossCast.resolveTick - renderTick) * balance.tickMs)
+        const progress = Math.max(0, Math.min(1, 1 - remaining / boss.skill.castMs))
+        ctx.fillStyle = '#241521'; ctx.fillRect(left - 14, head - 9, 29, 10)
+        drawText(ctx, `! ${(remaining / 1000).toFixed(1)}`, left - 11, head - 7, '#ffc19f')
+        ctx.fillStyle = '#4b2833'; ctx.fillRect(left - 13, head - 1, 27, 2)
+        ctx.fillStyle = '#ff9878'; ctx.fillRect(left - 13, head - 1, Math.max(1, Math.round(progress * 27)), 2)
+        for (const uid of unit.bossCast.targetUids) {
+          const target = this.unit(uid), targetX = this.posX(uid, alpha)
+          if (!target?.alive || targetX === undefined) continue
+          const tx = Math.round(targetX), top = this.headY(target) - 1
+          ctx.fillStyle = '#ff9878'
+          for (const side of [-1, 1]) {
+            ctx.fillRect(tx + side * 10 - (side > 0 ? 3 : 0), this.footY + 2, 4, 1)
+            ctx.fillRect(tx + side * 10, this.footY - 1, 1, 3)
+            ctx.fillRect(tx + side * 10 - (side > 0 ? 3 : 0), top, 4, 1)
+          }
+        }
+        continue
+      }
+      if (unit.action !== 'windup') continue
       ctx.fillStyle = '#191320'; ctx.fillRect(left - 2, head - 1, 5, 7)
       ctx.fillStyle = '#ffb16a'; ctx.fillRect(left, head, 1, 3); ctx.fillRect(left, head + 4, 1, 1)
       const targetUid = this.visuals.get(unit.uid)?.targetUid
@@ -440,16 +538,39 @@ export class Scene {
     }
   }
 
-  /** Item drops: a chest pops up, flashes its rarity colour and flies into the HUD. */
+  /** Legendary/mythic drops linger under a local pillar before joining the ordinary chest flight. */
   private drawLoot(ctx: CanvasRenderingContext2D, now: number) {
-    this.loot = this.loot.filter((drop) => now - drop.start < 1400)
+    this.loot = this.loot.filter((drop) => now - drop.start < lootPresentation(drop.rarity).duration)
     for (const drop of this.loot) {
-      const t = (now - drop.start) / 1000
+      const presentation = lootPresentation(drop.rarity), age = now - drop.start, t = age / 1000
       let x = drop.x, y = drop.y - Math.sin(Math.min(1, t / 0.5) * Math.PI) * 14
-      if (t > 0.7) { const k = Math.min(1, (t - 0.7) / 0.7); x += (this.hud.x + 8 - x) * k * k; y += (this.hud.y + 4 - y) * k * k }
-      ctx.fillStyle = drop.color
-      for (const [ox, oy] of [[-4, -1], [4, -1], [0, -5], [0, 3]]) if (Math.floor(now / 90) % 2) ctx.fillRect(Math.round(x) + ox, Math.round(y) + oy, 1, 1)
-      this.sprite(ctx, sheets.projectiles, 'chest', now, x, y + 3, false)
+      if (age > presentation.hold) { const k = Math.min(1, (age - presentation.hold) / (presentation.duration - presentation.hold)); x += (this.hud.x + 8 - x) * k * k; y += (this.hud.y + 4 - y) * k * k }
+      if (presentation.pillarHeight && age < presentation.hold) {
+        const fade = Math.min(1, age / 150, (presentation.hold - age) / 300)
+        const center = Math.round(drop.x), base = this.footY, height = presentation.pillarHeight, width = presentation.pillarWidth
+        ctx.save(); ctx.fillStyle = presentation.aura
+        ctx.globalAlpha = fade * 0.3; ctx.fillRect(center - width, base - height, width * 2 + 1, height)
+        ctx.globalAlpha = fade * 0.65; ctx.fillRect(center - 3, base - height, 7, height)
+        ctx.fillStyle = presentation.core
+        ctx.globalAlpha = fade * 0.95; ctx.fillRect(center - 1, base - height, 3, height)
+        ctx.fillRect(center - width - 3, base, width * 2 + 7, 2)
+        // A high white crest and a broad floor seal read as an item reveal, not a wall torch.
+        ctx.fillRect(center - 4, base - height + 2, 9, 1); ctx.fillRect(center, base - height - 2, 1, 9)
+        for (let i = 0; i < presentation.sparkles; i++) {
+          const rise = (age / 55 + i * 7) % height, side = i % 2 ? 1 : -1
+          ctx.fillRect(center + side * (3 + i % 3 * 2), Math.round(base - rise), 1, 2)
+        }
+        ctx.restore()
+      }
+      ctx.fillStyle = presentation.pillarHeight ? presentation.core : drop.color
+      const radius = presentation.chestScale * 3 + 2, cx = Math.round(x), cy = Math.round(y + 3)
+      if (presentation.pillarHeight) {
+        for (const side of [-1, 1]) {
+          ctx.fillRect(cx + side * radius, cy - 2, 1, 5)
+          ctx.fillRect(cx - 2, cy + side * radius, 5, 1)
+        }
+      } else for (const [ox, oy] of [[-4, -1], [4, -1], [0, -5], [0, 3]]) if (Math.floor(now / 90) % 2) ctx.fillRect(cx + ox, Math.round(y) + oy, 1, 1)
+      this.sprite(ctx, sheets.projectiles, 'chest', now, x, y + 3, false, 'normal', presentation.chestScale)
     }
   }
 
@@ -457,10 +578,11 @@ export class Scene {
     this.numbers = this.numbers.filter((number) => now - number.start < number.dur)
     for (const number of this.numbers) {
       const t = (now - number.start) / number.dur
-      const rise = Math.round(t * (number.big ? 9 : 6)), shake = number.big && t < 0.2 ? (Math.floor(now / 40) % 2 ? 1 : -1) : 0
-      ctx.globalAlpha = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1
-      drawText(ctx, number.text, Math.round(number.x - textWidth(number.text) / 2) + shake, number.y - rise - 5, number.color)
-      ctx.globalAlpha = 1
+      const rise = Math.round(t * 6)
+      ctx.save(); ctx.globalAlpha = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1
+      ctx.translate(number.x, number.y - rise); ctx.scale(number.scale, number.scale)
+      drawText(ctx, number.text, 0, 0, number.color)
+      ctx.restore()
     }
   }
 

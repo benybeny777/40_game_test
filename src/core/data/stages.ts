@@ -2,9 +2,9 @@ import { dungeons, dungeonBalance } from './dungeon.ts'
 export interface AreaDef { no: number; name: string; boss: string; weights: Array<{ id: string; weight: number }>; maxWave: number }
 // Weights (05-content-balance.md §4). Area 1 is the user-approved 1:1:1.
 export const areas: AreaDef[] = [
-  { no: 1, name: '夜の街道', boss: 'ooni', maxWave: 4, weights: [{ id: 'chochin', weight: 1 }, { id: 'kappa', weight: 1 }, { id: 'onibi', weight: 1 }] },
-  { no: 2, name: 'シャッター商店街', boss: 'manekitaisho', maxWave: 4, weights: [{ id: 'karakasa', weight: 1 }, { id: 'bakeneko', weight: 1 }, { id: 'manekimodoki', weight: 0.5 }] },
-  { no: 3, name: '電脳街', boss: 'denno_kyubi', maxWave: 4, weights: [{ id: 'bugsei', weight: 1 }, { id: 'noroifig', weight: 0.7 }, { id: 'popuponi', weight: 0.8 }] },
+  { no: 1, name: dungeons.yomi.biomes[0], boss: 'ooni', maxWave: 4, weights: [{ id: 'chochin', weight: 1 }, { id: 'kappa', weight: 1 }, { id: 'onibi', weight: 1 }] },
+  { no: 2, name: dungeons.yomi.biomes[1], boss: 'manekitaisho', maxWave: 4, weights: [{ id: 'karakasa', weight: 1 }, { id: 'bakeneko', weight: 1 }, { id: 'manekimodoki', weight: 0.5 }] },
+  { no: 3, name: dungeons.yomi.biomes[2], boss: 'denno_kyubi', maxWave: 4, weights: [{ id: 'bugsei', weight: 1 }, { id: 'noroifig', weight: 0.7 }, { id: 'popuponi', weight: 0.8 }] },
 ]
 export const stagesPerArea = dungeonBalance.themeSpan
 /** From area 2 on, the previous area's enemies make up this share of each wave. */

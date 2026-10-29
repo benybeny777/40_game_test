@@ -10,6 +10,41 @@ const battle = (game: Game) => { for (let tick = 0; game.world.phase !== 'battle
 const killEnemies = (game: Game) => { for (const unit of game.world.units) if (unit.side === 'enemy') unit.hp = 0; return advance(game) }
 
 describe('経験値は実出撃者へだけ付与する', () => {
+  it('実出撃の先輩との差だけ補正し、控え・収入履歴へボーナスを流さない', () => {
+    const profile = newProfile('t')
+    profile.party.members.samurai.lv = 15
+    profile.party.members.jirai.lv = 60
+    const before = members(profile, partyOrder.filter((job) => !active.includes(job)))
+    applyRewards(profile, [{ t: 'reward', koban: 0, exp: 20, enemyId: 'chochin', x: 0 }], active)
+    expect(profile.party.members.samurai.exp).toBe(20)
+    expect(earnedExp(profile, 'ninja')).toBe(60)
+    expect(earnedExp(profile, 'otaku')).toBe(60)
+    expect(profile.rates.current.exp).toBe(20)
+    expect(members(profile, partyOrder.filter((job) => !active.includes(job)))).toEqual(before)
+    const withoutVeteran = newProfile('t')
+    withoutVeteran.party.members.jirai.lv = 60
+    applyRewards(withoutVeteran, [{ t: 'reward', koban: 0, exp: 20, enemyId: 'chochin', x: 0 }], active)
+    expect(earnedExp(withoutVeteran, 'ninja')).toBe(20)
+  })
+  it('成長補正は編成順に依存せず、先輩の3Lv手前で終了する', () => {
+    const make = (order: JobId[]) => {
+      const profile = newProfile('t')
+      profile.party.members.samurai.lv = 15
+      profile.party.members.samurai.exp = expToNext(15) - 1
+      applyRewards(profile, [{ t: 'reward', koban: 0, exp: 20, enemyId: 'chochin', x: 0 }], order)
+      return members(profile, active)
+    }
+    expect(make(active)).toEqual(make([...active].reverse()))
+    const profile = newProfile('t')
+    profile.party.members.samurai.lv = 15
+    profile.party.members.ninja.lv = 11
+    profile.party.members.ninja.exp = expToNext(11) - 5
+    const reward = [{ t: 'reward' as const, koban: 0, exp: 4, enemyId: 'chochin', x: 0 }]
+    applyRewards(profile, reward, active)
+    expect(profile.party.members.ninja).toMatchObject({ lv: 12, exp: 0 })
+    applyRewards(profile, reward, active)
+    expect(profile.party.members.ninja).toMatchObject({ lv: 12, exp: 4 })
+  })
   it('控えの既存Lv・経験値・配分は、戦闘報酬を受けてもそのまま維持する', () => {
     const profile = newProfile('t')
     profile.party.members.jirai.lv = 7; profile.party.members.jirai.exp = 11; profile.party.members.jirai.allocated.int = 10
@@ -55,6 +90,27 @@ describe('経験値は実出撃者へだけ付与する', () => {
 })
 
 describe('オフライン経験値の発生時メンバーを固定する', () => {
+  it('低Lv出撃者のオフライン報酬は受取時の先輩Lvや編成で増幅されない', () => {
+    const profile = newProfile('t')
+    profile.party.members.samurai.lv = 15
+    profile.rates.minutes = [{ koban: 0, exp: 40 }]
+    const reward = computeOffline(profile, 60000)!
+    addOffline(profile, reward)
+    profile.party.members.samurai.lv = 60
+    profile.party.order = formation(replacement)
+    claimOffline(profile)
+    expect(earnedExp(profile, 'ninja')).toBe(20)
+    expect(earnedExp(profile, 'otaku')).toBe(20)
+    expect(replacement.every((job) => earnedExp(profile, job) === 0)).toBe(true)
+  })
+  it('街での滞在は過去の戦闘収入があっても放置報酬を発生させない', () => {
+    const profile = newProfile('t')
+    profile.rates.minutes = [{ koban: 100, exp: 100 }]
+    profile.progress.inTown = true
+    expect(computeOffline(profile, 3600000)).toBeNull()
+    profile.progress.inTown = false
+    expect(computeOffline(profile, 3600000)?.koban).toBeGreaterThan(0)
+  })
   it('報酬計算後・受領前の入替で経験値を別キャラへ移せない', () => {
     const profile = newProfile('t'), game = createGame(profile, 1)
     profile.rates.minutes = [{ koban: 10, exp: expToNext(1) * 2 }]

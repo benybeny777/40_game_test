@@ -2,12 +2,12 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, screen, shell, 
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { randomInt } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
-import { addOffline, computeOffline } from '../core/index.ts'
-import { resolvePaths } from './paths'
+import { legacyUserData, resolvePaths } from './paths'
+import { brand } from '../shared/brand'
 import { stripLayout } from './windows/placement'
-import { GameHost } from './loop'
+import { GameHost, prepareInitialProfile } from './loop'
 import { createProbe, FullscreenWatcher } from './fullscreen'
-import { loadProfile, loadSettings, saveProfile, saveSettings, writeAtomic } from './saveStore'
+import { confirmSaveRecovery, loadProfile, loadSettings, saveProfile, saveSettings, writeAtomic } from './saveStore'
 import { commitSettings, confirmSavedQuit, isProtectedExport, PersistenceGuard, StoragePause } from './persistence'
 import type { Profile } from '../core/index.ts'
 import { channels, defaultSettings, type PanelTarget, type Settings, type ShellState, type StripLayout } from '../shared/api'
@@ -20,9 +20,9 @@ import { CloudClient } from '../shared/cloudClient'
 import { DEVELOPMENT_CLOUD_ENDPOINT, parseCloudCommand } from '../shared/cloud'
 import { prepareCloudRestore } from '../shared/cloudProfile'
 
-app.setName('タスクバー百鬼行')
-const paths = resolvePaths(resolve(__dirname, '../..'), app.getPath('userData'), process.env.GAME_PROFILE, process.env.GAME_DATA_DIR)
+const paths = resolvePaths(resolve(__dirname, '../..'), legacyUserData(app.getPath('appData')), process.env.GAME_PROFILE, process.env.GAME_DATA_DIR)
 app.setPath('userData', paths.data)
+app.setName(brand.ja)
 
 let strip: BrowserWindow
 let panel: BrowserWindow | undefined
@@ -40,7 +40,8 @@ let commerce: CommerceService
 let cloud: CloudClient
 let previewTimer: ReturnType<typeof setTimeout> | undefined
 let persistence: PersistenceGuard<Profile>
-const storagePause = new StoragePause(() => state.paused, paused => { state.paused = paused; host.setPaused(paused) })
+let savedCheckpoint: Profile
+const storagePause = new StoragePause(() => state.paused, paused => { state.paused = paused || Boolean(state.runtimeError); host.setPaused(state.paused) })
 const state: ShellState = { visible: true, paused: false, profile: paths.profile, settings: { ...defaultSettings },
   packaged: app.isPackaged, fullscreenHidden: false, fullscreenSupported: false, appearance: null }
 setLocale(state.settings.locale ?? 'ja')
@@ -70,7 +71,7 @@ else {
   app.on('second-instance', () => { if (app.isReady()) openPanel() })
   app.whenReady().then(start).catch((error) => {
     console.error(error); log(String(error))
-    dialog.showErrorBox(tr('タスクバー百鬼行を起動できません'), tr(error instanceof Error ? error.message : String(error)))
+    dialog.showErrorBox(tr('はぐれものダンジョンを起動できません'), tr(error instanceof Error ? error.message : String(error)))
     app.exit(1)
   })
 }
@@ -96,14 +97,15 @@ function sendView() {
   if (viewTimer) return
   viewTimer = setTimeout(() => {
     viewTimer = undefined
-    if (panel && !panel.isDestroyed() && panel.isVisible()) panel.webContents.send(channels.view, host.view())
+    try { if (panel && !panel.isDestroyed() && panel.isVisible()) panel.webContents.send(channels.view, host.view()) }
+    catch (error) { stopRuntime(error instanceof Error ? error.stack ?? error.message : String(error)) }
   }, 400)
 }
 
 function openPanel(target?: PanelTarget) {
   if (!panel || panel.isDestroyed()) {
     panel = new BrowserWindow({ width: 960, height: 600, minWidth: 620, minHeight: 420,
-      title: tr('タスクバー百鬼行'), show: false, backgroundColor: '#121723', webPreferences: webPreferences() })
+      title: tr(brand.ja), show: false, backgroundColor: '#121723', webPreferences: webPreferences() })
     panel.setMenu(null)
     pendingTarget = target
     panel.once('ready-to-show', () => { panel?.show(); if (pendingTarget) panel?.webContents.send(channels.navigate, pendingTarget); pendingTarget = undefined })
@@ -133,6 +135,14 @@ function publish() {
   }
 }
 
+function stopRuntime(message: string) {
+  if (state.runtimeError) return
+  state.runtimeError = message; state.paused = true; host.stop(); host.setPaused(true)
+  log(message)
+  try { pointer(false); publish(); openPanel() }
+  catch (error) { reportError('停止したゲームの復旧画面を表示できません', new Error(message, { cause: error })) }
+}
+
 function menu() {
   return Menu.buildFromTemplate([
     { label: tr('管理パネルを開く'), click: () => openPanel() },
@@ -142,7 +152,7 @@ function menu() {
       applyStripVisibility()
       publish()
     } },
-    { label: tr(state.paused ? '再開' : '一時停止'), enabled: !state.storageError, click: () => { if (state.storageError || quitting || handlingQuit) return; state.paused = !state.paused; host.setPaused(state.paused); publish() } },
+    { label: tr(state.paused ? '再開' : '一時停止'), enabled: !state.storageError && !state.runtimeError, click: () => { if (state.runtimeError || state.storageError || quitting || handlingQuit) return; state.paused = !state.paused; host.setPaused(state.paused); publish() } },
     { type: 'separator' },
     { label: tr('終了'), click: () => app.quit() },
   ])
@@ -177,9 +187,9 @@ function applySettings(next: Partial<Settings>) {
     setLocale(next.locale)
     // Committed settings remain successful even if a closing native window cannot update its title.
     try {
-      if (panel && !panel.isDestroyed()) panel.setTitle(tr('タスクバー百鬼行'))
-      if (!strip.isDestroyed()) strip.setTitle(tr('タスクバー百鬼行') + ' — ' + tr('帯'))
-      if (tray && !tray.isDestroyed()) tray.setToolTip(tr('タスクバー百鬼行'))
+      if (panel && !panel.isDestroyed()) panel.setTitle(tr(brand.ja))
+      if (!strip.isDestroyed()) strip.setTitle(tr(brand.ja) + ' — ' + tr('帯'))
+      if (tray && !tray.isDestroyed()) tray.setToolTip(tr(brand.ja))
     } catch (error) { log('locale notification failed: ' + String(error)) }
   }
   if (sizeChanged) placeStrip()
@@ -194,7 +204,19 @@ function start() {
   state.settings = loadSettings(paths, systemLocale(app.getLocale()))
   setLocale(state.settings.locale!)
   const loaded = loadProfile(paths)
-  persistence = new PersistenceGuard(profile => saveProfile(paths, profile), error => {
+  const recovery = confirmSaveRecovery(loaded, () => dialog.showMessageBoxSync({
+    type: 'warning', title: tr('保存データの復旧を確認してください'),
+    message: tr('通常の保存データを読み込めません。前回の保存から復旧しますか？'),
+    detail: [tr('復旧すると前回の保存時点まで戻り、それ以降の進行は失われます。復旧後は一時停止で開きます。終了を選ぶと保存データは上書きしません。'),
+      tr('読み込み時の原因：'), loaded.errors.length ? loaded.errors.join('\n') : tr('通常の保存ファイルが見つからず、前回の保存ファイルだけが残っています。')].join('\n\n'),
+    buttons: [tr('終了'), tr('前回の保存から復旧')], defaultId: 0, cancelId: 0, noLink: true,
+  }))
+  if (recovery === 'exit') { quitting = true; app.quit(); return }
+  state.paused = recovery === 'restore-paused'
+  persistence = new PersistenceGuard(profile => {
+    saveProfile(paths, profile)
+    savedCheckpoint = structuredClone(profile)
+  }, error => {
     state.storageError = error ? `セーブを保存できないため一時停止しました。保存先の空き容量と書き込み権限を確認し、再試行またはセーブを書き出してください。\n${error}` : undefined
     storagePause.update(error)
     if (error) log(`save failed: ${error}`)
@@ -205,27 +227,31 @@ function start() {
   commerce = new CommerceService({ path: sandbox ? paths.commerceSandbox : paths.commerce, profile: paths.profile, sandbox, packaged: app.isPackaged })
   state.appearance = commerce.getAppearance()
   if (loaded.errors.length) log(`save load: ${loaded.source} after ${loaded.errors.join(' / ')}`)
-  if (loaded.source !== 'new') {
-    const offline = computeOffline(loaded.profile, Date.now() - Date.parse(loaded.profile.savedAt))
-    if (offline) addOffline(loaded.profile, offline)
-  }
+  if (loaded.source !== 'new') loaded.profile = prepareInitialProfile(loaded.profile, Date.now() - Date.parse(loaded.profile.savedAt))
+  // Keep the fully prepared startup profile recoverable if its initial disk write fails.
+  savedCheckpoint = structuredClone(loaded.profile)
   const speed = paths.profile === 'dev' ? Math.min(50, Math.max(1, Number(process.env.GAME_SPEED) || 1)) : 1
   host = new GameHost(loaded.profile, randomInt(0, 2 ** 32 - 1), {
     frame: (frame) => { if (state.visible && !state.fullscreenHidden && !strip.isDestroyed()) strip.webContents.send(channels.frame, frame) },
     viewChanged: sendView,
-    save: (profile) => {
-      if (!persistence.error) persistence.save(profile)
+    failed: error => stopRuntime(error.stack ?? error.message),
+    save: (profile, reason) => {
+      if (state.runtimeError) return false
+      // Offline calculation completed safely. Keep this in-memory recovery point even if disk
+      // writing fails; saveProfile leaves the original file/savedAt intact on failure.
+      if (reason === 'offline') savedCheckpoint = structuredClone(profile)
+      return !persistence.error && persistence.save(profile)
     },
     offline: () => tray?.displayBalloon({ title: tr('おかえりなさい'), content: tr('留守の間の報酬が届いています。管理パネルで受け取れます。') }),
   }, speed)
+  host.setPaused(state.paused)
   cloud = new CloudClient(process.env.GAME_CLOUD_URL ?? (paths.profile === 'dev' ? DEVELOPMENT_CLOUD_ENDPOINT : undefined), {
     readProfile: () => ({ ...structuredClone(host.profile), savedAt: new Date().toISOString() }),
     restoreProfile: raw => {
-      if (state.storageError || quitting || handlingQuit) throw new Error('Local save is unavailable; cloud restore was not applied')
+      if (state.runtimeError || state.storageError || quitting || handlingQuit) throw new Error(state.runtimeError ?? 'Local save is unavailable; cloud restore was not applied')
       const profile = prepareCloudRestore(raw)
       const prepared = host.prepareProfile(profile)
-      if (!persistence.save(prepared.profile)) throw new Error(persistence.error)
-      host.replacePreparedProfile(prepared)
+      if (!host.commitPreparedProfile(prepared, () => persistence.save(prepared.profile))) throw new Error(persistence.error)
       state.paused = true
       publish()
     },
@@ -236,12 +262,16 @@ function start() {
   const placed = stripLayout(display.workArea, display.scaleFactor, state.settings.size)
   layout = placed.layout
   strip = new BrowserWindow({ ...placed.bounds,
-    title: tr('タスクバー百鬼行') + ' — ' + tr('帯'), frame: false, transparent: true, alwaysOnTop: true,
+    title: tr(brand.ja) + ' — ' + tr('帯'), frame: false, transparent: true, alwaysOnTop: true,
     skipTaskbar: true, focusable: false, resizable: false, hasShadow: false, show: false,
-    backgroundColor: '#00000000', webPreferences: webPreferences({ backgroundThrottling: false }) })
+    backgroundColor: '#00000000', webPreferences: webPreferences({ backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' }) })
   strip.setIgnoreMouseEvents(true, { forward: true })
   strip.once('ready-to-show', () => { strip.setAlwaysOnTop(true, 'screen-saver'); applyStripVisibility() })
   strip.on('close', (event) => { if (!quitting) event.preventDefault() })
+  strip.webContents.on('did-finish-load', () => {
+    try { strip.webContents.send(channels.frame, host.frame()) }
+    catch (error) { stopRuntime(error instanceof Error ? error.stack ?? error.message : String(error)) }
+  })
   strip.webContents.on('render-process-gone', () => app.quit())
   load(strip, 'strip')
 
@@ -253,15 +283,15 @@ function start() {
     pixels.set(gold ? [102, 198, 240, 255] : [43, 29, 23, 255], index)
   }
   tray = new Tray(nativeImage.createFromBitmap(pixels, { width: 16, height: 16 }))
-  tray.setToolTip(tr('タスクバー百鬼行'))
+  tray.setToolTip(tr(brand.ja))
   tray.setContextMenu(trayMenu = menu())
   tray.on('double-click', () => openPanel())
-  if (loaded.profile.pendingOffline) tray.displayBalloon({ title: 'おかえりなさい', content: '留守の間の報酬が届いています。管理パネルで受け取れます。' })
+  if (loaded.profile.pendingOffline) tray.displayBalloon({ title: tr('おかえりなさい'), content: tr('留守の間の報酬が届いています。管理パネルで受け取れます。') })
 
   const fromStrip = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) => event.sender === strip.webContents
   const fromPanel = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) => panel !== undefined && !panel.isDestroyed() && event.sender === panel.webContents
-  const fromKnown = (event: Electron.IpcMainInvokeEvent) => BrowserWindow.getAllWindows().some((win) => win.webContents === event.sender)
-  ipcMain.on(channels.pointer, (event, value: unknown) => { if (fromStrip(event) && typeof value === 'boolean') pointer(!value) })
+  const fromKnown = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent) => BrowserWindow.getAllWindows().some((win) => win.webContents === event.sender)
+  ipcMain.on(channels.pointer, (event, value: unknown) => { if (fromStrip(event) && !state.runtimeError && typeof value === 'boolean') pointer(!value) })
   ipcMain.on(channels.panel, (event, target: unknown) => { if (fromStrip(event)) openPanel(parseTarget(target)) })
   ipcMain.on(channels.menu, (event) => { if (fromStrip(event)) menu().popup() })
   ipcMain.handle(channels.getLayout, (event) => { if (!fromStrip(event)) throw new Error('Unknown window'); return layout })
@@ -270,6 +300,7 @@ function start() {
   ipcMain.handle(channels.command, (event, value: unknown) => {
     if (!fromPanel(event)) throw new Error('Unknown window')
     if (quitting || handlingQuit) return { ok: false, reason: tr('終了処理中のため操作できません。') }
+    if (state.runtimeError) return { ok: false, reason: state.runtimeError }
     if (state.storageError) return { ok: false, reason: '保存できないため操作を止めています。再試行またはセーブを書き出してください。' }
     const command = parseCommand(value)
     const result = command ? host.command(command) : { ok: false as const, reason: '不正な操作です' }
@@ -277,24 +308,40 @@ function start() {
   })
   ipcMain.handle(channels.settings, (event, value: unknown) => {
     if (!fromPanel(event)) throw new Error('Unknown window')
+    if (state.runtimeError) throw new Error(state.runtimeError)
     if (quitting || handlingQuit) { publish(); throw new Error(tr('終了処理中のため操作できません。')) }
     const settings = parseSettings(value)
     if (!settings) throw new Error('Invalid settings update')
     return applySettings(settings)
   })
   ipcMain.on(channels.openSaveFolder, (event) => { if (fromPanel(event)) void shell.openPath(dirname(paths.save)) })
-  ipcMain.on(channels.exportSave, (event) => { if (fromPanel(event) && !quitting && !handlingQuit) exportCurrentSave() })
-  ipcMain.handle(channels.retrySave, (event) => { if (!fromPanel(event)) throw new Error('Unknown window'); return !quitting && !handlingQuit && persistence.save(host.profile) })
+  ipcMain.on(channels.exportSave, (event) => { if (fromKnown(event) && !quitting && !handlingQuit) exportCurrentSave() })
+  ipcMain.handle(channels.reportRuntimeError, (event, message: unknown) => {
+    if (!fromKnown(event)) throw new Error('Unknown window')
+    if (typeof message !== 'string' || !message.trim() || message.length > 8192) throw new Error('Invalid runtime error')
+    stopRuntime(message)
+  })
+  ipcMain.on(channels.reloadAfterRuntimeError, event => {
+    if (!fromKnown(event) || !state.runtimeError || quitting || handlingQuit) return
+    try { host.recoverPreparedProfile(host.prepareProfile(structuredClone(savedCheckpoint))) }
+    catch (error) { reportError('保存データから再開できません', error); return }
+    state.runtimeError = undefined; state.paused = true; host.setPaused(true)
+    for (const win of [strip, panel]) if (win && !win.isDestroyed()) win.webContents.reload()
+    publish(); host.start()
+  })
+  ipcMain.handle(channels.retrySave, (event) => { if (!fromPanel(event)) throw new Error('Unknown window'); return !state.runtimeError && !quitting && !handlingQuit && persistence.save(host.profile) })
   ipcMain.handle(channels.getStore, (event) => { if (!fromPanel(event)) throw new Error('Unknown window'); return commerce.getView() })
   ipcMain.handle(channels.getCloud, event => { if (!fromPanel(event)) throw new Error('Unknown window'); return cloud.view() })
   ipcMain.handle(channels.cloudCommand, (event, value: unknown) => {
     if (!fromPanel(event)) throw new Error('Unknown window')
+    if (state.runtimeError) throw new Error(state.runtimeError)
     if (quitting || handlingQuit) throw new Error('Game is shutting down')
     return cloud.execute(parseCloudCommand(value))
   })
   ipcMain.handle(channels.purchase, async (event, sku: unknown) => {
     if (!fromPanel(event)) throw new Error('Unknown window')
     if (quitting || handlingQuit) return { ok: false, reason: tr('終了処理中のため操作できません。'), view: commerce.getView() }
+    if (state.runtimeError) return { ok: false, reason: state.runtimeError, view: commerce.getView() }
     const result = await commerce.purchase(typeof sku === 'string' && sku.length < 64 ? sku : '')
     state.appearance = commerce.getAppearance(); publish()
     return result
@@ -302,6 +349,7 @@ function start() {
   ipcMain.handle(channels.equipCosmetic, (event, sku: unknown) => {
     if (!fromPanel(event)) throw new Error('Unknown window')
     if (quitting || handlingQuit) return { ok: false, reason: tr('終了処理中のため操作できません。'), view: commerce.getView() }
+    if (state.runtimeError) return { ok: false, reason: state.runtimeError, view: commerce.getView() }
     const result = commerce.equip(sku === null ? null : typeof sku === 'string' && sku.length < 64 ? sku : '')
     if (previewTimer) clearTimeout(previewTimer)
     state.appearance = commerce.getAppearance(); publish()
@@ -336,6 +384,8 @@ function start() {
   screen.on('display-metrics-changed', placeStrip)
   screen.on('display-added', placeStrip)
   screen.on('display-removed', placeStrip)
+  // Persist startup/offline rewards before simulation can mutate them. Write failures use StoragePause.
+  persistence.save(host.profile)
   host.start()
   // Local smoke test of a packaged exe: quit through the normal path (saves) after N ms. Unset in normal use.
   const smoke = Number(process.env.GAME_SMOKE_QUIT_MS)
@@ -363,8 +413,8 @@ app.on('before-quit', (event) => {
   handlingQuit = true
   try {
     const approved = confirmSavedQuit({
-      stop: () => host?.stop(), save: () => !host || persistence.save(host.profile),
-      choose: () => dialog.showMessageBoxSync({ type: 'warning', title: tr('セーブを保存できません'), message: tr('未保存の進行があります。'), detail: tr('保存先を確認して再試行するか、別の場所へ書き出してください。保存せず終了すると、この起動中の未保存分は失われます。'), buttons: ['ゲームへ戻る', 'セーブを書き出す', '保存せず終了'].map(tr), defaultId: 0, cancelId: 0, noLink: true }),
+      stop: () => host?.stop(), save: () => !host || (!state.runtimeError && persistence.save(host.profile)),
+      choose: () => dialog.showMessageBoxSync({ type: 'warning', title: tr(state.runtimeError ? '問題が発生したため停止しました' : 'セーブを保存できません'), message: state.runtimeError ?? tr('未保存の進行があります。'), detail: tr(state.runtimeError ? '保存データを保護するため、停止後の進行は上書きしません。必要なら書き出してから、保存せず終了してください。' : '保存先を確認して再試行するか、別の場所へ書き出してください。保存せず終了すると、この起動中の未保存分は失われます。'), buttons: ['ゲームへ戻る', 'セーブを書き出す', '保存せず終了'].map(tr), defaultId: 0, cancelId: 0, noLink: true }),
       export: () => { exportCurrentSave() },
       restart: () => { host?.start(); if (state.storageError) openPanel() },
     })

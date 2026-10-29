@@ -4,6 +4,7 @@ import { jobs } from '../data/jobs.ts'
 import { random } from './rng.ts'
 import type { HitPayload, JobId, Stats, Unit, World } from './types.ts'
 export const living = (unit: Unit) => unit.alive && unit.hp > 0
+export const hasActiveTag = (world: World, unit: Unit, ...tags: string[]) => unit.effects.some((effect) => effect.untilTick > world.tick && tags.includes(effect.tag))
 export const opponents = (world: World, self: Unit) => world.units.filter((unit) => unit.side !== self.side && living(unit))
 export const friends = (world: World, self: Unit) => world.units.filter((unit) => unit.side === self.side && living(unit))
 export function attackDef(unit: Unit) { return unit.side === 'ally' ? jobs[unit.defId as JobId].attack : enemies[unit.defId].attack }

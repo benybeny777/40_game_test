@@ -9,15 +9,16 @@ export const channels = {
   view: 'profile:view', getView: 'profile:get', command: 'game:cmd', navigate: 'panel:navigate',
   settings: 'settings:update', openSaveFolder: 'app:open-save-folder', exportSave: 'app:export-save', retrySave: 'app:retry-save',
   getStore: 'store:get', purchase: 'store:purchase', equipCosmetic: 'store:equip', previewCosmetic: 'store:preview',
+  reportRuntimeError: 'app:runtime-error', reloadAfterRuntimeError: 'app:runtime-reload',
   getCloud: 'cloud:get', cloudCommand: 'cloud:command',
 } as const
 
 export type DisplaySize = 'small' | 'medium' | 'large'
-export interface Settings { size: DisplaySize; groundBand: boolean; fpsCap: 15 | 30; hideOnFullscreen: boolean; autoStart: boolean; locale?: 'ja' | 'en' }
-export const defaultSettings: Settings = { size: 'medium', groundBand: true, fpsCap: 30, hideOnFullscreen: true, autoStart: false, locale: 'ja' }
+export interface Settings { size: DisplaySize; groundBand: boolean; fpsCap: 15 | 30; hideOnFullscreen: boolean; autoStart: boolean; locale?: 'ja' | 'en'; audioEnabled: boolean; audioVolume: number }
+export const defaultSettings: Settings = { size: 'medium', groundBand: true, fpsCap: 30, hideOnFullscreen: true, autoStart: false, locale: 'ja', audioEnabled: false, audioVolume: 0.25 }
 export interface ShellState { paused: boolean; visible: boolean; profile: 'dev' | 'user'; settings: Settings
   packaged: boolean; fullscreenHidden: boolean; fullscreenSupported: boolean; appearance: ThemeDefinition | null
-  platform?: 'desktop' | 'browser'; storageError?: string }
+  platform?: 'desktop' | 'browser'; storageError?: string; runtimeError?: string }
 export interface StripLayout { dotPx: number; playDots: number; scaleFactor: number; headroomDip: number }
 export interface Frame { snapshot: Snapshot; events: SimEvent[] }
 export type PanelTab = 'party' | 'gear' | 'dojo' | 'stage' | 'dex' | 'store' | 'help' | 'settings'
@@ -42,6 +43,8 @@ export interface ShellApi {
   onNavigate(listener: (target: PanelTarget) => void): () => void
   openSaveFolder(): void
   exportSave(): void
+  reportRuntimeError(message: string): Promise<void>
+  reloadAfterRuntimeError(): void
   retrySave(): Promise<boolean>
   getStore(): Promise<StoreView>
   purchaseProduct(sku: string): Promise<CommerceResult>

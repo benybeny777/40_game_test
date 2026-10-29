@@ -13,7 +13,7 @@ export const dungeonBalance = {
   maxDifficulty: 2, maxDepth: Number.MAX_SAFE_INTEGER, bossEvery: 10, themeSpan: 5,
   hpLinear: 0.22, hpQuadratic: 0.012, atkLinear: 0.075, atkQuadratic: 0.001,
   defLinear: 0.045, rewardLinear: 0.12,
-  softDepth: dungeons.yomi.floorCount, deepLogGrowth: 20,
+  softDepth: dungeons.yomi.floorCount, deepLogGrowth: 20, deepLogSpan: 20,
   eliteHp: 1.8, eliteAtk: 1.15,
   treasureChance: 0.12, altarChance: 0.1, treasureKoban: 20, treasureExp: 10, altarHeal: 0.5,
   featureHash: 2654435761, seedHash: 2246822519, hashDivisor: 4294967296,
@@ -22,10 +22,12 @@ export const dungeonBalance = {
 export const floorLimit = (difficulty: Difficulty) => difficulties[difficulty].floorLimit
 export const maxFloor = (difficulty: Difficulty) => floorLimit(difficulty) ?? dungeonBalance.maxDepth
 export const isBossFloor = (depth: number) => depth % dungeonBalance.bossEvery === 0
+/** Displayed floors restart at B1; enemy strength and loot quality continue through difficulty tiers. */
+export const progressionDepth = (depth: number, difficulty: Difficulty) => Math.min(dungeonBalance.maxDepth, depth + difficulty * dungeons.yomi.floorCount)
 /** Polynomial through B100, then logarithmic: finite even at the last safe integer. */
 export function depthScale(depth: number, difficulty: Difficulty = 0) {
-  const b = dungeonBalance, n = Math.min(depth, b.softDepth) - 1
-    + Math.log2(1 + Math.max(0, depth - b.softDepth)) * b.deepLogGrowth
+  const b = dungeonBalance, progress = progressionDepth(depth, difficulty), n = Math.min(progress, b.softDepth) - 1
+    + Math.log2(1 + Math.max(0, progress - b.softDepth) / b.deepLogSpan) * b.deepLogGrowth
   const d = difficulties[difficulty]
   return { hp: (1 + b.hpLinear * n + b.hpQuadratic * n * n) * d.hp,
     atk: (1 + b.atkLinear * n + b.atkQuadratic * n * n) * d.atk,

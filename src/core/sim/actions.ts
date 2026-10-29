@@ -1,7 +1,7 @@
 import { balance as b } from '../data/balance.ts'
 import { enemies } from '../data/enemies.ts'
 import { jobs } from '../data/jobs.ts'
-import { friends, living, opponents, resolveHit } from './combat.ts'
+import { friends, hasActiveTag, living, opponents, resolveHit } from './combat.ts'
 import { random } from './rng.ts'
 import { ticks } from './time.ts'
 import type { Effect, HitPayload, SimEvent, Unit, World } from './types.ts'
@@ -17,13 +17,20 @@ export function healUnit(unit: Unit, amount: number, sourceUid: number, events: 
   if (actual > 0) { unit.hp += actual; events.push({ t: 'heal', uid: unit.uid, sourceUid, amount: actual }) }
 }
 export const passiveOn = (unit: Unit, job: string) => unit.side === 'ally' && unit.defId === job && unit.lv >= b.passiveLv
+export function pushEnemy(self: Unit, target: Unit, amount: number, skillId: string) {
+  target.x += amount
+  if (target.side === 'enemy' && target.action.kind === 'cast' && !target.action.interruptSource
+    && Math.abs(target.x - target.action.originX!) >= b.bossInterruptDots) target.action.interruptSource = { uid: self.uid, skillId }
+}
 const ultOn = (unit: Unit) => unit.side === 'ally' && unit.lv >= b.ultLv
 export function strike(world: World, owner: Unit, target: Unit, payload: HitPayload, events: SimEvent[]) {
   let attacker = owner.stats
   const ninja = jobs.ninja.passive.params
   if (passiveOn(owner, 'ninja') && target.hp / target.stats.maxHp < ninja.hpBelow) attacker = { ...attacker, cri: attacker.cri + ninja.cri }
-  if (passiveOn(owner, 'sukeban') && target.hp / target.stats.maxHp <= jobs.sukeban.passive.params.hpBelow) {
+  const slowed = target.effects.some((effect) => effect.kind === 'intervalPct' && effect.value > 0 && effect.untilTick > world.tick)
+  if (passiveOn(owner, 'sukeban') && (target.hp / target.stats.maxHp <= jobs.sukeban.passive.params.hpBelow || slowed)) {
     attacker = { ...attacker, atk: attacker.atk * (1 + jobs.sukeban.passive.params.atk) }
+    if (slowed) payload = { ...payload, tags: [...(payload.tags ?? []), 'slowFollowup'] }
   }
   // Always consume all three rolls in hit/crit/variance order, even for misses.
   const result = resolveHit(attacker, target.stats, payload, [random(world), random(world), random(world)], {
@@ -51,7 +58,9 @@ export function strike(world: World, owner: Unit, target: Unit, payload: HitPayl
     jirai.gauges.jonen = Math.min(b.maxGauge, (jirai.gauges.jonen ?? 0) + b.jonenFromTaken * amount / target.stats.maxHp)
   }
   if (owner.side === 'enemy' && living(target) && passiveOn(target, 'bancho') && living(owner)) {
-    strike(world, target, owner, { mul: jobs.bancho.passive.params.mul, aoeDots: b.rangedRange, tags: ['counter'] }, events)
+    const warded = hasActiveTag(world, target, 'kekkai', 'misogi')
+    strike(world, target, owner, { mul: warded ? jobs.bancho.passive.params.wardMul : jobs.bancho.passive.params.mul,
+      aoeDots: b.rangedRange, tags: warded ? ['counter', 'wardCounter'] : ['counter'] }, events)
   }
   if (owner.defId === 'jirai' && owner.side === 'ally' && target.hp > 0) {
     addEffect(target, { tag: 'obsession', kind: 'obsession', value: b.obsessionMul - 1, untilTick: world.tick + ticks(b.obsessionMs), sourceUid: owner.uid }, events)

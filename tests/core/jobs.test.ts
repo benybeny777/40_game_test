@@ -106,7 +106,7 @@ describe('全17ジョブの実装', () => {
     expect(ctx.events.filter((event) => event.t === 'damage' && event.tags?.includes('knifevolley'))).toHaveLength(3)
     expect(ctx.self.stats.intervalMs).toBeLessThan(ctx.self.base.intervalMs)
     ultimates.knifecurtain(ctx); refreshAll(ctx.world)
-    expect(ctx.self.stats.intervalMs).toBeCloseTo(ctx.self.base.intervalMs * 0.9 * 0.7)
+    expect(ctx.self.stats.intervalMs).toBeCloseTo(ctx.self.base.intervalMs * 0.9 * 0.8)
     expect(ctx.self.stats.dmgTakenMul).toBe(1)
     expect(jobs.maid.base.maxHp).toBeLessThan(jobs.samurai.base.maxHp)
     expect(jobs.maid.base.def).toBeLessThan(jobs.samurai.base.def)

@@ -34,7 +34,8 @@ export function actionPose(id: string, side: Side, age: number, windupMs: number
       const progress = Math.min(1, (ready - 0.35) / 0.65), power = 1 - (1 - progress) ** 2
       return { ...base, dx: Math.round(reach * power), dy: -Math.round(def.lift * power), power }
     }
-    return { ...base, dx: -direction * Math.round(1 + ready * 2), dy: def.style === 'hop' ? 2 : ready > 0.5 ? 1 : 0, width: -1, height: -1 }
+    const raised = def.style === 'spell' || def.style === 'book' || def.style === 'fan'
+    return { ...base, dx: -direction * Math.round(1 + ready * 2), dy: raised ? -Math.round(ready * 2) : def.style === 'hop' ? 2 : ready > 0.5 ? 1 : 0, width: -1, height: raised ? 1 : -1 }
   }
   const after = age - windupMs, striking = after < def.hold
   const power = striking ? 1 : Math.max(0, 1 - (after - def.hold) / actionTiming.recoveryMs)

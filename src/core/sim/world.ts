@@ -7,6 +7,7 @@ import { dojo as dojoDefs } from '../data/progress.ts'
 import { areaOf, areas, previousAreaShare, stagesPerArea, waveSizes } from '../data/stages.ts'
 import { healUnit, kobanMul, passiveOn, strike } from './actions.ts'
 import { attackDef, chooseTarget, living, normalAttackInRange, opponents } from './combat.ts'
+import { bossSkillCandidates, canStartBossSkill, summonCapacity } from './boss.ts'
 import { random } from './rng.ts'
 import { onBattleStart, refreshStats, rollOatari, skills, ultimates } from './skills.ts'
 import { computeStats, type DojoLevels } from './stats.ts'
@@ -202,7 +203,7 @@ function moveEnemies(world: World, events: SimEvent[]) {
   const melee = world.units.filter((unit) => unit.side === 'enemy' && living(unit) && attackDef(unit).kind === 'melee')
   for (const unit of world.units.filter((candidate) => candidate.side === 'enemy' && living(candidate))) {
     const stopX = attackDef(unit).kind === 'melee' ? front.x + b.enemyStop + melee.indexOf(unit) * b.enemyGap : front.x + unit.stats.rangeDots
-    if (unit.action.kind === 'windup') { explodeIfArrived(world, unit, stopX, events); continue }
+    if (unit.action.kind === 'windup' || unit.action.kind === 'cast') { explodeIfArrived(world, unit, stopX, events); continue }
     if (unit.x > stopX) {
       unit.x = Math.max(stopX, unit.x - enemies[unit.defId].speed * b.tickMs / 1000)
       unit.action = { kind: unit.x > stopX ? 'move' : 'none', untilTick: 0 }
@@ -277,7 +278,11 @@ function finishActions(world: World, events: SimEvent[]) {
     if (!living(unit) || (unit.action.kind !== 'windup' && unit.action.kind !== 'cast') || unit.action.untilTick > world.tick) continue
     const action = unit.action
     unit.action = { kind: 'none', untilTick: 0 }
-    if (action.kind === 'cast') { ultimates[action.skillId!]({ world, self: unit, events }, action.roll); continue }
+    if (action.kind === 'cast') {
+      if (unit.side === 'enemy') resolveBossSkill(world, unit, action, events)
+      else ultimates[action.skillId!]({ world, self: unit, events }, action.roll)
+      continue
+    }
     const target = world.units.find((candidate) => candidate.uid === action.targetUid && living(candidate))
     if (!target) continue
     const attack = attackDef(unit)
@@ -348,26 +353,37 @@ function shuffle<T>(world: World, list: readonly T[]) {
   }
   return copy
 }
-/** Boss skills fire instead of a normal attack when ready. Returns false when nothing could be done. */
+/** Lock visible targets before charging. Guard, debuffs, burst and displacement are distinct counters. */
 function bossSkill(world: World, self: Unit, events: SimEvent[]): boolean {
   const skill = enemies[self.defId].boss?.skill
-  if (!skill) return false
-  if (skill.kind === 'summon') {
-    const alive = world.units.filter((unit) => unit.side === 'enemy' && living(unit) && unit.defId === skill.summon).length
-    const count = Math.min(skill.count, skill.maxAlive - alive)
-    if (count <= 0) return false
-    events.push({ t: 'skill', uid: self.uid, skillId: skill.id })
-    for (let index = 0; index < count; index++) spawnEnemy(world, skill.summon, self.x + (index + 1) * b.enemyGap, events)
-    return true
-  }
-  const allies = world.units.filter((unit) => unit.side === 'ally' && living(unit))
-  const targets = skill.kind === 'frontStrike'
-    ? allies.filter((unit) => Math.abs(unit.x - self.x) <= self.stats.rangeDots + b.formationGap).slice(0, skill.targets)
+  if (!skill || !canStartBossSkill(world, self)) return false
+  const allies = bossSkillCandidates(world, self)
+  const targets = skill.kind === 'summon' ? [] : skill.kind === 'frontStrike'
+    ? allies.slice(0, skill.targets)
     : shuffle(world, allies).slice(0, skill.targets)
-  if (!targets.length) return false
-  events.push({ t: 'skill', uid: self.uid, skillId: skill.id })
-  for (const target of targets) strike(world, self, target, { mul: skill.mul, tags: [skill.id] }, events)
+  if (skill.kind !== 'summon' && !targets.length) return false
+  const targetUids = targets.map((unit) => unit.uid)
+  const resolveTick = world.tick + ticks(skill.castMs)
+  self.action = { kind: 'cast', untilTick: resolveTick, skillId: skill.id, targetUids, originX: self.x }
+  events.push({ t: 'bossTell', uid: self.uid, skillId: skill.id, targetUids: [...targetUids], resolveTick })
   return true
+}
+function resolveBossSkill(world: World, self: Unit, action: Unit['action'], events: SimEvent[]) {
+  const skill = enemies[self.defId].boss!.skill
+  // Harite and the sumo ultimate can break a charge. The cooldown was already spent.
+  if (Math.abs(self.x - action.originX!) >= b.bossInterruptDots) {
+    events.push({ t: 'bossInterrupt', uid: self.uid, skillId: skill.id, sourceUid: action.interruptSource?.uid, interruptSkillId: action.interruptSource?.skillId })
+    return
+  }
+  events.push({ t: 'skill', uid: self.uid, skillId: skill.id })
+  if (skill.kind === 'summon') {
+    const count = summonCapacity(world, skill)
+    for (let index = 0; index < count; index++) spawnEnemy(world, skill.summon, self.x + (index + 1) * b.enemyGap, events)
+    return
+  }
+  const targets = world.units.filter((unit) => living(unit) && action.targetUids!.includes(unit.uid)
+    && (skill.kind !== 'frontStrike' || Math.abs(unit.x - self.x) <= self.stats.rangeDots + b.formationGap))
+  for (const target of targets) strike(world, self, target, { mul: skill.mul, tags: [skill.id] }, events)
 }
 function battleStep(world: World, events: SimEvent[]) {
   moveEnemies(world, events)
@@ -398,7 +414,9 @@ export function snapshot(world: World, koban = 0): Snapshot {
         hp: Math.max(0, unit.hp), maxHp: unit.stats.maxHp, hpRatio: Math.max(0, Math.min(1, unit.hp / unit.stats.maxHp)), alive: unit.alive,
         action: unit.action.kind, ult: unit.ult, ultOn: unit.lv >= b.ultLv, jonen: unit.gauges.jonen,
         skillReady: cooldown ? Math.max(0, Math.min(1, 1 - (unit.skillReadyTick - world.tick) / cooldown)) : 1,
-        effects: unit.effects.map((effect) => effect.tag) }
+        effects: unit.effects.map((effect) => effect.tag),
+        bossCast: unit.side === 'enemy' && unit.action.kind === 'cast'
+          ? { skillId: unit.action.skillId!, targetUids: [...unit.action.targetUids!], resolveTick: unit.action.untilTick } : undefined }
     }),
     projectiles: world.projectiles.map((projectile) => ({ id: projectile.id, kind: projectile.kind, fromUid: projectile.ownerUid, toUid: projectile.targetUid, launchTick: projectile.launchTick, hitTick: projectile.hitTick })),
     mines: world.mines.map(({ id, x, explodeTick }) => ({ id, x, explodeTick })) }

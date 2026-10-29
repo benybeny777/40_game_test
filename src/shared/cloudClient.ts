@@ -139,9 +139,11 @@ export class CloudClient {
     } catch (error) {
       const unknownWrite = writing && !(error instanceof ResponseError && [401, 409].includes(error.status))
       if (writing) { this.state.revision = null; this.state.updatedAt = null }
-      // A failed logout keeps the token so the same explicit logout can be retried.
-      if (error instanceof ResponseError && error.status === 401 && command.action !== 'logout') {
+      // 401 confirms the session is already invalid, including after a lost logout response.
+      // Network/5xx failures still retain it for an explicit retry.
+      if (error instanceof ResponseError && error.status === 401) {
         this.token = null; this.state.account = null; this.state.revision = null; this.state.updatedAt = null
+        if (command.action === 'logout') return { ok: true, view: this.view() }
       }
       this.state.error = error instanceof Error ? error.message : 'クラウド処理に失敗しました。'
       if (unknownWrite) this.state.error += ' 保存結果が不明です。再保存せず、まず最新状態を確認してください。'

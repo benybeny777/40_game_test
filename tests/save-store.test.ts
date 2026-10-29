@@ -1,9 +1,9 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { newProfile, PROFILE_VERSION } from '../src/core/index.ts'
-import { FutureSaveVersionError, loadProfile, loadSettings, SaveRecoveryRequiredError, saveProfile, writeAtomic, type SavePaths } from '../src/main/saveStore.ts'
+import { confirmSaveRecovery, FutureSaveVersionError, loadProfile, loadSettings, SaveRecoveryRequiredError, saveProfile, writeAtomic, type SavePaths } from '../src/main/saveStore.ts'
 
 let directory = '', paths: SavePaths
 beforeEach(() => {
@@ -98,5 +98,35 @@ describe('製品セーブの保護', () => {
     expect(() => writeAtomic(target, 'new content')).toThrow()
     expect(readFileSync(join(target, 'keep'), 'utf8')).toBe('original')
     expect(readFileSync(`${target}.tmp`, 'utf8')).toBe('new content')
+  })
+})
+
+describe('explicit save recovery choice', () => {
+  it.each(['save', 'new'] as const)('does not prompt for a healthy %s source', source => {
+    const choose = vi.fn(() => 0)
+    expect(confirmSaveRecovery({ source, errors: [] }, choose)).toBe('continue')
+    expect(choose).not.toHaveBeenCalled()
+  })
+  it.each([0, -1, 2])('exits without overwriting either original file when restoration is not explicitly selected (%s)', choice => {
+    const prior = newProfile('2026-10-29T00:00:00Z'); prior.koban = 99
+    const original = '{broken current save', previous = JSON.stringify(prior)
+    writeFileSync(paths.save, original); writeFileSync(paths.previousSave, previous)
+    const loaded = loadProfile(paths), choose = vi.fn(() => choice)
+    expect(loaded.errors.length).toBeGreaterThan(0)
+    expect(confirmSaveRecovery(loaded, choose)).toBe('exit')
+    expect(choose).toHaveBeenCalledOnce()
+    expect(readFileSync(paths.save, 'utf8')).toBe(original)
+    expect(readFileSync(paths.previousSave, 'utf8')).toBe(previous)
+  })
+  it('requires a choice even when the primary file is missing and the previous file is healthy', () => {
+    writeFileSync(paths.previousSave, JSON.stringify(newProfile('2026-10-29T00:00:00Z')))
+    const loaded = loadProfile(paths), choose = vi.fn(() => 1)
+    expect(loaded.source).toBe('prev'); expect(loaded.errors).toEqual([])
+    expect(confirmSaveRecovery(loaded, choose)).toBe('restore-paused')
+    expect(choose).toHaveBeenCalledOnce(); expect(existsSync(paths.save)).toBe(false)
+  })
+  it('requires a choice for reported errors regardless of the selected source', () => {
+    expect(confirmSaveRecovery({ source: 'save', errors: ['original diagnostic'] }, () => 0)).toBe('exit')
+    expect(confirmSaveRecovery({ source: 'prev', errors: ['original diagnostic'] }, () => 1)).toBe('restore-paused')
   })
 })

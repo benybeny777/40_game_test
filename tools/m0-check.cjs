@@ -21,7 +21,7 @@ if (process.argv.includes('--fixture')) {
   electron.app.whenReady().then(() => setTimeout(async () => {
     if (verify) {
       getTrayMenu().items.find(item => item.label === '管理パネルを開く').click()
-      const setup = electron.BrowserWindow.getAllWindows().find(win => win.getTitle() !== 'タスクバー百鬼行 — 帯')
+      const setup = electron.BrowserWindow.getAllWindows().find(win => !win.webContents.getURL().includes('/strip/'))
       if (setup.webContents.isLoading()) await new Promise(done => setup.webContents.once('did-finish-load', done))
       await setup.webContents.executeJavaScript('window.game.updateSettings({ hideOnFullscreen: false })')
       setup.hide()
@@ -37,7 +37,7 @@ if (process.argv.includes('--fixture')) {
         assert.ok(item, label)
         item.click()
       }
-      const strip = electron.BrowserWindow.getAllWindows().find(win => win.getTitle() === 'タスクバー百鬼行 — 帯')
+      const strip = electron.BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('/strip/'))
       assert.equal(strip.isAlwaysOnTop(), true)
       select('帯を隠す'); assert.equal(strip.isVisible(), false)
       select('帯を表示'); assert.equal(strip.isVisible(), true)

@@ -53,6 +53,9 @@ describe('English game-data boundary', () => {
     }
   })
   it('translates generated stat rolls, requirements and multi-requirement failures as complete structured phrases', () => {
+    const lateNames = [51, 56, 61, 100, 200, 1000].map(rank => itemName('weapon', 'samurai', rank))
+    expect(new Set(lateNames).size).toBe(lateNames.length)
+    lateNames.forEach(translated)
     expect(translateGameText('必要能力：筋力100 / 体力20')).toBe('Requirements: STR 100 / VIT 20')
     expect(translateGameText('敏捷100必要（現在14）、体力20必要（現在7）')).toBe('Requires Dexterity 100 (current 14), Requires Vitality 20 (current 7)')
     expect(translateGameText('基礎性能109%（85〜115%）')).toBe('Base roll 109% (85-115%)')

@@ -13,7 +13,7 @@ registerTranslations({
   '地面を温かい琥珀と朱色に。能力やドロップ率は変わりません。':'Warm amber and vermilion beneath the party. No effect on stats or drop rates.',
   '地面を深い紫と淡い鉱石色に。能力やドロップ率は変わりません。':'Deep violet ground with pale mineral tones. No effect on stats or drop rates.',
   'パーティ':'Party', '装備':'Equipment', '道場':'Dojo', 'ダンジョン':'Dungeon', '図鑑':'Bestiary', 'ストア':'Store', 'あそびかた':'How to play', '設定':'Settings',
-  'タスクバー百鬼行':'Taskbar Hyakkiko', '操作を完了できませんでした。少し待って再度お試しください。':'Could not complete the action. Please wait a moment and try again.',
+  '操作を完了できませんでした。少し待って再度お試しください。':'Could not complete the action. Please wait a moment and try again.',
   '出撃・前衛（先頭）':'Deployed · Front line', '控え・経験値なし（育成と装備を保持）':'Reserve · No EXP (progress and gear retained)', '能力・スキルを見る':'View stats and skills',
   '戦闘参加で経験値':'Earns EXP by participating in battle', '控えでは経験値を獲得しません':'Reserves do not gain EXP',
   '1ポイント追加':'Add 1 point', '残りのポイントを全て追加':'Assign all remaining points',

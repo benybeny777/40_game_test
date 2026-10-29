@@ -37,8 +37,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Flash Cut"
   },
   "job.samurai.ultimate.desc": {
-    "ja": "敵全体に攻撃力×3",
-    "en": "Deals 3x ATK damage to all enemies."
+    "ja": "前方の敵2体までに攻撃力×3.5。少数の強敵を斬り抜く",
+    "en": "Deals 3.5x ATK damage to up to two front enemies, concentrating on a few tough foes."
   },
   "job.ninja.name": {
     "ja": "忍者",
@@ -269,8 +269,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Payback"
   },
   "job.bancho.passive.desc": {
-    "ja": "敵からダメージを受けて生き残ると攻撃力×0.5で反撃",
-    "en": "After surviving an enemy hit, counters for 0.5x ATK damage."
+    "ja": "被弾して生き残ると攻撃力×0.5で反撃。巫女の結界・禊の間は×0.65",
+    "en": "After surviving a hit, counters for 0.5x ATK damage, increased to 0.65x while protected by the Shrine Maiden's ward or purification."
   },
   "job.bancho.ultimate.name": {
     "ja": "総長の一喝",
@@ -349,8 +349,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Finish Them"
   },
   "job.sukeban.passive.desc": {
-    "ja": "HP35%以下の敵への与ダメージ＋30%",
-    "en": "Deals 30% more damage to enemies at 35% HP or less."
+    "ja": "HP35%以下、または攻撃間隔が延びた敵への与ダメージ＋30%。重複しない",
+    "en": "Deals 30% more damage to enemies at 35% HP or less, or whose attack interval is increased. These conditions do not stack."
   },
   "job.sukeban.ultimate.name": {
     "ja": "夜露死苦斬り",
@@ -421,8 +421,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Concealed Triple Throw"
   },
   "job.maid.skill.desc": {
-    "ja": "近くの敵に攻撃力×0.65のナイフを3連投",
-    "en": "Throws 3 knives at nearby enemies, each dealing 0.65x ATK damage."
+    "ja": "注目マークの敵を優先して攻撃力×0.65のナイフを3連投。注目中の敵への初弾は会心",
+    "en": "Throws 3 knives for 0.65x ATK each, prioritizing marked enemies. The first hit against a marked enemy is a critical hit."
   },
   "job.maid.passive.name": {
     "ja": "鮮やかな手際",
@@ -437,8 +437,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Knife Curtain"
   },
   "job.maid.ultimate.desc": {
-    "ja": "敵全体に攻撃力×2.5、6秒間自分の攻撃間隔−30%",
-    "en": "Deals 2.5x ATK damage to all enemies and reduces own attack interval by 30% for 6 seconds."
+    "ja": "注目優先で攻撃力×0.75を6連投。注目中の敵への初弾は会心。6秒間自分の攻撃間隔−20%",
+    "en": "Throws 6 knives for 0.75x ATK each, prioritizing marked enemies. The first hit against a marked enemy is critical. Reduces own attack interval by 20% for 6 seconds."
   },
   "job.jiangshi.name": {
     "ja": "キョンシー",
@@ -1089,8 +1089,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Great Oni"
   },
   "enemy.ooni.desc": {
-    "ja": "街道の主。金棒で前の二人をまとめて殴る。",
-    "en": "The road's master. Swings a club at the two front allies."
+    "ja": "地下墓地の主。溜めて前の二人を金棒で殴る。防御・弱体で耐え、力士の押し戻しで溜めを中断できる。",
+    "en": "Master of the catacombs. Winds up a club strike against the front two allies. Defense and debuffs help you endure it; the Sumo Wrestler can interrupt the windup by pushing it back."
   },
   "enemy.ooni.skill": {
     "ja": "金棒振り",
@@ -1125,8 +1125,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Lucky Cat General"
   },
   "enemy.manekitaisho.desc": {
-    "ja": "商店街の主。手下の招き猫を呼び続ける。",
-    "en": "The shopping district's master. Repeatedly summons lesser lucky cats."
+    "ja": "朽ちた商街の主。構えてから手下を呼ぶ。力士の押し戻しで召喚を止めるか、範囲攻撃で手下を一掃する。",
+    "en": "Master of the ruined market. Prepares to summon lesser cats. Interrupt the summon with the Sumo Wrestler's push, or clear its followers with area attacks."
   },
   "enemy.manekitaisho.skill": {
     "ja": "千客万来",
@@ -1169,8 +1169,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Cyber Nine-Tails"
   },
   "enemy.denno_kyubi.desc": {
-    "ja": "電脳街の主。狐火を三つ放ち、弱ると幻影を生む。",
-    "en": "The cyber district's master. Launches three foxfires and creates phantoms when weakened."
+    "ja": "禁術の書庫の主。三人を狙う狐火と、HP半分で生む幻影。結界・回復で支え、幻影は範囲攻撃で倒す。",
+    "en": "Master of the forbidden archive. Targets three allies with foxfire and creates phantoms at half HP. Use wards and healing to survive, and area attacks to clear the phantoms."
   },
   "enemy.denno_kyubi.skill": {
     "ja": "狐火",

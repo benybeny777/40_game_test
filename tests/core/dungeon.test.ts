@@ -10,6 +10,16 @@ const unlock = (profile: Profile, rank: 0 | 1 | 2, depth: number) => {
 }
 
 describe('黄泉の迷宮・3難度', () => {
+  it('難度を上げてB1へ戻っても敵強度と報酬が前難度B100から巻き戻らない', () => {
+    for (const rank of [0, 1] as const) {
+      const before = depthScale(100, rank), after = depthScale(1, (rank + 1) as 1 | 2)
+      for (const key of ['hp', 'atk', 'def', 'reward'] as const) expect(after[key]).toBeGreaterThan(before[key])
+      expect(after.hp / before.hp).toBeLessThan(2)
+      expect(after.atk / before.atk).toBeLessThan(1.5)
+    }
+    expect(depthScale(1, 0)).toEqual({ hp: 1, atk: 1, def: 1, reward: 1 })
+    expect(depthScale(100, 0).hp).toBeCloseTo(1 + 0.22 * 99 + 0.012 * 99 * 99)
+  })
   it('通常/修羅は100階、深淵だけ101階以降も安定した値で潜れる', () => {
     expect(() => createWorld({ stageNo: 101 })).toThrow()
     expect(() => createWorld({ stageNo: 101, depthRank: 1 })).toThrow()
