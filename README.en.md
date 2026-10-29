@@ -32,6 +32,8 @@ These are captures of the game's own windows. Current character and enemy artwor
 
 ## Running locally
 
+On Windows, double-click [start-dev.bat](start-dev.bat) to launch the development edition through the same launcher as `pnpm dev`. Keep its console open and quit through the game's system tray menu. Development saves remain separate from production saves. Missing Node.js or dependencies produce an explanation without installing anything automatically.
+
 The Windows development environment uses Node.js 24 and pnpm 10.
 
 ```powershell
