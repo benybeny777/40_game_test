@@ -1,5 +1,6 @@
 import { dungeons, jobs, partyOrder, type JobId } from '../../core/index.ts'
 import { Scene } from '../strip/scene'
+import { GAME_SPEED } from '../../core/data/timing'
 import { artReady } from '../strip/sprites/sheet'
 import { sceneFixture, type Cue, type PreviewMode } from './fixture'
 
@@ -38,7 +39,8 @@ class Preview {
 }
 
 let ready = false, paused = false, age = 0, last = 0, preview: Preview | undefined
-const selectedCues = () => sceneFixture(job.value as JobId, Number(biome.value), mode.value as PreviewMode)
+const selectedCues = () => sceneFixture(job.value as JobId, Number(biome.value), mode.value as PreviewMode).map(cue => ({ ...cue, at: cue.at / GAME_SPEED }))
+time.max = String(3200 / GAME_SPEED)
 function makePreview() {
   events.textContent = ''
   const messages: string[] = []
@@ -49,7 +51,8 @@ function makePreview() {
 function fixedFrames() {
   contact.replaceChildren()
   const times = mode.value === 'loot' ? [0, 450, 1100, 1600, 2200, 2900] : mode.value === 'boss' || mode.value === 'interrupt' ? [0, 400, 800, 1200, 1600, 2000] : mode.value === 'walking' ? [0, 160, 320, 480, 640, 800] : [0, 60, 100, 180, 320, 600]
-  for (const at of times) {
+  for (const simulatedAt of times) {
+    const at = simulatedAt / GAME_SPEED
     const card = document.createElement('article'), label = document.createElement('h2'), frame = document.createElement('canvas')
     label.textContent = `${jobs[job.value as JobId].name} · ${at} ms`; frame.width = 384; frame.height = 112
     new Preview(selectedCues(), frame.getContext('2d')!, background.checked).drawTo(at)
@@ -74,7 +77,7 @@ void artReady.then(() => {
   function frame(now: number) {
     if (!paused) guarded(() => {
       age += last ? Math.min(100, now - last) : 0
-      if (age > 3200) { age = 0; makePreview() }
+      if (age > 3200 / GAME_SPEED) { age = 0; makePreview() }
       draw()
     })
     last = now; requestAnimationFrame(frame)

@@ -80,4 +80,35 @@ describe('panel keyboard focus and scroll retention', () => {
     expect(nextDetails.open).toBe(true)
     expect(nextSummary.focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true })
   })
+  it('retains keyed gear, training and records disclosures without tying them to member cards', () => {
+    const before = panel()
+    const keys = ['gear-management', 'training-ninja', 'abyss-records']
+    const add = (root: Control, key: string, open = false) => {
+      const details = new Control('DETAILS'), summary = new Control('SUMMARY')
+      summary.dataset.focusKey = key; details.open = open; details.append(summary); root.append(details)
+      return details
+    }
+    keys.forEach(key => add(before.main, key, true))
+    add(before.main, 'closed-details')
+    vi.stubGlobal('document', { activeElement: before.button })
+    const saved = capturePanelPosition(dom(before.root)), next = panel()
+    expect(saved.openDetails).toEqual(keys)
+    const rebuilt = [...keys].reverse().map(key => add(next.main, key))
+    const closed = add(next.main, 'closed-details')
+    restorePanelPosition(dom(next.root), saved)
+    expect(rebuilt.every(details => details.open)).toBe(true)
+    expect(closed.open).toBe(false)
+    rebuilt[0].open = false
+    const updated = capturePanelPosition(dom(next.root))
+    expect(updated.openDetails).not.toContain('abyss-records')
+  })
+  it('restores expanded disclosures only for their original screen on a tab round trip', () => {
+    const positions = new PanelPositions()
+    const base = { mainTop: 0, navLeft: 0, openDetails: [] as string[], focusKey: undefined }
+    positions.select('gear', base)
+    expect(positions.select('stage', { ...base, openDetails: ['gear-management'] }).openDetails).toEqual([])
+    expect(positions.select('gear', { ...base, openDetails: ['abyss-records'] }).openDetails).toEqual(['gear-management'])
+    expect(positions.select('stage', { ...base, openDetails: [] }).openDetails).toEqual(['abyss-records'])
+    expect(positions.select('gear', base).openDetails).toEqual([])
+  })
 })

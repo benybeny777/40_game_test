@@ -9,6 +9,7 @@ import { dojo as dojoDefs, progressBalance as pb, type DojoKey } from '../data/p
 import type { JobId, SimEvent } from '../sim/types.ts'
 import { dropChance, lootRank, partyLuk, receiveItem, reconcileEquipment, requirementsOf, rollItem, type Item } from './items.ts'
 import { random } from '../sim/rng.ts'
+import { validateAbyssRecords, type AbyssRecord } from './abyss.ts'
 
 export const PROFILE_VERSION = 3
 export interface Gain { koban: number; exp: number }
@@ -23,6 +24,7 @@ export interface Profile {
   dungeonId: DungeonId
   dungeonSeed: number
   dungeonRecords: Record<string, DungeonProgress>
+  abyssRecords: Record<string, AbyssRecord>
   party: { order: JobId[]; members: Record<JobId, Member> }
   koban: number
   dojo: Record<DojoKey, number>
@@ -40,7 +42,7 @@ const emptyEquip = (): Record<SlotId, string | null> => ({ weapon: null, armor: 
 export function newProfile(savedAt: string, seed = 1): Profile {
   const progress: DungeonProgress = { unlockedStage: 1, currentStage: 1, loop: false, inTown: false, depthRank: 0, unlockedDepths: [1, 0, 0], eventDepths: [0, 0, 0] }
   return { version: PROFILE_VERSION, savedAt, rng: seed >>> 0,
-    progress, dungeonId: 'yomi', dungeonSeed: seed >>> 0, dungeonRecords: { yomi: progress },
+    progress, dungeonId: 'yomi', dungeonSeed: seed >>> 0, dungeonRecords: { yomi: progress }, abyssRecords: {},
     party: { order: [...defaultFormation], members: Object.fromEntries(partyOrder.map((id) => [id, { lv: 1, exp: 0, allocated: emptyAttributes(), autoStats: true, equip: emptyEquip() }])) as Profile['party']['members'] },
     koban: 0, dojo: { atk: 0, hp: 0, walk: 0, drop: 0, offline: 0 }, inventory: [], nextItemId: 1,
     options: { autoSellMaxRarity: null, autoEquip: true },
@@ -321,6 +323,7 @@ export function validateProfile(input: unknown): Profile {
   profile.dungeonSeed = raw.dungeonSeed === undefined ? 1 : raw.dungeonSeed as number
   profile.dungeonRecords = isObject(raw.dungeonRecords) ? { ...raw.dungeonRecords } as Record<string, DungeonProgress> : {}
   profile.dungeonRecords[profile.dungeonId] = profile.progress
+  profile.abyssRecords = validateAbyssRecords(raw.abyssRecords)
   profile.seenEnemies = Array.isArray(raw.seenEnemies) ? raw.seenEnemies.filter((id): id is string => typeof id === 'string' && id in enemies) : []
   profile.seenItems = Array.isArray(raw.seenItems) ? raw.seenItems.filter((id): id is string => typeof id === 'string') : []
   if (raw.pendingOffline !== undefined && raw.pendingOffline !== null

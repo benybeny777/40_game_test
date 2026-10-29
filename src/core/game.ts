@@ -1,6 +1,7 @@
 import { attributeKeys, type AttributeKey } from './data/attributes.ts'
 import { availablePoints, resetAllocation, spendAuto } from './progress/attributes.ts'
-import { balance as b } from './data/balance.ts'
+import { REAL_TICK_MS } from './data/timing.ts'
+import { recordAbyssClear } from './progress/abyss.ts'
 import { cappedAmount, difficulties, maxFloor, type Difficulty } from './data/dungeon.ts'
 import { rarities, type Rarity, type SlotId } from './data/items.ts'
 import { partyOrder } from './data/jobs.ts'
@@ -11,7 +12,7 @@ import type { JobId, SimEvent, World } from './sim/types.ts'
 import { createWorld, refreshParty, requestOrder, requestStage, returnToTown, step } from './sim/world.ts'
 
 /** World + Profile wired together. Shared by the Electron main loop and the headless simulator. */
-export interface Game { world: World; profile: Profile; autoFarmClears: number; minuteTicks: number }
+export interface Game { world: World; profile: Profile; autoFarmClears: number; minuteMs: number; playMsRemainder: number }
 export type Command =
   | { c: 'setLoop'; loop: boolean }
   | { c: 'selectStage'; stageNo: number; depthRank?: Difficulty }
@@ -40,12 +41,16 @@ export function createGame(profile: Profile, seed: number): Game {
     dojo: profile.dojo, gear: gearMap(profile), allocated: allocationMap(profile), loop: profile.progress.loop, depthRank: profile.progress.depthRank, dungeonSeed: profile.dungeonSeed, eventDepths: profile.progress.eventDepths })
   if (profile.progress.inTown) returnToTown(world)
   profile.offlineJobs = actualJobs(world)
-  return { world, profile, autoFarmClears: 0, minuteTicks: 0 }
+  return { world, profile, autoFarmClears: 0, minuteMs: 0, playMsRemainder: 0 }
 }
-export function advance(game: Game): { events: SimEvent[]; changed: boolean; stageCleared: boolean } {
+export function advance(game: Game, elapsedMs = REAL_TICK_MS): { events: SimEvent[]; changed: boolean; stageCleared: boolean } {
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0 || elapsedMs > pb.minuteMs) throw new Error('Invalid simulation step elapsed time')
   const { world, profile } = game
   const events = step(world)
   profile.offlineJobs = actualJobs(world)
+  for (const event of events) {
+    if (event.t === 'phase' && event.phase === 'stageClear' && (event.depthRank ?? world.depthRank) === 2) recordAbyssClear(profile, event.stageNo, profile.offlineJobs)
+  }
   const result = applyRewards(profile, events, profile.offlineJobs)
   if (result.levelsChanged) refresh(game)
   // 3 wipes in a row turn on world.loop; step back to the last cleared stage to farm, then retry.
@@ -54,9 +59,21 @@ export function advance(game: Game): { events: SimEvent[]; changed: boolean; sta
   if (result.stageCleared && world.loop && !profile.progress.loop && world.stageNo < profile.progress.unlockedStage) {
     if (++game.autoFarmClears >= pb.autoFarmClears) { world.loop = false; world.wipeStreak = 0; game.autoFarmClears = 0 }
   }
-  if (world.phase !== 'town') profile.stats.playMs = cappedAmount(profile.stats.playMs + b.tickMs)
-  if (++game.minuteTicks >= pb.minuteMs / b.tickMs) { game.minuteTicks = 0; closeMinute(profile) }
+  accountElapsed(game, elapsedMs)
   return { events: result.events.length ? [...events, ...result.events] : events, changed: result.changed || result.levelsChanged, stageCleared: result.stageCleared }
+}
+/** Account for real active time even when a host discards excess simulation backlog. */
+export function accountElapsed(game: Game, elapsedMs: number): void {
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0 || elapsedMs > pb.minuteMs) throw new Error('Invalid active elapsed time')
+  const { world, profile } = game
+  if (world.phase !== 'town') {
+    const elapsed = game.playMsRemainder + elapsedMs
+    const wholeMs = Math.floor(elapsed + 1e-8)
+    profile.stats.playMs = cappedAmount(profile.stats.playMs + wholeMs)
+    game.playMsRemainder = elapsed - wholeMs
+  }
+  game.minuteMs += elapsedMs
+  while (game.minuteMs + 1e-8 >= pb.minuteMs) { game.minuteMs = Math.max(0, game.minuteMs - pb.minuteMs); closeMinute(profile) }
 }
 export function runCommand(game: Game, command: Command): CommandResult & { events?: SimEvent[] } {
   const { world, profile } = game

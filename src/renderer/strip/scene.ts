@@ -1,12 +1,14 @@
 import { balance, enemies, jobs, partySize, rarities, stageLabel, type JobId, type SimEvent, type Snapshot, type SnapshotUnit } from '../../core/index.ts'
 import type { Frame as SimFrame } from '../../shared/api'
+import { GAME_SPEED, realSeconds } from '../../core/data/timing'
 import { drawText, textWidth } from './font'
 import { frameAt, sheets, type Sheet } from './sprites/sheet'
 import { PARTY_SPACING_SCALE, PLAY_DOTS } from '../../shared/art'
 import type { ThemeDefinition } from '../../shared/commerce'
 import { damageText, enemyMotion, enemyRank, enemyScale } from './enemyPresentation'
 import { drawDungeonBackground } from './background'
-import { actionPose, actionTiming, hitRecoil, meleeDashDistance, normalWindupMs } from './actionPresentation'
+import { actionPose, actionTiming, hitFeedbackDue, hitRecoil, meleeDashDistance, normalWindupMs } from './actionPresentation'
+import { battleSurfaceWidth } from './battleBounds'
 import { gaitTiming, walkPose } from './gait'
 import { bossCue, lootPresentation, placeCombatLabel, SynergyFeedback } from './feedbackPresentation'
 
@@ -71,11 +73,12 @@ export class Scene {
   }
   /** Resume from the current world, without interpolating a hidden interval or replaying loot. */
   resume(snapshot: Snapshot, now: number) {
-    this.clearPresentation(now)
+    this.clearPresentation(now * GAME_SPEED)
     this.ingest({ snapshot, events: [] }, now)
   }
 
   ingest(frame: SimFrame, now: number) {
+    now *= GAME_SPEED
     if (this.cur && (frame.snapshot.tick < this.cur.tick || frame.snapshot.units.some(unit => {
       const old = this.visuals.get(unit.uid)
       return old && (old.defId !== unit.defId || old.side !== unit.side)
@@ -117,7 +120,7 @@ export class Scene {
     const occupied = this.numbers.map(number => ({ x: number.x, y: number.y - 6, width: number.width, height: number.height + 6 }))
     const box = placeCombatLabel(x, this.headY(unit) - 3, width, height + 6, this.W, occupied)
     if (!box) return
-    this.numbers.push({ uid, text, ...box, y: box.y + 6, height, color, start: now, dur: big ? 760 : 580, scale })
+    this.numbers.push({ uid, text, ...box, y: box.y + 6, height, color, start: now, dur: (big ? 760 : 580) * GAME_SPEED, scale })
   }
 
   private event(event: SimEvent, now: number) {
@@ -130,10 +133,13 @@ export class Scene {
       case 'damage': {
         if (vis && event.amount > 0) {
           const repeat = vis.hitAt === now
-          vis.flashUntil = now + actionTiming.flashMs; vis.knockUntil = now + actionTiming.knockMs
-          vis.hitAt = now; vis.hitX = this.posX(event.uid, 1); vis.critical = event.crit
+          const impactX = this.posX(event.uid, 1)
+          if (hitFeedbackDue(vis.hitAt, now)) {
+            vis.flashUntil = now + actionTiming.flashMs; vis.knockUntil = now + actionTiming.knockMs
+            vis.hitAt = now; vis.hitX = impactX; vis.critical = event.crit
+          }
           const unit = this.unit(event.uid)
-          if (!repeat && unit && vis.hitX !== undefined && this.fx.filter(fx => fx.kind === 'impact').length < 12) this.fx.push({ kind: 'impact', x: vis.hitX, y: this.chestY(unit), start: now, dur: actionTiming.sparkMs, radius: event.crit ? 7 : 4, color: event.crit ? '#ffe27a' : '#fff0d9' })
+          if (!repeat && unit && impactX !== undefined && this.fx.filter(fx => fx.kind === 'impact').length < 12) this.fx.push({ kind: 'impact', x: impactX, y: this.chestY(unit), start: now, dur: actionTiming.sparkMs, radius: event.crit ? 7 : 4, color: event.crit ? '#ffe27a' : '#fff0d9' })
           const source = this.visuals.get(event.sourceUid)
           // A melee hit is authoritative; ranged impact must not replay the earlier throwing motion.
           if (source?.anim === 'attack' && !source.ranged && source.windupMs && Math.abs(now - source.animAt - source.windupMs) <= balance.tickMs * 2) source.animAt = now - source.windupMs
@@ -243,7 +249,8 @@ export class Scene {
   }
 
   draw(ctx: CanvasRenderingContext2D, now: number) {
-    const dt = this.lastDraw ? Math.min(100, now - this.lastDraw) : 0
+    now *= GAME_SPEED
+    const dt = this.lastDraw ? Math.min(100 * GAME_SPEED, now - this.lastDraw) : 0
     this.lastDraw = now
     ctx.clearRect(0, 0, this.W, this.H)
     const snap = this.cur
@@ -281,16 +288,19 @@ export class Scene {
 
   private drawGround(ctx: CanvasRenderingContext2D, area: number) {
     const y = this.footY + 1
+    const width = battleSurfaceWidth(this.W, this.baseX)
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, width, this.H); ctx.clip()
     const theme = this.appearance ?? GROUNDS[area % GROUNDS.length]
-    if (this.groundBand) { ctx.fillStyle = theme.band; ctx.fillRect(0, y - 7, this.W, 9) }
-    ctx.fillStyle = theme.line; ctx.fillRect(0, y, this.W, 1)
+    if (this.groundBand) { ctx.fillStyle = theme.band; ctx.fillRect(0, y - 7, width, 9) }
+    ctx.fillStyle = theme.line; ctx.fillRect(0, y, width, 1)
     const offset = Math.floor(this.ground)
-    for (let i = -1; i < this.W / 13 + 1; i++) {
-      const x = ((i * 13 - offset) % this.W + this.W) % this.W
+    for (let i = -1; i < width / 13 + 1; i++) {
+      const x = ((i * 13 - offset) % width + width) % width
       ctx.fillStyle = i % 3 === 0 ? theme.dotA : theme.dotB
       ctx.fillRect(x, y + 1, i % 3 === 0 ? 2 : 1, 1)
       if (i % 5 === 0) { ctx.fillStyle = theme.prop; ctx.fillRect(x + 4, y - 1, 1, 1); ctx.fillRect(x + 6, y - theme.propHeight, 1, theme.propHeight) }
     }
+    ctx.restore()
   }
 
   private sprite(ctx: CanvasRenderingContext2D, sheet: Sheet | undefined, anim: string, elapsed: number, x: number, footY: number, flip: boolean, mode: 'normal' | 'flash' | 'gray' = 'normal', scale = 1, deform = { width: 0, height: 0 }, rim = false) {
@@ -427,7 +437,7 @@ export class Scene {
         const remaining = Math.max(0, (unit.bossCast.resolveTick - renderTick) * balance.tickMs)
         const progress = Math.max(0, Math.min(1, 1 - remaining / boss.skill.castMs))
         ctx.fillStyle = '#241521'; ctx.fillRect(left - 14, head - 9, 29, 10)
-        drawText(ctx, `! ${(remaining / 1000).toFixed(1)}`, left - 11, head - 7, '#ffc19f')
+        drawText(ctx, `! ${realSeconds(remaining).toFixed(1)}`, left - 11, head - 7, '#ffc19f')
         ctx.fillStyle = '#4b2833'; ctx.fillRect(left - 13, head - 1, 27, 2)
         ctx.fillStyle = '#ff9878'; ctx.fillRect(left - 13, head - 1, Math.max(1, Math.round(progress * 27)), 2)
         for (const uid of unit.bossCast.targetUids) {
@@ -622,5 +632,5 @@ export class Scene {
     const vis = this.visuals.get(target.unit.uid)
     return { x: vis?.drawX ?? this.screenX(target.unit.x, target.unit.side === 'enemy'), y: this.headY(target.unit) - 5 + (vis?.drawY ?? 0) }
   }
-  busy(now: number) { return this.fx.length > 0 || this.numbers.length > 0 || this.coins.length > 0 || this.loot.length > 0 || now - this.curAt < 1000 }
+  busy(now: number) { return this.fx.length > 0 || this.numbers.length > 0 || this.coins.length > 0 || this.loot.length > 0 || now * GAME_SPEED - this.curAt < 1000 }
 }

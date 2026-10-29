@@ -215,8 +215,29 @@ async function phase(name, durationMs, restart) {
     // Save the restart contract first; recovery must restore this exact checkpoint.
     const finalLoop = await panel.evaluate('window.game.command({c:"setLoop",loop:true})')
     assert(finalLoop.ok, 'Could not save final loop preference')
+    const savePath = join(dataDir, 'save/save.json')
+    const importText = readFileSync(savePath, 'utf8'), importProfile = JSON.parse(importText)
+    const beforeImport = await panel.evaluate('window.game.getView()')
+    const preview = await panel.evaluate(`window.game.prepareSaveImport(${JSON.stringify(importText)})`)
+    assert(preview.koban === importProfile.koban && preview.party.length === 3, 'Native import preview does not match the saved file')
+    await panel.evaluate(`window.game.confirmSaveImport(${JSON.stringify(preview.token)})`)
+    const afterImport = await panel.evaluate('(async()=>({view:await window.game.getView(),state:await window.game.getState()}))()')
+    assert(afterImport.state.paused && JSON.stringify(afterImport.view) === JSON.stringify(beforeImport), 'Native file import did not restore the checkpoint paused')
+    const importCheckpoint = readFileSync(savePath, 'utf8')
+    const importFailures = await panel.evaluate(`(async()=>{
+      const errorOf=async fn=>{try{await fn();return null}catch(error){return error.message}};
+      const candidate=await window.game.prepareSaveImport(${JSON.stringify(importText)});
+      await window.game.cancelSaveImport(candidate.token);
+      return {cancelled:await errorOf(()=>window.game.confirmSaveImport(candidate.token)),
+        malformed:await errorOf(()=>window.game.prepareSaveImport('{broken')),
+        future:await errorOf(()=>window.game.prepareSaveImport(${JSON.stringify(JSON.stringify({ ...importProfile, version: importProfile.version + 1 }))}))};
+    })()`)
+    assert(importFailures.cancelled?.includes('expired') && importFailures.malformed?.includes('not valid JSON') && importFailures.future, 'Native import rejection or English error translation failed')
+    assert(readFileSync(savePath, 'utf8') === importCheckpoint, 'Cancelled or invalid import changed the saved file')
+    phase.fileImport = { kind: 'real-native-ipc', roundtripPaused: true, previewMatchesFile: true, cancelledAndInvalidUnchanged: true, errors: importFailures }
+    phase.checks.push('native-file-import-roundtrip-paused', 'native-file-import-cancel-malformed-future-preserve-save')
     const checkpointView = await panel.evaluate('window.game.getView()')
-    const savePath = join(dataDir, 'save/save.json'), checkpointBytes = readFileSync(savePath, 'utf8')
+    const checkpointBytes = readFileSync(savePath, 'utf8')
     const checkpoint = JSON.parse(checkpointBytes)
     assert(checkpoint.progress.inTown && checkpoint.progress.loop, 'Town and loop were not successfully saved before the fault')
     const cause = 'Synthetic packaged acceptance fault: runtime recovery'
@@ -228,6 +249,8 @@ async function phase(name, durationMs, restart) {
     })
     const blocked = await panel.evaluate('(async()=>({command:await window.game.command({c:"setLoop",loop:false}),retrySave:await window.game.retrySave(),state:await window.game.getState()}))()')
     assert(!blocked.command.ok && blocked.retrySave === false && !blocked.state.storageError, 'Runtime failure did not independently block mutations and save retry')
+    const blockedImport = await panel.evaluate(`(async()=>{try{await window.game.prepareSaveImport(${JSON.stringify(importText)});return null}catch(error){return error.message}})()`)
+    assert(blockedImport?.includes(cause), 'Runtime failure did not block file import before validation')
     const controls = await panel.evaluate('({inert:document.querySelector("#app").inert,buttons:document.querySelectorAll(".runtime-failure button").length})')
     assert(controls.inert && controls.buttons === 2, 'Recovery notice did not disable gameplay or expose export/reload controls')
     await panel.capture(join(runDir, name + '-synthetic-runtime-stopped.png'))

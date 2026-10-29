@@ -7,6 +7,9 @@ import { h } from '../src/renderer/panel/dom'
 import { renderHelp } from '../src/renderer/panel/help'
 import { renderStore } from '../src/renderer/panel/store'
 import { renderDex } from '../src/renderer/panel/dex'
+import { SaveImportController, renderSaveImport, renderSaveImportDialog } from '../src/renderer/panel/saveImport'
+import { renderAbyssRecords } from '../src/renderer/panel/abyssRecords'
+import { recordAbyssClear, abyssView } from '../src/core/progress/abyss'
 
 class TextNode {
   children: Array<TextNode | string> = []
@@ -22,6 +25,33 @@ beforeEach(() => { vi.stubGlobal('document', { createElement: () => new TextNode
 afterEach(() => { setLocale('ja'); vi.unstubAllGlobals() })
 
 describe('English panel component text', () => {
+  it('shows the next Abyss goal and the recorded party in English without inventing past records', () => {
+    const profile = newProfile('test')
+    const portrait = () => h('span')
+    const empty = text(asNode(renderAbyssRecords(abyssView(profile), portrait)))
+    expect(empty).toContain('Next clear goal: B100')
+    expect(empty).toContain('past parties are not reconstructed')
+    recordAbyssClear(profile, 100, profile.offlineJobs)
+    const recorded = text(asNode(renderAbyssRecords(abyssView(profile), portrait)))
+    expect(recorded).toContain('Next clear goal: B250')
+    expect(recorded).toContain('Best clear: B100')
+    expect(recorded).toContain('Party that cleared B100')
+    expect(recorded).toContain('Samurai')
+    expect(recorded).toContain('Allocated STR 0 / DEX 0 / VIT 0 / INT 0')
+    expect(recorded).not.toMatch(/[\u3040-\u30ff\u4e00-\u9fff]/)
+  })
+  it('explains save replacement and cancellation in English, including bootstrap settings recovery', () => {
+    const controller = new SaveImportController({ prepareSaveImport: vi.fn(), confirmSaveImport: vi.fn(), cancelSaveImport: vi.fn() }, () => {}, true)
+    controller.fileName = 'export.json'
+    controller.preview = { token: 'one', savedAt: '2026-10-30T00:00:00.000Z', currentStage: 6, depthRank: 0, koban: 100, playMs: 60000, party: [{ job: 'samurai', level: 3 }] }
+    const controls = text(asNode(renderSaveImport(controller)))
+    const dialog = text(asNode(renderSaveImportDialog(controller)!))
+    expect(controls).toContain('File limit: 1,024 KiB')
+    expect(dialog).toContain('This cannot be undone')
+    expect(dialog).toContain('Damaged settings are replaced')
+    expect(dialog).toContain('Cancel'); expect(dialog).toContain('Samurai')
+    expect(controls + dialog).not.toMatch(/[ぁ-んァ-ヶ一-龥]/u)
+  })
   it('uses translated text and aria labels without translating machine attributes', () => {
     const node = asNode(h('button', { title: '装備する', 'aria-label': '装備する', 'data-value': '装備する' }, '装備する', '<script>'))
     expect(node.attributes.title).toBe('Equip')

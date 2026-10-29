@@ -1,6 +1,8 @@
 import { addOffline, advance, balance, buildView, computeOffline, createGame, runCommand, snapshot,
   type Command, type CommandResult, type Game, type Profile, type ProfileView, type SimEvent } from '../core/index.ts'
 import type { Frame } from '../shared/api'
+import { GAME_SPEED } from '../core/data/timing.ts'
+import { accountElapsed } from '../core/game.ts'
 
 const POLL_MS = 25
 const MAX_STEPS_PER_POLL = 20
@@ -35,7 +37,8 @@ export class GameHost {
   private failure: Error | undefined
   get runtimeError() { return this.failure }
 
-  constructor(profile: Profile, seed: number, private readonly callbacks: HostCallbacks, speed = 1) {
+  constructor(profile: Profile, seed: number, private readonly callbacks: HostCallbacks, speed = GAME_SPEED) {
+    if (!Number.isFinite(speed) || speed < 1) throw new Error('Invalid game speed')
     this.game = createGame(profile, seed)
     this.speed = speed
   }
@@ -105,6 +108,7 @@ export class GameHost {
     this.last = now
     if (this.paused) { if (now - this.lastSave > AUTOSAVE_MS) this.saveNow(); return }
     if (elapsed >= SLEEP_GAP_MS) {
+      this.accumulated = 0
       const offline = computeOffline(this.game.profile, elapsed)
       if (offline) {
         addOffline(this.game.profile, offline)
@@ -119,12 +123,15 @@ export class GameHost {
     const events: SimEvent[] = []
     let steps = 0, changed = false, cleared = false
     while (this.accumulated >= balance.tickMs && steps < MAX_STEPS_PER_POLL * this.speed) {
-      const result = advance(this.game)
+      const result = advance(this.game, balance.tickMs / this.speed)
       events.push(...result.events)
       changed ||= result.changed; cleared ||= result.stageCleared
       this.accumulated -= balance.tickMs; steps++
     }
-    if (this.accumulated >= balance.tickMs) this.accumulated = 0     // Too far behind: drop the backlog rather than spiral.
+    if (this.accumulated >= balance.tickMs) {
+      accountElapsed(this.game, this.accumulated / this.speed)
+      this.accumulated = 0 // Discard simulation backlog, but retain real time in statistics and income rates.
+    }
     if (!steps) return
     this.callbacks.frame(this.frame(events))
     if (changed) this.callbacks.viewChanged()

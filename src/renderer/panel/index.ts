@@ -16,7 +16,8 @@ import '../../shared/locales/system'
 import { h } from './dom'
 import { portraitsReady, spriteImage } from './portrait'
 import { assignFocusKeys, capturePanelPosition, restorePanelPosition, PanelPositions } from './focus'
-import { OfflineModalFocus } from './modalFocus'
+import { PanelModalFocus } from './modalFocus'
+import { SaveImportController, renderSaveImport, renderSaveImportDialog } from './saveImport'
 import { renderCloudSettings } from './cloud'
 import { renderNextChoice } from './nextChoice'
 import { renderEquipmentComparison } from './equipmentComparison'
@@ -237,6 +238,7 @@ function settingsTab() {
     h('div', { class: 'row-line' }, h('span', {}, `データ：${state?.platform === 'browser' ? 'このブラウザー内（Windows版とは別）' : state?.profile === 'dev' ? '開発用（.dev-data）' : '利用者用'}`), h('button', { onclick: () => window.game.openSaveFolder() }, state?.platform === 'browser' ? 'セーブを書き出す' : 'セーブのフォルダを開く')),
     state?.platform !== 'browser' ? h('button', { onclick: () => window.game.exportSave() }, 'セーブを書き出す') : null,
     h('p', { class: 'hint' }, state?.platform === 'browser' ? 'ブラウザーを閉じるとゲームも終了します。次回起動時にオフライン報酬を計算します。' : '一時停止・帯の表示切り替え・終了は、タスクトレイのアイコンから行います。'),
+    renderSaveImport(saveImport, Boolean(state?.storageError || state?.runtimeError)),
     renderCloudSettings())
 }
 function offlineModal(v: ProfileView) {
@@ -244,7 +246,7 @@ function offlineModal(v: ProfileView) {
   // Recovery/export controls must remain reachable when claiming cannot be saved.
   if (!pending || state?.storageError) return null
   const minutes = Math.floor(pending.ms / 60000)
-  return h('div', { class: 'modal' }, h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'offline-title', 'data-offline-dialog': '', tabindex: '-1' },
+  return h('div', { class: 'modal' }, h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'offline-title', 'data-offline-dialog': '', 'data-panel-dialog': '', tabindex: '-1' },
     h('h2', { id: 'offline-title' }, 'おかえりなさい'),
     h('p', {}, `留守の${minutes >= 60 ? `${Math.floor(minutes / 60)}時間${minutes % 60}分` : `${minutes}分`}の間も、一行は旅を続けていました。`),
     h('p', {}, '経験値は不在時の出撃メンバーに付与します。受取時の入れ替えでは対象は変わりません。'),
@@ -253,16 +255,16 @@ function offlineModal(v: ProfileView) {
 }
 
 const panelPositions = new PanelPositions()
-const offlineFocus = new OfflineModalFocus()
+const saveImport = new SaveImportController(window.game, () => render(true))
+const modalFocus = new PanelModalFocus('[data-panel-dialog]', () => { void saveImport.cancel() })
 function render(force = false) {
   if (pressing || rendering) return
   if (!force && root.contains(document.activeElement) && document.activeElement?.matches('select,input[type="number"],input[type="text"],input[type="search"],input[type="password"]')) return
   const v = artworkReady ? view : undefined
-  offlineFocus.beforeRender()
+  modalFocus.beforeRender()
   document.documentElement.lang = getLocale()
   document.title = translatedLabel(brand.ja)
   const position = panelPositions.select(tab, capturePanelPosition(root))
-  const openDetails = [...root.querySelectorAll<HTMLElement>('[data-job]')].filter(card => card.querySelector('details')?.open).map(card => card.dataset.job)
   rendering = true
   try {
   root.replaceChildren(
@@ -280,17 +282,16 @@ function render(force = false) {
       } }, '保存を再試行') : null,
       h('button', { onclick: () => window.game.exportSave() }, 'セーブを書き出す')) : '',
     h('main', { id: 'panel-content' }, !v ? h('p', {}, '読み込み中…') : tab === 'party' ? partyTab(v) : tab === 'gear' ? gearTab(v) : tab === 'dojo' ? dojoTab(v) : tab === 'stage' ? renderDungeon(v, command) : tab === 'dex' ? renderDex(v, spriteImage) : tab === 'store' ? storeView ? renderStore(storeView, { updated: next => { storeView = next; render(true) }, toast: showToast }) : h('p', {}, 'ストアを読み込み中…') : tab === 'help' ? renderHelp() : settingsTab()),
-    (v ? offlineModal(v) : null) ?? '',
+    renderSaveImportDialog(saveImport) ?? (v ? offlineModal(v) : null) ?? '',
     toast ? h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' }, toast) : '')
   assignFocusKeys(root, tab)
-  for (const job of openDetails) { const details = root.querySelector<HTMLDetailsElement>(`[data-job="${job}"] details`); if (details) details.open = true }
   restorePanelPosition(root, position)
   if (focusJob) {
     const card = root.querySelector('.card.focus'), details = card?.querySelector('details')
     if (details) details.open = true
     card?.scrollIntoView({ block: 'nearest' }); focusJob = tab === 'party' ? focusJob : undefined
   }
-  offlineFocus.sync(root)
+  modalFocus.sync(root)
   } finally { rendering = false }
 }
 

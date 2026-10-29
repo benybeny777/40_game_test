@@ -1,5 +1,6 @@
 import atlasUrl from '../../../assets/sprites/art/dungeon-backgrounds.png'
 import { dungeonBalance } from '../../core/data/dungeon'
+import { battleSurfaceWidth } from './battleBounds'
 
 const panoramaWidth = 384, panoramaHeight = 80
 // Reviewed row boundaries and walkable floor baselines in the selected source.
@@ -25,7 +26,7 @@ export function drawDungeonBackground(ctx: CanvasRenderingContext2D, scene: Back
   const image = panoramas[backgroundTheme(scene.depth, scene.town)]
   if (!image) return
   const compact = scene.width <= 540
-  const width = compact ? scene.width : Math.min(scene.width, Math.max(360, scene.baseX + 165))
+  const width = battleSurfaceWidth(scene.width, scene.baseX)
   const height = compact ? scene.footY + 4 : Math.min(scene.footY + 4, 78)
   const top = scene.footY + 2 - Math.round(height * 74 / panoramaHeight)
   const tileWidth = Math.round(panoramaWidth * height / panoramaHeight)

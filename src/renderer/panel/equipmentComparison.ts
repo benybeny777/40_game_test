@@ -2,6 +2,7 @@ import type { ItemView, JobId } from '../../core/index.ts'
 import type { Stats } from '../../core/sim/types.ts'
 import { formatNumber, registerTranslations } from '../../shared/i18n'
 import { h } from './dom'
+import { realTickSeconds } from '../../core/sim/time'
 
 registerTranslations({
   '装備後の変化': 'Changes when equipped',
@@ -24,7 +25,7 @@ const fields: Array<{ key: keyof Stats; label: string; scale: number; unit: stri
   { key: 'maxHp', label: 'HP', scale: 1, unit: '' },
   { key: 'atk', label: '攻撃', scale: 1, unit: '' },
   { key: 'def', label: '防御', scale: 1, unit: '' },
-  { key: 'intervalMs', label: '間隔', scale: .001, unit: 's', lower: true },
+  { key: 'intervalMs', label: '間隔', scale: 1, unit: 's', lower: true },
   { key: 'cri', label: '会心', scale: 100, unit: '%' },
   { key: 'criMul', label: '会心倍率', scale: 1, unit: '×' },
   { key: 'eva', label: '回避', scale: 100, unit: '%' },
@@ -41,7 +42,9 @@ export function equipmentChanges(item: ItemView, job: JobId) {
   return fields.flatMap(field => {
     const values = comparison[field.key]
     if (!values) return []
-    const before = values.before * field.scale, after = values.after * field.scale
+    const display = (value: number) => field.key === 'intervalMs' ? realTickSeconds(value) : value * field.scale
+    const before = display(values.before), after = display(values.after)
+    if (before === after) return []
     return [{ ...field, before, after, improved: field.lower ? after < before : after > before }]
   })
 }

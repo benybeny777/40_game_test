@@ -1,14 +1,29 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Snapshot } from '../src/core/index.ts'
+import { GAME_SPEED } from '../src/core/data/timing'
+import { gaitTiming } from '../src/renderer/strip/gait'
+import { drawDungeonBackground } from '../src/renderer/strip/background'
 
 // Exercise the real event consumer without decoding images or launching a renderer.
-vi.mock('../src/renderer/strip/sprites/sheet', () => ({ sheets: {}, frameAt: vi.fn() }))
+vi.mock('../src/renderer/strip/sprites/sheet', () => ({ sheets: { projectiles: { width: 1, height: 1, anchor: [0, 0] } }, frameAt: vi.fn(() => ({ normal: { width: 1, height: 1 } })) }))
 vi.mock('../src/renderer/strip/background', () => ({ drawDungeonBackground: vi.fn() }))
 import { Scene } from '../src/renderer/strip/scene'
 
 const nextWave = (): Snapshot => ({ tick: 200, phase: 'walking', stageNo: 11, depthRank: 0, wave: 1, koban: 0, loop: false, units: [], projectiles: [], mines: [] })
 
 describe('batched scene events', () => {
+  it('uses the simulation speed for walking and loot lifetime, and resets the drawing clock on resume', () => {
+    const scene = new Scene({ banner: vi.fn(), label: vi.fn() })
+    scene.W = 384; scene.H = 112
+    const ctx = { clearRect: vi.fn(), fillRect: vi.fn(), drawImage: vi.fn(), save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), rect: vi.fn(), clip: vi.fn() } as unknown as CanvasRenderingContext2D
+    scene.ingest({ snapshot: nextWave(), events: [{ t: 'drop', x: 10, name: 'legendary', rarity: 4 }] }, 1000)
+    scene.draw(ctx, 1000); scene.draw(ctx, 1050)
+    expect(vi.mocked(drawDungeonBackground).mock.lastCall?.[1].walkOffset).toBeCloseTo(50 * GAME_SPEED * gaitTiming.dotsPerSecond / 1000)
+    scene.draw(ctx, 1000 + 2201 / GAME_SPEED)
+    expect(scene.busy(1000 + 2201 / GAME_SPEED)).toBe(false)
+    scene.resume(nextWave(), 5000); scene.draw(ctx, 5050)
+    expect(vi.mocked(drawDungeonBackground).mock.lastCall?.[1].walkOffset).toBeCloseTo(50 * GAME_SPEED * gaitTiming.dotsPerSecond / 1000)
+  })
   it('accepts tell and interruption after the boss has legitimately left the current snapshot', () => {
     const banner = vi.fn(), label = vi.fn(), scene = new Scene({ banner, label })
     expect(() => scene.ingest({ snapshot: nextWave(), events: [

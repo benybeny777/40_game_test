@@ -10,6 +10,7 @@ import { createProbe, FullscreenWatcher } from './fullscreen'
 import { confirmSaveRecovery, loadProfile, loadSettings, saveProfile, saveSettings, writeAtomic } from './saveStore'
 import { commitSettings, confirmSavedQuit, isProtectedExport, PersistenceGuard, StoragePause } from './persistence'
 import type { Profile } from '../core/index.ts'
+import { GAME_SPEED } from '../core/data/timing.ts'
 import { channels, defaultSettings, type PanelTarget, type Settings, type ShellState, type StripLayout } from '../shared/api'
 import { parseCommand, parseSettings, parseTarget } from '../shared/validate'
 import { CommerceService } from '../commerce/service'
@@ -19,6 +20,7 @@ import '../shared/locales/system'
 import { CloudClient } from '../shared/cloudClient'
 import { DEVELOPMENT_CLOUD_ENDPOINT, parseCloudCommand } from '../shared/cloud'
 import { prepareCloudRestore } from '../shared/cloudProfile'
+import { SaveImportSession } from '../shared/saveImport'
 
 const paths = resolvePaths(resolve(__dirname, '../..'), legacyUserData(app.getPath('appData')), process.env.GAME_PROFILE, process.env.GAME_DATA_DIR)
 app.setPath('userData', paths.data)
@@ -230,7 +232,7 @@ function start() {
   if (loaded.source !== 'new') loaded.profile = prepareInitialProfile(loaded.profile, Date.now() - Date.parse(loaded.profile.savedAt))
   // Keep the fully prepared startup profile recoverable if its initial disk write fails.
   savedCheckpoint = structuredClone(loaded.profile)
-  const speed = paths.profile === 'dev' ? Math.min(50, Math.max(1, Number(process.env.GAME_SPEED) || 1)) : 1
+  const speed = GAME_SPEED * (paths.profile === 'dev' ? Math.min(50, Math.max(1, Number(process.env.GAME_SPEED) || 1)) : 1)
   host = new GameHost(loaded.profile, randomInt(0, 2 ** 32 - 1), {
     frame: (frame) => { if (state.visible && !state.fullscreenHidden && !strip.isDestroyed()) strip.webContents.send(channels.frame, frame) },
     viewChanged: sendView,
@@ -245,15 +247,24 @@ function start() {
     offline: () => tray?.displayBalloon({ title: tr('おかえりなさい'), content: tr('留守の間の報酬が届いています。管理パネルで受け取れます。') }),
   }, speed)
   host.setPaused(state.paused)
+  const assertRestoreAvailable = () => {
+    if (state.runtimeError || state.storageError || quitting || handlingQuit) throw new Error(state.runtimeError ?? state.storageError ?? '終了処理中のため操作できません。')
+  }
+  const commitRestore = (prepared: ReturnType<typeof host.prepareProfile>) => {
+    assertRestoreAvailable()
+    if (!host.commitPreparedProfile(prepared, () => persistence.save(prepared.profile))) throw new Error(persistence.error)
+    state.paused = true
+    publish()
+  }
+  const saveImport = new SaveImportSession(profile => host.prepareProfile(profile), commitRestore, () => {
+    assertRestoreAvailable()
+    if (cloud.isBusy) throw new Error('クラウド処理中です。完了してから操作してください。')
+  })
   cloud = new CloudClient(process.env.GAME_CLOUD_URL ?? (paths.profile === 'dev' ? DEVELOPMENT_CLOUD_ENDPOINT : undefined), {
     readProfile: () => ({ ...structuredClone(host.profile), savedAt: new Date().toISOString() }),
     restoreProfile: raw => {
-      if (state.runtimeError || state.storageError || quitting || handlingQuit) throw new Error(state.runtimeError ?? 'Local save is unavailable; cloud restore was not applied')
-      const profile = prepareCloudRestore(raw)
-      const prepared = host.prepareProfile(profile)
-      if (!host.commitPreparedProfile(prepared, () => persistence.save(prepared.profile))) throw new Error(persistence.error)
-      state.paused = true
-      publish()
+      assertRestoreAvailable()
+      commitRestore(host.prepareProfile(prepareCloudRestore(raw)))
     },
   })
 
@@ -316,6 +327,23 @@ function start() {
   })
   ipcMain.on(channels.openSaveFolder, (event) => { if (fromPanel(event)) void shell.openPath(dirname(paths.save)) })
   ipcMain.on(channels.exportSave, (event) => { if (fromKnown(event) && !quitting && !handlingQuit) exportCurrentSave() })
+  // Translate before Electron prefixes a rejected IPC message; retain the original exception as cause.
+  const importAction = <T>(action: () => T): T => {
+    try { return action() }
+    catch (error) { throw new Error(tr(error instanceof Error ? error.message : String(error)), { cause: error }) }
+  }
+  ipcMain.handle(channels.prepareSaveImport, (event, text: unknown) => {
+    if (!fromPanel(event)) throw new Error('Unknown window')
+    return importAction(() => saveImport.preview(text))
+  })
+  ipcMain.handle(channels.confirmSaveImport, (event, token: unknown) => {
+    if (!fromPanel(event)) throw new Error('Unknown window')
+    return importAction(() => saveImport.confirm(token))
+  })
+  ipcMain.handle(channels.cancelSaveImport, (event, token: unknown) => {
+    if (!fromPanel(event)) throw new Error('Unknown window')
+    return importAction(() => saveImport.cancel(token))
+  })
   ipcMain.handle(channels.reportRuntimeError, (event, message: unknown) => {
     if (!fromKnown(event)) throw new Error('Unknown window')
     if (typeof message !== 'string' || !message.trim() || message.length > 8192) throw new Error('Invalid runtime error')

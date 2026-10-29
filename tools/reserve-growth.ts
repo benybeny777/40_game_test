@@ -1,3 +1,4 @@
+import { REAL_TICK_MS } from '../src/core/data/timing.ts'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { advance, buildView, createGame, newProfile, partyOrder, runCommand, validateProfile, type Game, type JobId } from '../src/core/index.ts'
@@ -18,13 +19,15 @@ export function reviewGear(game: Game, jobs: readonly JobId[]) {
   }
 }
 
+const TICKS_PER_MINUTE = 60000 / REAL_TICK_MS
+
 /** Prepare a real B30 save from B1, without fabricating levels or items. */
 export function prepareB30(seed: number) {
   const game = createGame(newProfile('simulation', seed), seed)
-  for (let tick = 0; tick < 180 * 600; tick++) {
+  for (let tick = 0; tick < 180 * TICKS_PER_MINUTE; tick++) {
     advance(game)
     if (game.world.stageNo >= 30) return game.profile
-    if (tick % 600 === 0) {
+    if (tick % TICKS_PER_MINUTE === 0) {
       reviewGear(game, game.profile.offlineJobs)
       const dojo = buildView(game.profile, game.world.loop).dojo.filter((d) => d.affordable).sort((a, z) => a.cost - z.cost)[0]
       if (dojo) runCommand(game, { c: 'buyDojo', key: dojo.key })
@@ -50,10 +53,10 @@ export function reserveGrowth(seed: number) {
     const initialLevels = Object.fromEntries(party.map((job) => [job, profile.party.members[job].lv]))
     const reserveBefore = JSON.stringify(partyOrder.filter((job) => !party.includes(job)).map((job) => profile.party.members[job]))
     const samples = []
-    for (let tick = 1; tick <= 15 * 600; tick++) {
+    for (let tick = 1; tick <= 15 * TICKS_PER_MINUTE; tick++) {
       advance(game)
-      if (equipment && tick % 600 === 0) reviewGear(game, party)
-      if ([1, 5, 10, 15].includes(tick / 600)) samples.push({ minute: tick / 600, floor: game.world.stageNo, levels: party.map((job) => profile.party.members[job].lv) })
+      if (equipment && tick % TICKS_PER_MINUTE === 0) reviewGear(game, party)
+      if ([1, 5, 10, 15].includes(tick / TICKS_PER_MINUTE)) samples.push({ minute: tick / TICKS_PER_MINUTE, floor: game.world.stageNo, levels: party.map((job) => profile.party.members[job].lv) })
     }
     const reserveAfter = JSON.stringify(partyOrder.filter((job) => !party.includes(job)).map((job) => profile.party.members[job]))
     if (reserveAfter !== reserveBefore) throw new Error('Nonparticipants changed during the trial')

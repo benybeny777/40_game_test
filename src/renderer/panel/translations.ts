@@ -1,6 +1,23 @@
 import { registerTranslations, registerTranslationTemplates } from '../../shared/i18n'
 
 registerTranslations({
+  '保存日時からの放置報酬も再計算します。現在の所持金・経験値・装備に追加するのではなく、ファイルの進行へ戻してから受け取ります。': 'Offline rewards since the save date are recalculated. Your current koban, experience and gear are replaced by the file before you collect those rewards.',
+  'キャンセル':'Cancel', '処理中…':'Working…',
+  'セーブファイルの取り込み':'Import a save file',
+  '取り込むセーブファイル':'Save file to import',
+  '書き出したJSONを選び、内容を確認してから現在の進行を置き換えます。':'Choose an exported JSON file and review its contents before replacing your current progress.',
+  'セーブファイルを選ぶ':'Choose a save file',
+  'セーブファイルが容量上限を超えています。':'The save file exceeds the size limit.',
+  'セーブファイルを読み込めませんでした。':'Could not read the save file.',
+  'セーブを復元できませんでした。':'Could not restore the save.',
+  'セーブの取り込みを取り消せませんでした。':'Could not cancel the save import.',
+  'セーブを復元しました。一時停止中です。':'Save restored. The game is paused.',
+  'このセーブを復元しますか？':'Restore this save?',
+  '保存日時':'Saved at', '到達地点':'Location',
+  '確認すると現在の進行を置き換えます。この確認中に進んだ分も含め、元に戻せません。残したい場合は取り消して、先に書き出してください。':'Confirming replaces your current progress, including progress made while this dialog is open. This cannot be undone. To keep it, cancel and export your current save first.',
+  '復元後は一時停止します。設定と購入した外観は変更しません。':'The restored game starts paused. Settings and purchased cosmetics are unchanged.',
+  '復元後は一時停止し、破損した設定もOSの言語に合わせた初期設定へ置き換えます。購入した外観は変更しません。':'The restored game starts paused. Damaged settings are replaced with defaults using your OS language. Purchased cosmetics are unchanged.',
+  '現在の進行を置き換えて復元':'Replace current progress and restore',
   '画面の切り替え':'Game sections',
   '保存を再試行':'Retry saving',
   '言語設定を保存できませんでした。':'The language preference could not be saved.',
@@ -61,6 +78,7 @@ registerTranslations({
   '開発テスト用の外観を取得しました。実決済は発生していません。':'Test cosmetic acquired. No real payment was made.', '外観を取得しました。':'Cosmetic acquired.',
 })
 registerTranslationTemplates([
+  {ja:'ファイル上限：{n} KiB',en:'File limit: {n} KiB'},
   {ja:'{rarity}をまとめて売る（{n}個）',en:'Sell all {rarity} ({n} items)'},
   {ja:'出撃・{n}番手',en:'Deployed · Position {n}'}, {ja:'次のLvまで {n}',en:'{n} EXP to next level'}, {ja:'{n}秒',en:'{n}s'}, {ja:'Lv{n}で解放',en:'Unlocks at Lv {n}'}, {ja:'未使用 {n} pt',en:'Unspent: {n} pt'},
   {ja:'主属性：{main}。自動配分 {weights}。手動にするには自動振りをOFFにします。',en:'Main attribute: {main}. Auto weights: {weights}. Turn auto allocation off to assign points manually.'},

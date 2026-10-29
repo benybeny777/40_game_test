@@ -1,6 +1,7 @@
+import { REAL_TICK_MS } from '../src/core/data/timing.ts'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { balance, createWorld, step, type JobId } from '../src/core/index.ts'
+import { createWorld, step, type JobId } from '../src/core/index.ts'
 import { partyOrder } from '../src/core/data/jobs.ts'
 
 export const formations: Record<string, JobId[]> = {
@@ -22,7 +23,7 @@ export function bossTrial(party: readonly JobId[], floor: number, seed: number, 
   const world = createWorld({ seed, stageNo: floor, level, order, gear, allocated })
   world.wave = 10
   let damageTaken = 0, healing = 0, deaths = 0, minHp = 1, interrupts = 0, hariteInterrupts = 0
-  for (let i = 0; i < 180000 / balance.tickMs; i++) {
+  for (let i = 0; i < 180000 / REAL_TICK_MS; i++) {
     const events = step(world)
     for (const event of events) {
       if (event.t === 'bossInterrupt') interrupts++
@@ -35,7 +36,7 @@ export function bossTrial(party: readonly JobId[], floor: number, seed: number, 
       if (event.t === 'death') deaths++
     }
     if (world.phase === 'battle') minHp = Math.min(minHp, ...world.units.filter((u) => u.side === 'ally').map((u) => Math.max(0, u.hp / u.stats.maxHp)))
-    if (world.phase === 'waveClear' || world.phase === 'wipe') return { result: world.phase, seconds: world.tick * balance.tickMs / 1000, damageTaken, healing, deaths, minHp, interrupts, hariteInterrupts }
+    if (world.phase === 'waveClear' || world.phase === 'wipe') return { result: world.phase, seconds: world.tick * REAL_TICK_MS / 1000, damageTaken, healing, deaths, minHp, interrupts, hariteInterrupts }
   }
   return { result: 'timeout', seconds: 180, damageTaken, healing, deaths, minHp, interrupts, hariteInterrupts }
 }

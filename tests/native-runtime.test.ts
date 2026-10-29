@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { newProfile } from '../src/core/index.ts'
+import { computeOffline, newProfile } from '../src/core/index.ts'
 import { GameHost, prepareInitialProfile, type HostCallbacks } from '../src/main/loop'
 import { PersistenceGuard, StoragePause } from '../src/main/persistence'
 
@@ -10,6 +10,60 @@ function setup() {
 }
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers() })
 describe('native simulation failure boundary', () => {
+  it('counts stalled wall time without unbounded battle catch-up or inflated income rates', () => {
+    vi.useFakeTimers({ toFake: ['performance', 'setInterval', 'clearInterval'] })
+    const { host } = setup(), at = performance.now()
+    host.start()
+    const clock = vi.spyOn(performance, 'now')
+    for (let index = 1; index <= 6; index++) {
+      clock.mockReturnValue(at + index * 10000)
+      vi.advanceTimersByTime(25)
+    }
+    expect(host.game.world.tick).toBe(240)
+    expect(host.profile.stats.playMs).toBe(60000)
+    expect(host.profile.rates.minutes).toHaveLength(1)
+    const rate = host.profile.rates.minutes[0]
+    expect(rate.koban).toBe(host.profile.stats.totalKoban)
+    expect(computeOffline(host.profile, 600000)?.koban).toBe(Math.floor(rate.koban * 10 * 0.5))
+    expect(host.profile.abyssRecords).toEqual({})
+    clock.mockReturnValue(at + 60050); vi.advanceTimersByTime(25)
+    expect(host.game.world.tick).toBe(241)
+    expect(host.profile.stats.playMs).toBe(60050)
+    host.stop()
+  })
+  it('keeps fractional development acceleration and sleep rewards on actual elapsed time', () => {
+    vi.useFakeTimers({ toFake: ['performance', 'setInterval', 'clearInterval'] })
+    const { profile, callbacks } = setup()
+    const host = new GameHost(profile, 1, callbacks, 2.6)
+    host.start(); vi.advanceTimersByTime(60000)
+    expect(host.game.world.tick).toBe(1560)
+    expect(profile.stats.playMs).toBe(60000)
+    expect(profile.rates.minutes).toHaveLength(1)
+    const rate = profile.rates.minutes[0].koban, tick = host.game.world.tick
+    // Jump the wall clock while allowing only one polling callback to run.
+    const now = performance.now()
+    vi.spyOn(performance, 'now').mockReturnValue(now + 600000)
+    vi.advanceTimersByTime(25)
+    expect(host.game.world.tick).toBe(tick)
+    expect(profile.pendingOffline?.ms).toBe(600000)
+    expect(profile.pendingOffline?.koban).toBe(Math.floor(rate * 10 * 0.5))
+    expect(callbacks.offline).toHaveBeenCalledOnce()
+    host.stop()
+  })
+  it('runs 1200 ticks per real minute while retaining real play time, pause and resume', () => {
+    vi.useFakeTimers({ toFake: ['performance', 'setInterval', 'clearInterval'] })
+    const { host } = setup()
+    host.start(); vi.advanceTimersByTime(60000)
+    expect(host.game.world.tick).toBe(1200)
+    expect(host.profile.stats.playMs).toBe(60000)
+    expect(host.profile.rates.minutes).toHaveLength(1)
+    host.setPaused(true); vi.advanceTimersByTime(60000)
+    expect(host.game.world.tick).toBe(1200)
+    host.setPaused(false); vi.advanceTimersByTime(1000)
+    expect(host.game.world.tick).toBe(1220)
+    expect(host.profile.stats.playMs).toBe(61000)
+    host.stop()
+  })
   it('stops a failed polling tick, preserves its cause and never retries or autosaves the partial state', () => {
     vi.useFakeTimers({ toFake: ['performance', 'setInterval', 'clearInterval'] })
     const { host, callbacks } = setup(), error = new Error('frame serialization failed')

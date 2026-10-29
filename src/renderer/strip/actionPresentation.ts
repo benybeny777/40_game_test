@@ -1,8 +1,11 @@
 import { balance } from '../../core/data/balance.ts'
 import type { Side } from '../../core/sim/types.ts'
 import { gaitTiming } from './gait'
+import { GAME_SPEED } from '../../core/data/timing'
 
-export const actionTiming = { walkFps: gaitTiming.fps, attackFps: 14, hitStopMs: 45, flashMs: 65, knockMs: 150, sparkMs: 115, recoveryMs: 110 } as const
+// Impact readability has a real-time floor; attack and recovery motions still follow the faster game clock.
+export const actionTiming = { walkFps: gaitTiming.fps, attackFps: 14, hitStopMs: 45 * GAME_SPEED, flashMs: 65 * GAME_SPEED, impactCooldownMs: 160 * GAME_SPEED, knockMs: 150, sparkMs: 115, recoveryMs: 110 } as const
+export const hitFeedbackDue = (previous: number | undefined, now: number) => previous === undefined || now - previous >= actionTiming.impactCooldownMs
 type Style = 'slash' | 'thrust' | 'fist' | 'palm' | 'toss' | 'spell' | 'hop' | 'fan' | 'book'
 interface Motion { style: Style; reach: number; lift: number; hold: number; width: number; height: number }
 const motion = (style: Style, reach: number, lift = 0, hold = 80, width = 0, height = 0): Motion => ({ style, reach, lift, hold, width, height })

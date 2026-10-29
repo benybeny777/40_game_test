@@ -2,6 +2,8 @@ import type { Command, ProfileView } from '../../core/index.ts'
 import { difficulties } from '../../core/data/dungeon.ts'
 import { h } from './dom'
 import { formatNumber, translatedLabel } from '../../shared/i18n'
+import { renderAbyssRecords } from './abyssRecords'
+import { spriteImage } from './portrait'
 
 export function renderDungeon(v: ProfileView, command: (command: Command) => Promise<unknown>) {
   const d = v.dungeon
@@ -23,6 +25,7 @@ export function renderDungeon(v: ProfileView, command: (command: Command) => Pro
       h('label', {}, '到達済みの階へ ', h('input', { type: 'number', min: 1, max: d.best, step: 1, value: d.depth, 'aria-label': '探索する地下階', oninput: (event: Event) => { targetFloor = Number((event.target as HTMLInputElement).value) } })),
       h('button', { type: 'submit' }, '出発')),
     h('p', { class: 'hint' }, '通常と修羅は100階まで。深淵だけ100階を超えて進めます。3回続けて全滅すると、前の階で鍛え直して再挑戦します。'),
+    d.difficulty === 2 ? renderAbyssRecords(d.abyss, job => spriteImage(job, 2)) : null,
     h('dl', { class: 'record' },
       ...([['撃破', formatNumber(v.stats.kills)], ['ボス撃破', formatNumber(v.stats.bossKills)], ['ステージクリア', formatNumber(v.stats.stageClears)], ['全滅', formatNumber(v.stats.wipes)],
         ['累計小判', formatNumber(v.totalKoban)], ['プレイ時間', `${Math.floor(v.stats.playMs / 3600000)}時間${Math.floor(v.stats.playMs / 60000) % 60}分`]] as const)

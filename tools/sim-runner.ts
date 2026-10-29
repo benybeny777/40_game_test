@@ -1,9 +1,10 @@
+import { REAL_TICK_MS } from '../src/core/data/timing.ts'
 import { parseArgs } from 'node:util'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { advance, balance, buildView, createGame, createWorld, newProfile, runCommand, snapshot, stageLabel, step, validateProfile, type Difficulty, type DojoKey, type JobId } from '../src/core/index.ts'
+import { advance, buildView, createGame, createWorld, newProfile, runCommand, snapshot, stageLabel, step, validateProfile, type Difficulty, type DojoKey, type JobId } from '../src/core/index.ts'
 import { partyOrder } from '../src/core/data/jobs.ts'
 
 export function simulate(options: { stage: number; minutes: number; seed: number; level: number; difficulty?: Difficulty }) {
@@ -11,17 +12,17 @@ export function simulate(options: { stage: number; minutes: number; seed: number
   for (const member of Object.values(build.party.members)) member.lv = options.level
   const ready = validateProfile(build)
   const world = createWorld({ seed: options.seed, stageNo: options.stage, level: options.level, depthRank: options.difficulty, loop: true, allocated: Object.fromEntries(partyOrder.map((job) => [job, ready.party.members[job].allocated])) })
-  const totalTicks = Math.floor(options.minutes * 60 * 1000 / balance.tickMs)
+  const totalTicks = Math.floor(options.minutes * 60 * 1000 / REAL_TICK_MS)
   const samples = []
   let koban = 0, exp = 0, wipes = 0, clears = 0, stageClears = 0
   let waveStart = 0, stageStart = 0, waveMs = 0, stageMs = 0
   const damage: Record<string, number> = Object.fromEntries(partyOrder.map((id) => [id, 0]))
   const healing: Record<string, number> = { ...damage }
-  const report = () => ({ minutes: world.tick * balance.tickMs / 60000, stage: world.stageNo, wave: world.wave,
+  const report = () => ({ minutes: world.tick * REAL_TICK_MS / 60000, stage: world.stageNo, wave: world.wave,
     waveClears: clears, stageClears, wipes, wipeRate: wipes / Math.max(1, wipes + clears),
     meanWaveSeconds: clears ? waveMs / clears / 1000 : null, meanStageSeconds: stageClears ? stageMs / stageClears / 1000 : null,
-    koban, exp, kobanPerMinute: koban / Math.max(world.tick * balance.tickMs / 60000, Number.EPSILON),
-    expPerMinute: exp / Math.max(world.tick * balance.tickMs / 60000, Number.EPSILON),
+    koban, exp, kobanPerMinute: koban / Math.max(world.tick * REAL_TICK_MS / 60000, Number.EPSILON),
+    expPerMinute: exp / Math.max(world.tick * REAL_TICK_MS / 60000, Number.EPSILON),
     damage: { ...damage }, healing: { ...healing }, drops: null })
   const started = performance.now()
   for (let tick = 0; tick < totalTicks; tick++) {
@@ -38,11 +39,11 @@ export function simulate(options: { stage: number; minutes: number; seed: number
       if (event.t === 'phase') {
         if (event.phase === 'walking') { waveStart = tick; if (event.wave === 1) stageStart = tick }
         if (event.phase === 'wipe') wipes++
-        if (event.phase === 'waveClear') { clears++; waveMs += (tick - waveStart) * balance.tickMs }
-        if (event.phase === 'stageClear') { stageClears++; stageMs += (tick - stageStart) * balance.tickMs; stageStart = tick }
+        if (event.phase === 'waveClear') { clears++; waveMs += (tick - waveStart) * REAL_TICK_MS }
+        if (event.phase === 'stageClear') { stageClears++; stageMs += (tick - stageStart) * REAL_TICK_MS; stageStart = tick }
       }
     }
-    if (world.tick % (60000 / balance.tickMs) === 0) samples.push(report())
+    if (world.tick % (60000 / REAL_TICK_MS) === 0) samples.push(report())
   }
   const summary = report()
   const ratio = (totals: Record<string, number>) => {
@@ -62,7 +63,7 @@ export function simulateProgress(options: { minutes: number; seed: number; party
     profile.party.order = [...options.party, ...partyOrder.filter((job) => !options.party!.includes(job))]
   }
   const game = createGame(profile, options.seed)
-  const totalTicks = Math.floor(options.minutes * 60000 / balance.tickMs)
+  const totalTicks = Math.floor(options.minutes * 60000 / REAL_TICK_MS)
   const firstClear: Record<string, number> = {}
   const samples = []
   let ultimates = 0, skills = 0, kakuhenHits = 0, kakuhenTries = 0
@@ -71,7 +72,7 @@ export function simulateProgress(options: { minutes: number; seed: number; party
   for (let tick = 1; tick <= totalTicks; tick++) {
     const { events } = advance(game)
     for (const event of events) {
-      if (event.t === 'phase' && event.phase === 'stageClear' && firstClear[`${event.depthRank ?? 0}:${event.stageNo}`] === undefined) firstClear[`${event.depthRank ?? 0}:${event.stageNo}`] = tick * balance.tickMs / 60000
+      if (event.t === 'phase' && event.phase === 'stageClear' && firstClear[`${event.depthRank ?? 0}:${event.stageNo}`] === undefined) firstClear[`${event.depthRank ?? 0}:${event.stageNo}`] = tick * REAL_TICK_MS / 60000
       if (event.t === 'ultimate') ultimates++
       if (event.t === 'skill') skills++
       if (event.t === 'kakuhen') { kakuhenTries++; if (event.hit) kakuhenHits++ }
@@ -82,9 +83,9 @@ export function simulateProgress(options: { minutes: number; seed: number; party
       const cheapest = view.dojo.filter((entry) => entry.affordable).sort((a, z) => a.cost - z.cost)[0]
       if (cheapest) runCommand(game, { c: 'buyDojo', key: cheapest.key as DojoKey })
     }
-    if (tick % (600000 / balance.tickMs) === 0) {
+    if (tick % (600000 / REAL_TICK_MS) === 0) {
       const p = game.profile
-      samples.push({ 分: tick * balance.tickMs / 60000, ステージ: stageLabel(game.world.stageNo).label, 解放: p.progress.unlockedStage,
+      samples.push({ 分: tick * REAL_TICK_MS / 60000, ステージ: stageLabel(game.world.stageNo).label, 解放: p.progress.unlockedStage,
         Lv: Object.values(p.party.members).map((member) => member.lv).join('/'), 小判: Math.floor(p.koban), 道場: Object.values(p.dojo).join('/'),
         全滅: p.stats.wipes, 撃破: p.stats.kills, 周回: game.world.loop ? 'ON' : '' })
     }
@@ -110,7 +111,7 @@ function main() {
     difficulty: { type: 'string', default: '0' }, party: { type: 'string' }, seed: { type: 'string', default: '1' }, lv: { type: 'string', default: '1' }, json: { type: 'boolean' }, progress: { type: 'boolean' },
   } })
   const minutes = Number(values.minutes)
-  if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isSafeInteger(minutes * 60000 / balance.tickMs)) throw new RangeError('--minutes は正の100ms刻みの時間を指定してください')
+  if (!Number.isFinite(minutes) || minutes <= 0 || !Number.isSafeInteger(minutes * 60000 / REAL_TICK_MS)) throw new RangeError('--minutes は正の50ms刻みの時間を指定してください')
   if (values.progress) { printProgress(simulateProgress({ minutes, seed: Number(values.seed), party: values.party?.split(',') as JobId[] | undefined }), values.json === true); return }
   const result = simulate({ stage: Number(values.stage), minutes, seed: Number(values.seed), level: Number(values.lv), difficulty: Number(values.difficulty) as Difficulty })
   if (values.json) { console.log(JSON.stringify(result, null, 2)); return }

@@ -1,6 +1,7 @@
 import { jobs, partyOrder } from '../../core/index.ts'
 import { artReady, frameAt, sheets } from '../strip/sprites/sheet'
 import { gaitTiming, walkPose } from '../strip/gait'
+import { GAME_SPEED } from '../../core/data/timing'
 
 const root = document.querySelector('#jobs')!
 let paused = false, distance = 0, last = 0
@@ -17,7 +18,7 @@ void artReady.then(() => {
   })
   function draw(now: number) {
     const elapsed = last ? Math.min(100, now - last) : 0; last = now
-    if (!paused) distance += elapsed * gaitTiming.dotsPerSecond / 1000
+    if (!paused) distance += elapsed * GAME_SPEED * gaitTiming.dotsPerSecond / 1000
     for (const { id, slot, sheet, ctx, label } of cards) {
       const pose = walkPose(id, slot, distance), frame = frameAt(sheet, 'walk', pose.elapsedMs)
       ctx.clearRect(0, 0, 208, 200); ctx.imageSmoothingEnabled = false

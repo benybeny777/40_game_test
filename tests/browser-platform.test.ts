@@ -1,21 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { newProfile, PROFILE_VERSION, type Profile } from '../src/core/index.ts'
+import { computeOffline, newProfile, PROFILE_VERSION, type Profile } from '../src/core/index.ts'
 import { defaultSettings, type ShellApi, type ShellState } from '../src/shared/api.ts'
 import { initializePlatform } from '../src/renderer/platform.ts'
 import { getLocale, setLocale } from '../src/shared/i18n'
+import { MemoryStorage } from './helpers/memoryStorage'
+import { mountSaveImport } from '../src/renderer/panel/saveImport'
+vi.mock('../src/renderer/panel/saveImport', () => ({ mountSaveImport: vi.fn() }))
 
 const storageKey = 'hyakkiko.web.save'
 const start = Date.parse('2026-10-29T03:00:00.000Z')
-class MemoryStorage implements Storage {
-  private values = new Map<string, string>()
-  failWrites = false
-  get length() { return this.values.size }
-  clear() { this.values.clear() }
-  getItem(key: string) { return this.values.get(key) ?? null }
-  key(index: number) { return [...this.values.keys()][index] ?? null }
-  removeItem(key: string) { this.values.delete(key) }
-  setItem(key: string, value: string) { if (this.failWrites) throw new Error('QuotaExceededError'); this.values.set(key, String(value)) }
-}
 class Element {
   className = ''; textContent = ''; children: Element[] = []; href = ''; download = ''
   append(...children: Element[]) { this.children.push(...children) }
@@ -57,9 +50,96 @@ const profiled = () => {
 }
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(start); randomValue = 0 })
+
+it('counts browser stalls as active time without retaining a battle backlog', async () => {
+  const { storage } = browser()
+  seed(storage, newProfile(new Date(start).toISOString(), 7))
+  const api = initializePlatform()
+  let tick = 0
+  api.onFrame(frame => { tick = frame.snapshot.tick })
+  for (let index = 1; index <= 6; index++) {
+    vi.setSystemTime(start + index * 10000 - 50)
+    vi.advanceTimersByTime(50)
+  }
+  expect(tick).toBe(600)
+  expect((await api.getView()).stats.playMs).toBe(60000)
+  const saved = JSON.parse(storage.getItem(storageKey)!).profile as Profile
+  expect(saved.rates.minutes).toHaveLength(1)
+  expect(saved.rates.minutes[0].koban).toBe(saved.stats.totalKoban)
+  expect(computeOffline(saved, 600000)?.koban).toBe(Math.floor(saved.rates.minutes[0].koban * 10 * 0.5))
+  expect(saved.abyssRecords).toEqual({})
+  vi.advanceTimersByTime(50)
+  expect(tick).toBe(601)
+  expect((await api.getView()).stats.playMs).toBe(60050)
+})
+
+it('runs 1200 browser ticks per real minute with one real minute of play and income', async () => {
+  const { storage } = browser(), profile = newProfile(new Date(start).toISOString(), 7)
+  seed(storage, profile)
+  const api = initializePlatform()
+  let tick = 0
+  api.onFrame(frame => { tick = frame.snapshot.tick })
+  vi.advanceTimersByTime(60000)
+  expect(tick).toBe(1200)
+  expect((await api.getView()).stats.playMs).toBe(60000)
+  const saved = JSON.parse(storage.getItem(storageKey)!).profile as Profile
+  expect(saved.rates.minutes).toHaveLength(1)
+})
 afterEach(() => { setLocale('ja'); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('ブラウザー保存・復帰・操作', () => {
+  it('初期破損の元の原因表示を取込UIで上書きしない', () => {
+    const { storage, document } = browser()
+    storage.setItem(storageKey, '{broken original save')
+    vi.mocked(mountSaveImport).mockImplementationOnce(container => container.replaceChildren())
+    expect(() => initializePlatform()).toThrow()
+    const section = document.root.children[0]
+    expect(section.children[0].textContent).toBe('保存データを確認してください')
+    expect(section.children[1].textContent).toContain('JSON')
+    expect(section.children[2].textContent).toContain('保存データは変更していません')
+    expect(section.children).toHaveLength(4)
+    expect(storage.getItem(storageKey)).toBe('{broken original save')
+  })
+  it('クラウド通信中に確認されたファイルで進行を置き換えない', async () => {
+    const { storage } = browser(); seed(storage, profiled(), true)
+    let respond!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(resolve => { respond = resolve })))
+    const api = initializePlatform(), preview = await api.prepareSaveImport(JSON.stringify(profiled()))
+    const pending = api.cloudCommand({ action: 'login', username: 'user', password: 'test-password-123' })
+    const before = storage.getItem(storageKey)
+    await expect(api.confirmSaveImport(preview.token)).rejects.toThrow('クラウド処理中')
+    expect(storage.getItem(storageKey)).toBe(before)
+    respond(new Response(JSON.stringify({ error: 'LOGIN_FAILED' }), { status: 401 }))
+    expect((await pending).ok).toBe(false)
+  })
+  it('JSON取込は確認まで変更せず、取消・不正ファイル・未来版を拒否し、成功時は停止して保存する', async () => {
+    const { storage } = browser(), original = profiled(), imported = profiled()
+    original.koban = 123; imported.koban = 777; seed(storage, original)
+    const api = initializePlatform(), before = storage.getItem(storageKey)
+    const preview = await api.prepareSaveImport(JSON.stringify(imported))
+    expect((await api.getView()).koban).toBe(123); expect(storage.getItem(storageKey)).toBe(before)
+    await api.cancelSaveImport(preview.token)
+    await expect(api.confirmSaveImport(preview.token)).rejects.toThrow('期限切れ')
+    await expect(api.prepareSaveImport('{bad')).rejects.toThrow('JSON')
+    await expect(api.prepareSaveImport(JSON.stringify({ ...imported, version: PROFILE_VERSION + 1 }))).rejects.toThrow()
+    expect(storage.getItem(storageKey)).toBe(before)
+    await api.confirmSaveImport((await api.prepareSaveImport(JSON.stringify(imported))).token)
+    expect((await api.getView()).koban).toBe(777); expect((await api.getState()).paused).toBe(true)
+    expect(JSON.parse(storage.getItem(storageKey)!).profile.koban).toBe(777)
+  })
+  it.each(['quota', 'conflict', 'runtime'] as const)('確認後の%sは取込を拒否して元の進行を保持する', async failure => {
+    const { storage } = browser(), original = profiled(), imported = profiled()
+    original.koban = 123; imported.koban = 777; seed(storage, original, true)
+    const api = initializePlatform(), preview = await api.prepareSaveImport(JSON.stringify(imported))
+    if (failure === 'quota') storage.failWrites = true
+    if (failure === 'conflict') storage.setItem(storageKey, envelope({ ...original, koban: 456 }))
+    if (failure === 'runtime') await api.reportRuntimeError('Intentional runtime failure')
+    const before = storage.getItem(storageKey)
+    await expect(api.confirmSaveImport(preview.token)).rejects.toThrow()
+    expect((await api.getView()).koban).toBe(123); expect(storage.getItem(storageKey)).toBe(before)
+    expect((await api.getState()).paused).toBe(true)
+    await api.cancelSaveImport(preview.token)
+  })
   it('クラウド復元のローカル書込が失敗しても現在の進行は失わない', async () => {
     const { storage } = browser(), original = profiled(), remote = profiled()
     original.koban = 123; remote.koban = 777; seed(storage, original, true)

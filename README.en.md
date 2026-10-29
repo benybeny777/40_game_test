@@ -6,11 +6,13 @@ A Japanese folklore idle RPG about choosing three companions from a roster of 17
 
 Normal and Nightmare each have 100 floors. Only the highest difficulty, Abyss, continues without a gameplay floor limit. Future updates are intended to introduce dungeons with different themes and separate progress. The first launch follows your OS or browser language, choosing Japanese or English. You can override it in Settings.
 
+The current dungeon cycles through three regions, twelve enemy types and three major bosses. Abyss goals mark B100, 250, 500 and 1000, then every 1000 floors. An expedition journal records the three companions, allocated attributes and gear names used for those clears.
+
 ![Party management in the running game](docs/images/play-panel-en.png)
 
 ![Battle above the Windows taskbar](docs/images/play-strip.png)
 
-[All 17 companions](docs/images/characters.png) · [12 enemies](docs/images/enemies.png) · [English phone layout](docs/images/mobile-en.png)
+[17 companion profiles (Japanese)](docs/CHARACTERS.md) · [Enemies and combat specification (Japanese)](docs/GAME_SPEC.md) · [Playing on a phone (Japanese)](docs/MOBILE.md)
 
 [Catacombs](docs/images/background-catacombs.png) · [Market](docs/images/background-market.png) · [Archive](docs/images/background-archive.png) · [Combat motion](docs/images/action-frames.png)
 
@@ -54,6 +56,10 @@ See [Mobile and browser setup](docs/MOBILE.md) for connecting a phone on the sam
 Windows saves automatically every 30 seconds, after floor clears and commands, and when quitting. Recovering a damaged save from its previous valid version requires confirmation explaining that later progress may be lost. Recovery starts paused; choosing Exit leaves the original files unchanged. Unsupported future formats and unrecoverable files stop startup without resetting progress. Save formats v1 and v2 migrate to v3.
 
 A failed save pauses progression and displays recovery actions. On Windows, retry saving or export the current progress to another location. If saving still fails when quitting, choose to return to the game, export, or explicitly exit without saving. Progress is never silently discarded by that dialog.
+
+Import an exported JSON file from Settings using **Choose a save file**. Review its date, floor and three companions before explicitly replacing your progress. Restoration starts paused and keeps your settings. A browser save that cannot load can also be restored from the error screen; this recovery resets settings to OS-language defaults. Saves from a newer version cannot be overwritten.
+
+Version 0.7.1 doubles the combat, movement and between-wave pace again compared with 0.7.0. Play time and income per minute still use real elapsed time.
 
 Browser saves stay in the current browser and site. Storage failures and conflicting updates from another tab stop progression. Export before reloading; there is no automatic overwrite retry for a tab conflict. Clearing site data also removes its save. Cloud saves are available through the separate service described below.
 

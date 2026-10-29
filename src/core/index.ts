@@ -2,6 +2,7 @@ export { createWorld, step, snapshot, refreshParty, requestStage, requestOrder, 
 export { computeStats } from './sim/stats.ts'
 export { resolveHit } from './sim/combat.ts'
 export { balance } from './data/balance.ts'
+export { GAME_SPEED, REAL_TICK_MS } from './data/timing.ts'
 export { jobs, partyOrder, partySize, defaultFormation, deployedJobs, roleLabels, type JobRole } from './data/jobs.ts'
 export { enemies } from './data/enemies.ts'
 export * from './data/dungeon.ts'

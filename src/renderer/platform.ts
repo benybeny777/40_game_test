@@ -11,18 +11,21 @@ import { getLocale, setLocale, systemLocale, translatedLabel } from '../shared/i
 import { CloudClient } from '../shared/cloudClient'
 import { DEVELOPMENT_CLOUD_ENDPOINT, parseCloudCommand } from '../shared/cloud'
 import { prepareCloudRestore } from '../shared/cloudProfile'
+import { SaveImportSession } from '../shared/saveImport'
+import { BROWSER_SAVE_FORMAT as STORAGE_FORMAT, BROWSER_SAVE_KEY as STORAGE_KEY, browserSaveRecord } from '../shared/browserSave'
+import { browserSaveRecovery } from './browserSaveRecovery'
+import { mountSaveImport } from './panel/saveImport'
+import { GAME_SPEED, REAL_TICK_MS } from '../core/data/timing.ts'
+import { accountElapsed } from '../core/game.ts'
 
-const STORAGE_KEY = 'hyakkiko.web.save'
 const RUNTIME_PAUSED_KEY = 'hyakkiko.runtime-paused'
 const LEGACY_LOCALE_KEY = 'hyakkiko.locale'
-const STORAGE_FORMAT = 1
 const AUTOSAVE_MS = 5000, SLEEP_GAP_MS = 60000, VIEW_INTERVAL_MS = 400, MAX_STEPS = 50, PREVIEW_MS = 30000
 type BrowserState = ShellState & { platform: 'browser'; storageError?: string }
-interface SavedBrowserGame { format: number; revision: string; profile: Profile; settings: Settings; state: { paused: boolean } }
 const copy = <T>(value: T): T => structuredClone(value)
 const object = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
-function showLoadError(message: string) {
+function showLoadError(message: string, original: string | null | undefined) {
   if (document.documentElement) document.documentElement.lang = getLocale()
   const root = document.querySelector('#app') ?? document.body
   const section = document.createElement('section'); section.className = 'browser-load-error'
@@ -30,11 +33,15 @@ function showLoadError(message: string) {
   const text = document.createElement('p'); text.textContent = translatedLabel(message)
   const hint = document.createElement('p'); hint.textContent = translatedLabel('保存データは変更していません。このブラウザーのデータを消さずに、対応するバージョンで開いてください。')
   section.append(title, text, hint); root.replaceChildren(section)
+  if (original !== undefined) {
+    const importSection = document.createElement('div'); section.append(importSection)
+    mountSaveImport(importSection, browserSaveRecovery(localStorage, original, getLocale(), () => window.location.reload()), { resetSettings: true })
+  }
 }
 
 export function initializePlatform(): ShellApi {
   if (window.game) return window.game
-  let stored: string | null
+  let stored: string | null | undefined
   let profile: Profile, settings: Settings, paused = false
   let legacyLocale: string | null
   const now = Date.now()
@@ -63,7 +70,7 @@ export function initializePlatform(): ShellApi {
     if (sessionStorage.getItem(RUNTIME_PAUSED_KEY) === '1') { paused = true; sessionStorage.removeItem(RUNTIME_PAUSED_KEY) }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'このブラウザーの保存データを読み込めません。'
-    showLoadError(message)
+    showLoadError(message, stored)
     throw new Error(message, { cause: error })
   }
 
@@ -110,9 +117,8 @@ export function initializePlatform(): ShellApi {
         blockStorage('別の画面で保存データが更新されました。重複した画面を閉じ、読み直してください。'); return false
       }
       const savedAt = new Date(at).toISOString()
-      // A unique revision also detects two sessions that happen to save identical profiles in the same millisecond.
-      const revision = [...crypto.getRandomValues(new Uint32Array(4))].map(value => value.toString(16).padStart(8, '0')).join('')
-      const record: SavedBrowserGame = { format: STORAGE_FORMAT, revision, profile: { ...game.profile, savedAt }, settings: state.settings, state: { paused: state.paused } }
+      // The shared record includes a unique revision, even for identical profiles in the same millisecond.
+      const record = browserSaveRecord(game.profile, state.settings, state.paused, at)
       const text = JSON.stringify(record)
       localStorage.setItem(STORAGE_KEY, text)
       stored = text; game.profile.savedAt = savedAt; lastSave = at
@@ -157,17 +163,29 @@ export function initializePlatform(): ShellApi {
     if (initial) queueMicrotask(() => { if (listeners.has(listener)) { try { listener(copy(initial())) } catch (error) { listeners.delete(listener); stopRuntime(reportRendererError('Browser initial view failed', error, false)) } } })
     return () => { listeners.delete(listener) }
   }
+  const assertRestoreAvailable = () => {
+    if (storageBlocked || state.runtimeError) throw new Error(state.runtimeError ?? state.storageError)
+  }
+  const commitRestore = (next: Game) => {
+    assertRestoreAvailable()
+    const previous = game
+    game = next; state.paused = true; accumulated = 0; lastTick = Date.now()
+    if (!persist()) {
+      game = previous; publishState(); publishView(); emit(subscribers.frame, currentFrame())
+      throw new Error(state.storageError)
+    }
+    publishState(); publishView(); emit(subscribers.frame, currentFrame())
+  }
+  const saveImport = new SaveImportSession(profile => createGame(profile, profile.rng), commitRestore, () => {
+    assertRestoreAvailable()
+    if (cloud.isBusy) throw new Error('クラウド処理中です。完了してから操作してください。')
+  })
   const cloud = new CloudClient(import.meta.env.VITE_CLOUD_URL ?? (import.meta.env.DEV ? DEVELOPMENT_CLOUD_ENDPOINT : undefined), {
     readProfile: () => ({ ...copy(game.profile), savedAt: new Date().toISOString() }),
     restoreProfile: raw => {
-      if (storageBlocked || state.runtimeError) throw new Error(state.runtimeError ?? state.storageError)
-      const restored = prepareCloudRestore(raw), next = createGame(restored, restored.rng), previous = game
-      game = next; state.paused = true; accumulated = 0; lastTick = Date.now()
-      if (!persist()) {
-        game = previous; publishState(); publishView(); emit(subscribers.frame, currentFrame())
-        throw new Error(state.storageError)
-      }
-      publishState(); publishView(); emit(subscribers.frame, currentFrame())
+      assertRestoreAvailable()
+      const restored = prepareCloudRestore(raw)
+      commitRestore(createGame(restored, restored.rng))
     },
   })
   const api: ShellApi = {
@@ -218,6 +236,9 @@ export function initializePlatform(): ShellApi {
     onNavigate: listener => subscribe(subscribers.navigate, listener),
     openSaveFolder: downloadProfile,
     exportSave: downloadProfile,
+    prepareSaveImport: async text => saveImport.preview(text),
+    confirmSaveImport: async token => saveImport.confirm(token),
+    cancelSaveImport: async token => saveImport.cancel(token),
     // Reload after exporting: retrying here could overwrite another tab's newer checkpoint.
     reportRuntimeError: async message => stopRuntime(message),
     reloadAfterRuntimeError: () => { if (state.runtimeError) { sessionStorage.setItem(RUNTIME_PAUSED_KEY, '1'); window.location.reload() } },
@@ -244,12 +265,16 @@ export function initializePlatform(): ShellApi {
     const at = Date.now(), elapsed = Math.max(0, at - lastTick); lastTick = at
     if (suspendedAt !== null || state.paused || storageBlocked || state.runtimeError) return
     if (elapsed >= SLEEP_GAP_MS) { offline(elapsed); accumulated = 0; persist(at); publishView(); return }
-    accumulated += elapsed
+    accumulated += elapsed * GAME_SPEED
     let steps = 0, changed = false, cleared = false
     const events: SimEvent[] = []
-    while (accumulated >= balance.tickMs && steps < MAX_STEPS) {
+    while (accumulated >= balance.tickMs && steps < MAX_STEPS * GAME_SPEED) {
       const result = advance(game); events.push(...result.events); changed ||= result.changed; cleared ||= result.stageCleared
       accumulated -= balance.tickMs; steps++
+    }
+    if (accumulated >= balance.tickMs) {
+      accountElapsed(game, accumulated / GAME_SPEED)
+      accumulated = 0
     }
     if (steps) emit(subscribers.frame, currentFrame(events))
     if (changed && at - lastView >= VIEW_INTERVAL_MS) { lastView = at; publishView() }
@@ -266,7 +291,7 @@ export function initializePlatform(): ShellApi {
     suspendedAt = null; lastTick = at; accumulated = 0
     if (!storageBlocked && !state.runtimeError) { offline(elapsed); persist(at); publishView(); emit(subscribers.frame, currentFrame()) }
   }
-  tickTimer = setInterval(() => { try { tick() } catch (error) { stopRuntime(reportRendererError('Game update failed', error, false)) } }, balance.tickMs)
+  tickTimer = setInterval(() => { try { tick() } catch (error) { stopRuntime(reportRendererError('Game update failed', error, false)) } }, REAL_TICK_MS)
   window.addEventListener('pagehide', suspend)
   window.addEventListener('pageshow', resume)
   document.addEventListener('visibilitychange', () => { if (document.hidden) suspend(); else resume() })

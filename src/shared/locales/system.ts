@@ -1,6 +1,13 @@
 import { brand } from '../brand'
 import { registerTranslations, registerTranslationTemplates } from '../i18n'
 registerTranslations({
+  '保存ファイルの内容を読み取れません。': 'The save file contents could not be read.',
+  '保存ファイルは1MiB以下にしてください。': 'Choose a save file no larger than 1 MiB.',
+  '保存ファイルのJSONを読み取れません。': 'The save file is not valid JSON.',
+  '取込の確認が期限切れです。保存ファイルを選び直してください。': 'This import preview has expired. Select the save file again.',
+  '取込の確認を読み取れません。': 'The import confirmation could not be read.',
+  '保存領域にアクセスできません。ブラウザーの設定を確認してから読み直してください。': 'Save storage is unavailable. Check your browser settings and reload.',
+  '取込は保存済みです。ページを読み直してください。': 'The import was saved. Reload the page.',
   '注目会心': 'Marked critical', '鈍化追撃': 'Slowed follow-up', '結界反撃': 'Warded counter',
   '節目の通知音': 'Milestone sounds',
   '通知音の音量': 'Notification volume',

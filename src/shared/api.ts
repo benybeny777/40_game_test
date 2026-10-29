@@ -1,6 +1,7 @@
 import type { Command, CommandResult, JobId, ProfileView, SimEvent, Snapshot } from '../core/index.ts'
 import type { CommerceResult, StoreView, ThemeDefinition } from './commerce'
 import type { CloudCommand, CloudResult, CloudView } from './cloud'
+import type { SaveImportPreview } from './saveImport'
 
 export const channels = {
   pointer: 'strip:pointer', panel: 'strip:panel', menu: 'strip:menu',
@@ -11,6 +12,7 @@ export const channels = {
   getStore: 'store:get', purchase: 'store:purchase', equipCosmetic: 'store:equip', previewCosmetic: 'store:preview',
   reportRuntimeError: 'app:runtime-error', reloadAfterRuntimeError: 'app:runtime-reload',
   getCloud: 'cloud:get', cloudCommand: 'cloud:command',
+  prepareSaveImport: 'save:prepare-import', confirmSaveImport: 'save:confirm-import', cancelSaveImport: 'save:cancel-import',
 } as const
 
 export type DisplaySize = 'small' | 'medium' | 'large'
@@ -43,6 +45,9 @@ export interface ShellApi {
   onNavigate(listener: (target: PanelTarget) => void): () => void
   openSaveFolder(): void
   exportSave(): void
+  prepareSaveImport(text: string): Promise<SaveImportPreview>
+  confirmSaveImport(token: string): Promise<void>
+  cancelSaveImport(token: string): Promise<void>
   reportRuntimeError(message: string): Promise<void>
   reloadAfterRuntimeError(): void
   retrySave(): Promise<boolean>

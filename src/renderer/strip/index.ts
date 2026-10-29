@@ -12,6 +12,7 @@ import { onLocaleChange, setLocale, translatedLabel as tr } from '../../shared/i
 import '../../shared/locales/system'
 import { createBattleText } from '../battleText'
 import { reportRendererError } from '../errors'
+import { realSeconds } from '../../core/data/timing'
 
 const runtime = runtimeFailure(window.game)
 const screen = document.querySelector<HTMLCanvasElement>('#screen')!
@@ -99,7 +100,7 @@ function tooltipText(target: HitTarget): string {
     return `<b>${tr(enemy?.name ?? unit.defId)}${enemy?.boss ? tr('（ボス）') : ''}</b><br>${hp}<br><small>${tr(enemy?.desc ?? '')}</small>`
   }
   const job = jobs[unit.defId as JobId]
-  const skill = tr(unit.skillReady >= 1 ? '準備OK' : `${Math.ceil((1 - unit.skillReady) * (job.skill.cooldownMs ?? 0) / 1000)}秒`)
+  const skill = tr(unit.skillReady >= 1 ? '準備OK' : `${Math.ceil(realSeconds((1 - unit.skillReady) * (job.skill.cooldownMs ?? 0)))}秒`)
   const ult = unit.ultOn ? `${tr(job.ultimate.name)} ${Math.floor(unit.ult)}%` : tr('奥義はLv10で解放')
   const jonen = unit.defId === 'jirai' ? `<br>${tr(`情念 ${Math.floor(unit.jonen ?? 0)}`)}` : ''
   return `<b style="color:${job.color}">${tr(job.name)}</b> Lv${unit.lv}<br>${unit.alive ? hp : tr('戦闘不能')}<br>${tr(job.skill.name)}: ${skill}<br>${ult}${jonen}<br><small>${tr('クリックで育成画面')}</small>`

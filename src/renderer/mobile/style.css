@@ -3,10 +3,11 @@ html, body { width: 100%; height: 100%; height: 100dvh; margin: 0; overflow: hid
 body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); display: flex; flex-direction: column; }
 #mobile-battle { height: 140px; flex: 0 0 140px; position: relative; background: linear-gradient(#191b29,#14131e); border-bottom: 1px solid #464050; overflow: hidden; }
 #mobile-screen { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: manipulation; }
-#mobile-banner { position: absolute; top: 10px; left: 12px; right: 12px; text-align: center; color: #e6d4ac; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .15s; text-shadow: 0 1px 2px #000; }
+#mobile-banner { position: absolute; top: 54px; left: 12px; right: 12px; text-align: center; color: #e6d4ac; font-size: 12px; opacity: 0; pointer-events: none; transition: opacity .15s; text-shadow: 0 1px 2px #000; }
 #mobile-banner.show { opacity: 1; }
 #mobile-controls { position: absolute; top: 4px; right: 6px; display: flex; gap: 5px; }
 #mobile-controls button { min-height: 44px; padding: 6px 10px; background: #222331df; color: #ded8cb; border: 1px solid #514c5c; border-radius: 5px; font-size: 11px; }
+#mobile-controls button:disabled { opacity: .5; cursor: not-allowed; }
 #app { height: auto; min-height: 0; flex: 1 1 auto; overflow: hidden; }
 header { padding: 10px 12px; gap: 8px; }
 .brand { min-width: 0; }
@@ -51,7 +52,7 @@ main button, main select { min-height: 44px; }
 .settings input[type='checkbox'] { min-width: 22px; width: 22px; height: 22px; }
 .filters { flex-wrap: wrap; }
 .filters button { padding: 7px 10px; }
-.dialog { width: calc(100vw - 28px); min-width: 0; padding: 22px 16px; }
+.dialog { width: min(520px, calc(100vw - 28px)); min-width: 0; padding: 22px 16px; }
 .dialog h2 { font-size: 20px; }
 .toast { width: calc(100vw - 28px); text-align: center; bottom: calc(12px + env(safe-area-inset-bottom)); }
 #mobile-storage-error { position: fixed; left: 10px; right: 10px; bottom: calc(54px + env(safe-area-inset-bottom)); z-index: 100; background: #4b2727; color: #ffe3cf; border: 1px solid #cc8d7d; padding: 12px; font-size: 12px; line-height: 1.6; }

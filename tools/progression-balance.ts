@@ -1,8 +1,11 @@
+import { REAL_TICK_MS } from '../src/core/data/timing.ts'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { advance, createGame, dojoCost, enemies, newProfile, runCommand } from '../src/core/index.ts'
 import { dojo, type DojoKey } from '../src/core/data/progress.ts'
 import { reviewGear } from './reserve-growth.ts'
+
+const TICKS_PER_MINUTE = 60000 / REAL_TICK_MS
 
 /** Real drops and leveling from B1. Damage percentages use the actual equipped member's max HP. */
 export function progressionTrial(seed: number, choices: boolean, minutes = 720, throughShura = false, throughAbyss = false) {
@@ -14,7 +17,7 @@ export function progressionTrial(seed: number, choices: boolean, minutes = 720, 
   let combatIncome = 0
   const cleared = new Set<string>()
   let lastProgressTick = 0, longestProgressGap = { minutes: 0, difficulty: 0, floor: 1 }
-  for (let tick = 0; tick < minutes * 600; tick++) {
+  for (let tick = 0; tick < minutes * TICKS_PER_MINUTE; tick++) {
     const { events } = advance(game)
     if (game.world.stageNo !== measuredFloor || game.world.depthRank !== measuredDifficulty) {
       measuredFloor = game.world.stageNo; measuredDifficulty = game.world.depthRank; hits = fraction = peak = bossHits = bossFraction = 0
@@ -23,7 +26,7 @@ export function progressionTrial(seed: number, choices: boolean, minutes = 720, 
       if (event.t === 'phase' && event.phase === 'stageClear') {
         const key = `${game.world.depthRank}:${event.stageNo}`
         if (!cleared.has(key)) {
-          const gap = (tick + 1 - lastProgressTick) / 600
+          const gap = (tick + 1 - lastProgressTick) / TICKS_PER_MINUTE
           if (gap > longestProgressGap.minutes) longestProgressGap = { minutes: gap, difficulty: game.world.depthRank, floor: event.stageNo }
           cleared.add(key); lastProgressTick = tick + 1
         }
@@ -40,7 +43,7 @@ export function progressionTrial(seed: number, choices: boolean, minutes = 720, 
       }
       if (event.t === 'phase' && event.phase === 'stageClear' && (game.world.depthRank === 0 ? [30, 50, 80, 100] : [1, 10, 30, 50, 80, 100, 101]).includes(event.stageNo)
         && !reports.some((r) => r.floor === event.stageNo && r.difficulty === game.world.depthRank)) {
-        reports.push({ difficulty: game.world.depthRank, floor: event.stageNo, minute: +((tick + 1) / 600).toFixed(2), levels: game.profile.offlineJobs.map((id) => game.profile.party.members[id].lv), wipes: game.profile.stats.wipes,
+        reports.push({ difficulty: game.world.depthRank, floor: event.stageNo, minute: +((tick + 1) / TICKS_PER_MINUTE).toFixed(2), levels: game.profile.offlineJobs.map((id) => game.profile.party.members[id].lv), wipes: game.profile.stats.wipes,
           dojo: { ...game.profile.dojo }, koban: Math.floor(game.profile.koban), earned: Math.floor(game.profile.stats.totalKoban), combatIncome,
           hits, hitHpPercent: +(fraction / Math.max(1, hits) * 100).toFixed(3), peakHpPercent: +(peak * 100).toFixed(3), bossHits, bossHitHpPercent: +(bossFraction / Math.max(1, bossHits) * 100).toFixed(3),
           stats: game.world.units.filter((u) => u.side === 'ally').map((u) => ({ job: u.defId, hp: Math.round(u.base.maxHp), atk: Math.round(u.base.atk), def: Math.round(u.base.def) })) })
@@ -49,7 +52,7 @@ export function progressionTrial(seed: number, choices: boolean, minutes = 720, 
         if (targetReached) return { seed, choices, reports, completed: true, difficulty: game.world.depthRank, floor: game.world.stageNo, wipes: game.profile.stats.wipes, longestProgressGap }
       }
     }
-    if (choices && tick % 600 === 0) {
+    if (choices && tick % TICKS_PER_MINUTE === 0) {
       reviewGear(game, game.profile.offlineJobs)
       const cheapest = (Object.keys(dojo) as DojoKey[]).filter((key) => dojo[key].max === null || game.profile.dojo[key] < dojo[key].max!)
         .map((key) => ({ key, cost: dojoCost(key, game.profile.dojo[key]) })).filter((d) => d.cost <= game.profile.koban).sort((a, z) => a.cost - z.cost)[0]
@@ -57,7 +60,7 @@ export function progressionTrial(seed: number, choices: boolean, minutes = 720, 
     }
   }
   return { seed, choices, reports, completed: false, difficulty: game.world.depthRank, floor: game.world.stageNo, wipes: game.profile.stats.wipes, longestProgressGap,
-    minutesSinceLastProgress: (minutes * 600 - lastProgressTick) / 600 }
+    minutesSinceLastProgress: (minutes * TICKS_PER_MINUTE - lastProgressTick) / TICKS_PER_MINUTE }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   for (const seed of [1, 2, 3]) for (const choices of [true, false]) console.log(JSON.stringify(progressionTrial(seed, choices)))

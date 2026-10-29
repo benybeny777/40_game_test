@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { partyOrder } from '../src/core/data/jobs.ts'
 import { balance } from '../src/core/data/balance.ts'
-import { actionPose, actionTiming, hitRecoil, meleeDashDistance, normalWindupMs } from '../src/renderer/strip/actionPresentation'
+import { actionPose, actionTiming, hitFeedbackDue, hitRecoil, meleeDashDistance, normalWindupMs } from '../src/renderer/strip/actionPresentation'
+import { GAME_SPEED } from '../src/core/data/timing'
 
 describe('戦闘アクションの表示時間', () => {
   it('コアの刻みで切り上げた溜めの後に打撃姿へ切り替え、素早く元へ戻る', () => {
@@ -35,6 +36,14 @@ describe('戦闘アクションの表示時間', () => {
     expect(hitRecoil(0, false)).toBe(-2)
     expect(hitRecoil(actionTiming.knockMs, true)).toBe(0)
     expect(hitRecoil(-1, true)).toBe(0)
+  })
+  it('keeps impacts readable without extending a white flash across repeated hits', () => {
+    expect(actionTiming.hitStopMs / GAME_SPEED).toBe(45)
+    expect(actionTiming.flashMs / GAME_SPEED).toBe(65)
+    expect(hitFeedbackDue(undefined, 1000)).toBe(true)
+    expect(hitFeedbackDue(1000, 1000 + 50 * GAME_SPEED)).toBe(false)
+    expect(hitFeedbackDue(1000, 1000 + 150 * GAME_SPEED)).toBe(false)
+    expect(hitFeedbackDue(1000, 1000 + 160 * GAME_SPEED)).toBe(true)
   })
 
   it('後列の通常近接だけ敵の手前へ出て、敵を越えず元の位置へ戻る', () => {

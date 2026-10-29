@@ -66,6 +66,7 @@ export class CloudClient {
     catch (error) { this.state.error = error instanceof Error ? error.message : 'クラウド接続先が正しくありません。' }
   }
   view(): CloudView { return structuredClone(this.state) }
+  get isBusy(): boolean { return this.busy }
   private async request(path: string, method: string, body?: unknown): Promise<unknown> {
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined

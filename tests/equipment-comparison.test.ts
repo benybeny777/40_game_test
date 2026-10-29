@@ -3,6 +3,7 @@ import { buildView, newProfile } from '../src/core/index.ts'
 import { statsOf, equipItem, type Item } from '../src/core/progress/items.ts'
 import { equipmentChanges } from '../src/renderer/panel/equipmentComparison.ts'
 import { nextLootChoice } from '../src/renderer/panel/nextChoice.ts'
+import { realTickSeconds } from '../src/core/sim/time'
 
 describe('装備を選ぶための実能力比較', () => {
   it('控えが持つ装備を見つけて付け替えられ、二重所持にならない', () => {
@@ -41,8 +42,23 @@ describe('装備を選ぶための実能力比較', () => {
     const equipped = statsOf(profile, 'samurai')
     expect(view.comparison.samurai?.atk?.after).toEqual(equipped.atk)
     expect(view.comparison.samurai?.intervalMs?.after).toEqual(equipped.intervalMs)
+    expect(changes.find(change => change.key === 'intervalMs')?.after).toBeCloseTo(realTickSeconds(equipped.intervalMs))
     expect(view.comparison.samurai?.maxHp).toBeUndefined()
     expect(view.comparison.ninja).toBeUndefined()
     expect(equipmentChanges(view, 'ninja')).toEqual([])
+  })
+  it('rounds intervals like combat and omits a change within the same combat tick', () => {
+    const profile = newProfile('test')
+    const item: Item = { id: 'speed', name: 'speed', slot: 'weapon', job: 'samurai', ilvl: 1, rarity: 1,
+      locked: false, isNew: true, atk: 1, hp: 0, def: 0, affixes: [{ k: 'intervalPct', v: -.01 }] }
+    profile.inventory.push(item)
+    const view = buildView(profile, false).inventory[0]
+    view.comparison.samurai = { intervalMs: { before: 560, after: 550 } }
+    expect(equipmentChanges(view, 'samurai')).toEqual([])
+    view.comparison.samurai = { intervalMs: { before: 560, after: 500 } }
+    expect(equipmentChanges(view, 'samurai')).toEqual([expect.objectContaining({ before: .3, after: .25, improved: true })])
+    for (const member of buildView(profile, false).party) {
+      expect(member.stats.interval).toBe(realTickSeconds(statsOf(profile, member.job).intervalMs))
+    }
   })
 })

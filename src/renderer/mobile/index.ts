@@ -18,6 +18,8 @@ async function start() {
   const screen = document.querySelector<HTMLCanvasElement>('#mobile-screen')!
   const banner = document.querySelector<HTMLElement>('#mobile-banner')!
   const pause = document.querySelector<HTMLButtonElement>('#mobile-pause')!
+  const town = document.querySelector<HTMLButtonElement>('#mobile-town')!
+  let inTown = false
   const storage = document.querySelector<HTMLElement>('#mobile-storage-error')!
   const battleText = createBattleText(screen, banner)
   let state: ShellState = await api.getState()
@@ -41,9 +43,11 @@ async function start() {
     needsDraw = true
   }
   pause.addEventListener('click', () => api.openMenu())
-  document.querySelector('#mobile-town')!.addEventListener('click', async () => {
-    const result = await api.command({ c: 'returnTown' })
-    if (!result.ok) message(result.reason)
+  town.addEventListener('click', async () => {
+    if (!inTown) {
+      const result = await api.command({ c: 'returnTown' })
+      if (!result.ok) { message(result.reason); return }
+    }
     api.openPanel({ tab: 'stage' })
   })
   api.onState(next => {
@@ -54,13 +58,16 @@ async function start() {
     pause.textContent = tr(state.paused ? '再開' : '一時停止')
     const error = state.storageError
     storage.textContent = error ? tr(error) : ''; storage.hidden = !error; pause.disabled = Boolean(error)
-    document.querySelector('#mobile-town')!.textContent = tr('街へ戻る')
+    town.textContent = tr(inTown ? '街で休息中' : '街へ戻る')
+    town.disabled = Boolean(error)
     document.querySelector('#mobile-battle')!.setAttribute('aria-label', tr('冒険の様子'))
     battleText.translate()
   }
   onLocaleChange(translateControls); translateControls()
   await Promise.all([artReady, loadUiFonts()])
   api.onFrame(frame => runtime.run(() => {
+    const resting = frame.snapshot.phase === 'town'
+    if (inTown !== resting) { inTown = resting; translateControls() }
     audio.consume(frame)
     scene.ingest(frame, performance.now())
     needsDraw = true

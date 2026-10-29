@@ -68,7 +68,7 @@ button:disabled { cursor: default; opacity: .45; }
 .settings select { background: #232c3d; color: var(--text); border: 1px solid var(--line); padding: 4px 8px; font: inherit; }
 .settings > button, .storage-error button { align-self: flex-start; background: #292637; color: var(--text); border: 1px solid #665b70; border-radius: 4px; padding: 8px 12px; font-size: 12px; min-height: 36px; }
 .settings > button:hover, .storage-error button:hover { border-color: var(--gold); background: #383044; }
-.modal { position: fixed; inset: 0; background: #000a; display: grid; place-items: center; }
+.modal { position: fixed; inset: 0; z-index: 200; background: #000a; display: grid; place-items: center; }
 .dialog { background: var(--card); border: 1px solid var(--gold); padding: 24px 32px; min-width: 320px; text-align: center; }
 .dialog h2 { margin: 0 0 8px; color: #ffe27a; letter-spacing: 3px; }
 .dialog p { font-size: 13px; color: #b3c0d1; }
@@ -221,3 +221,32 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .member-details > summary { cursor:pointer; color:var(--gold); padding:8px 0; }
 .member-details[open] > summary { margin-bottom:10px; }
 @media(max-width:540px) { .next-choice { flex-direction:column; align-items:stretch; padding:14px; } }
+.save-import { border-top:1px solid var(--line); padding-top:14px; }
+.save-import h2 { font-size:16px; }
+.save-import button, .save-import-actions button { background:#292637; color:var(--text); border:1px solid #665b70; border-radius:4px; padding:10px 12px; min-height:44px; font:inherit; }
+.save-import button:disabled, .save-import-actions button:disabled { opacity:.5; cursor:default; }
+.save-import-dialog { min-width:0; width:min(520px,calc(100vw - 24px)); max-height:calc(100dvh - 24px); overflow:auto; box-sizing:border-box; padding:20px; text-align:left; }
+.save-import-dialog h2 { font-size:20px; letter-spacing:0; }
+.save-import-name { overflow-wrap:anywhere; }
+.save-import-dialog dl { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.save-import-dialog dd { font-size:15px; overflow-wrap:anywhere; }
+.save-import-dialog p { line-height:1.65; }
+.save-import-dialog ul { padding-left:20px; font-size:13px; line-height:1.7; }
+.save-import-error { color:#ffb4a5 !important; white-space:pre-wrap; overflow-wrap:anywhere; }
+.save-import-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; }
+.save-import-actions button:last-child { border-color:var(--gold); }
+.browser-load-error { min-height:0; overflow-y:auto; }
+.abyss-journal { margin:18px 0; padding:16px; border:1px solid #716280; background:#242030; }
+.abyss-journal h3 { margin:8px 0; color:var(--gold); }
+.abyss-goal { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.abyss-goal progress { flex:1; min-width:100px; accent-color:#bba0e0; }
+.abyss-journal summary { cursor:pointer; min-height:44px; padding:12px 0; box-sizing:border-box; color:var(--gold); }
+.abyss-party { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
+.abyss-member { min-width:0; padding:10px; background:var(--card); border:1px solid var(--line); }
+.abyss-member-heading { display:flex; align-items:center; gap:8px; }
+.abyss-member .sprite { width:60px; height:60px; object-fit:contain; }
+.abyss-member p, .abyss-member dl { font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
+.abyss-member dl > div { display:flex; gap:8px; }
+.abyss-member dt { color:var(--muted); flex:0 0 auto; }
+.abyss-member dd { margin:0; }
+.abyss-milestone { border-top:1px solid var(--line); }

@@ -1,6 +1,8 @@
 import { attributeDefs, attributeKeys, attributeLabels, type Attributes, type AttributeKey } from '../data/attributes.ts'
 import { attributesOf, availablePoints } from './attributes.ts'
 import { balance as b } from '../data/balance.ts'
+import { skillDescription } from '../data/skillDescription.ts'
+import { realTickSeconds } from '../sim/time.ts'
 import { difficulties, dungeonBalance as db, dungeons, floorFeature, floorLimit, type Difficulty, type FloorFeature } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
 import { itemBalance, rarities, slots, type Rarity, type SlotId } from '../data/items.ts'
@@ -10,6 +12,7 @@ import { stageLabel } from '../data/stages.ts'
 import type { JobId, Stats } from '../sim/types.ts'
 import { createEquipmentComparison, describe, ownerOf, requirementsOf, sellPrice, statsOf, type Item } from './items.ts'
 import { activeExperienceMultiplier, dojoCost, expToNext, perMinute, type OfflineResult, type Profile } from './profile.ts'
+import { abyssView, type AbyssView } from './abyss.ts'
 
 export interface ItemView {
   id: string; name: string; slot: SlotId; slotName: string; job?: JobId; jobName?: string; ilvl: number
@@ -22,12 +25,13 @@ export interface MemberView {
   experienceMultiplier: number
   active: boolean; fighting: boolean; job: JobId; name: string; role: string; roleId: JobRole; color: string; lv: number; exp: number; expNext: number
   attributes: Attributes; baseAttributes: Attributes; allocated: Attributes; availablePoints: number; autoStats: boolean; mainAttribute: AttributeKey; autoWeights: Attributes
+  // interval is the scheduled attack interval in real seconds, including combat-tick rounding.
   stats: { hp: number; atk: number; def: number; interval: number; cri: number; eva: number; luk: number; range: string }
   skills: Array<{ kind: '通常' | 'スキル' | 'パッシブ' | '奥義'; name: string; desc: string; unlockLv: number; unlocked: boolean }>
   equip: Record<SlotId, ItemView | null>
 }
 export interface ProfileView {
-  dungeon: { id: string; name: string; depth: number; best: number; difficulty: Difficulty; difficultyLabel: string; unlockedDifficulty: number; floorLimit: number | null; town: boolean; theme: string; floorEvent: { kind: FloorFeature; claimed: boolean } }
+  dungeon: { id: string; name: string; depth: number; best: number; difficulty: Difficulty; difficultyLabel: string; unlockedDifficulty: number; floorLimit: number | null; town: boolean; theme: string; floorEvent: { kind: FloorFeature; claimed: boolean }; abyss: AbyssView }
   koban: number; totalKoban: number
   stage: { current: number; unlocked: number; label: string; areaName: string; loop: boolean; max: number }
   partySize: number
@@ -70,6 +74,7 @@ export function buildView(profile: Profile, loop: boolean): ProfileView {
     : Array.from({ length: limit }, (_, index) => index + 1)
   return {
     dungeon: { id: profile.dungeonId, name: dungeons[profile.dungeonId].name, depth: profile.progress.currentStage, best, difficulty: rank,
+      abyss: abyssView(profile),
       difficultyLabel: difficulties[rank].name, unlockedDifficulty: profile.progress.unlockedDepths.reduce((highest, depth, index) => depth > 0 ? index : highest, 0),
       floorLimit: limit, town: profile.progress.inTown, theme: current.areaName,
       floorEvent: { kind: floorFeature(profile.progress.currentStage, profile.dungeonSeed, rank), claimed: profile.progress.currentStage <= profile.progress.eventDepths[rank] } },
@@ -81,13 +86,13 @@ export function buildView(profile: Profile, loop: boolean): ProfileView {
       const job = jobs[id], member = profile.party.members[id], stats = statsOf(profile, id)
       return { active: deployedJobs(profile.party.order).includes(id), fighting: profile.offlineJobs.includes(id), job: id, name: job.name, role: roleLabels[job.role], roleId: job.role, color: job.color, lv: member.lv, exp: member.exp, expNext: expToNext(member.lv), attributes: attributesOf(id, member.allocated), baseAttributes: { ...attributeDefs[id].base }, allocated: { ...member.allocated }, availablePoints: availablePoints(member), autoStats: member.autoStats, mainAttribute: attributeDefs[id].main, autoWeights: { ...attributeDefs[id].auto },
         experienceMultiplier: activeExperienceMultiplier(profile, id, profile.offlineJobs),
-        stats: { hp: round(stats.maxHp), atk: round(stats.atk, 1), def: round(stats.def, 1), interval: round(stats.intervalMs / 1000, 2),
+        stats: { hp: round(stats.maxHp), atk: round(stats.atk, 1), def: round(stats.def, 1), interval: realTickSeconds(stats.intervalMs),
           cri: round(stats.cri * 100, 1), eva: round(stats.eva * 100, 1), luk: round(stats.luk, 1), range: job.attack.kind === 'melee' ? '近接' : '遠隔' },
         skills: [
           { kind: '通常', name: job.attack.name, desc: `攻撃力×${job.attack.mul}`, unlockLv: 1, unlocked: true },
-          { kind: 'スキル', name: job.skill.name, desc: `${job.skill.desc}（${(job.skill.cooldownMs ?? 0) / 1000}秒ごと）`, unlockLv: b.skillLv, unlocked: member.lv >= b.skillLv },
-          { kind: 'パッシブ', name: job.passive.name, desc: job.passive.desc, unlockLv: b.passiveLv, unlocked: member.lv >= b.passiveLv },
-          { kind: '奥義', name: job.ultimate.name, desc: job.ultimate.desc, unlockLv: b.ultLv, unlocked: member.lv >= b.ultLv },
+          { kind: 'スキル', name: job.skill.name, desc: `${skillDescription(job.skill)}（${realTickSeconds((job.skill.cooldownMs ?? 0) * stats.cooldownMul)}秒ごと）`, unlockLv: b.skillLv, unlocked: member.lv >= b.skillLv },
+          { kind: 'パッシブ', name: job.passive.name, desc: skillDescription(job.passive), unlockLv: b.passiveLv, unlocked: member.lv >= b.passiveLv },
+          { kind: '奥義', name: job.ultimate.name, desc: skillDescription(job.ultimate), unlockLv: b.ultLv, unlocked: member.lv >= b.ultLv },
         ],
         equip: Object.fromEntries((Object.keys(slots) as SlotId[]).map((slot) => [slot, member.equip[slot] ? views.get(member.equip[slot]!) ?? null : null])) as MemberView['equip'] }
     }),

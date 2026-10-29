@@ -61,8 +61,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Shadow Clone"
   },
   "job.ninja.skill.desc": {
-    "ja": "3秒間、回避率+50%",
-    "en": "Gains 50% evasion for 3 seconds."
+    "ja": "{duration}秒間、回避率+50%",
+    "en": "Gains 50% evasion for {duration}s."
   },
   "job.ninja.passive.name": {
     "ja": "急所突き",
@@ -77,8 +77,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Vanishing Burst"
   },
   "job.ninja.ultimate.desc": {
-    "ja": "敵全体に攻撃力×2.5、2秒間無敵",
-    "en": "Deals 2.5x ATK damage to all enemies and becomes invulnerable for 2 seconds."
+    "ja": "敵全体に攻撃力×2.5、{duration}秒間無敵",
+    "en": "Deals 2.5x ATK damage to all enemies and becomes invulnerable for {duration}s."
   },
   "job.jirai.name": {
     "ja": "地雷系",
@@ -157,8 +157,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "All-Out Cheer"
   },
   "job.otaku.ultimate.desc": {
-    "ja": "仲間全体のHPを30%回復し、8秒間攻撃間隔−20%",
-    "en": "Heals all allies for 30% max HP and reduces their attack intervals by 20% for 8 seconds."
+    "ja": "仲間全体のHPを30%回復し、{duration}秒間攻撃間隔−20%",
+    "en": "Heals all allies for 30% max HP and reduces their attack intervals by 20% for {duration}s."
   },
   "job.pachipro.name": {
     "ja": "パチプロ",
@@ -181,8 +181,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Jackpot Chance"
   },
   "job.pachipro.skill.desc": {
-    "ja": "当たれば10秒間、仲間全体の攻撃間隔−30%・小判+50%",
-    "en": "On success, reduces all allies' attack intervals by 30% and increases Koban gains by 50% for 10 seconds."
+    "ja": "当たれば{duration}秒間、仲間全体の攻撃間隔−30%・小判+50%",
+    "en": "On success, reduces all allies' attack intervals by 30% and increases Koban gains by 50% for {duration}s."
   },
   "job.pachipro.passive.name": {
     "ja": "期待値計算",
@@ -221,8 +221,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Purifying Ward"
   },
   "job.miko.skill.desc": {
-    "ja": "仲間全員の弱体を解除し、HPを攻撃力×1＋最大HPの8%回復。5秒間被ダメージ−20%",
-    "en": "Cleanses all allies and heals each for 1x ATK + 8% max HP. Reduces damage taken by 20% for 5 seconds."
+    "ja": "仲間全員の弱体を解除し、HPを攻撃力×1＋最大HPの8%回復。{duration}秒間被ダメージ−20%",
+    "en": "Cleanses all allies and heals each for 1x ATK + 8% max HP. Reduces damage taken by 20% for {duration}s."
   },
   "job.miko.passive.name": {
     "ja": "護身札",
@@ -237,8 +237,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Great Purification"
   },
   "job.miko.ultimate.desc": {
-    "ja": "仲間全員の弱体を解除し、HPを35%回復。6秒間被ダメージ−30%",
-    "en": "Cleanses all allies and heals each for 35% max HP. Reduces damage taken by 30% for 6 seconds."
+    "ja": "仲間全員の弱体を解除し、HPを35%回復。{duration}秒間被ダメージ−30%",
+    "en": "Cleanses all allies and heals each for 35% max HP. Reduces damage taken by 30% for {duration}s."
   },
   "job.bancho.name": {
     "ja": "番長",
@@ -261,8 +261,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Fighting Words"
   },
   "job.bancho.skill.desc": {
-    "ja": "5秒間、射程内の敵から優先して狙われ、被ダメージ−25%",
-    "en": "For 5 seconds, becomes the priority target of enemies in range and takes 25% less damage."
+    "ja": "{duration}秒間、射程内の敵から優先して狙われ、被ダメージ−25%",
+    "en": "For {duration}s, becomes the priority target of enemies in range and takes 25% less damage."
   },
   "job.bancho.passive.name": {
     "ja": "落とし前",
@@ -277,8 +277,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Leader's Roar"
   },
   "job.bancho.ultimate.desc": {
-    "ja": "敵全体に攻撃力×3。6秒間、自分の被ダメージ−40%",
-    "en": "Deals 3x ATK damage to all enemies and reduces own damage taken by 40% for 6 seconds."
+    "ja": "敵全体に攻撃力×3。{duration}秒間、自分の被ダメージ−40%",
+    "en": "Deals 3x ATK damage to all enemies and reduces own damage taken by 40% for {duration}s."
   },
   "job.gyaru.name": {
     "ja": "ギャル",
@@ -301,8 +301,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Glam Snapshot"
   },
   "job.gyaru.skill.desc": {
-    "ja": "近くの敵に注目マーク。6秒間その敵の被ダメージ＋20%",
-    "en": "Marks a nearby enemy with Attention, increasing its damage taken by 20% for 6 seconds."
+    "ja": "近くの敵に注目マーク。{duration}秒間その敵の被ダメージ＋20%",
+    "en": "Marks a nearby enemy with Attention, increasing its damage taken by 20% for {duration}s."
   },
   "job.gyaru.passive.name": {
     "ja": "アゲてこ",
@@ -317,8 +317,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Viral Live Stream"
   },
   "job.gyaru.ultimate.desc": {
-    "ja": "6秒間、敵全体の被ダメージ＋30%、仲間全員の攻撃間隔−15%",
-    "en": "For 6 seconds, increases all enemies' damage taken by 30% and reduces all allies' attack intervals by 15%."
+    "ja": "{duration}秒間、敵全体の被ダメージ＋30%、仲間全員の攻撃間隔−15%",
+    "en": "For {duration}s, increases all enemies' damage taken by 30% and reduces all allies' attack intervals by 15%."
   },
   "job.sukeban.name": {
     "ja": "スケバン",
@@ -341,8 +341,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Intimidation"
   },
   "job.sukeban.skill.desc": {
-    "ja": "6秒間、敵全体の攻撃力−20%",
-    "en": "Reduces all enemies' ATK by 20% for 6 seconds."
+    "ja": "{duration}秒間、敵全体の攻撃力−20%",
+    "en": "Reduces all enemies' ATK by 20% for {duration}s."
   },
   "job.sukeban.passive.name": {
     "ja": "追い込み",
@@ -357,8 +357,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Night Riders' Slash"
   },
   "job.sukeban.ultimate.desc": {
-    "ja": "敵全体に攻撃力×3.5。6秒間、敵全体の攻撃力−25%",
-    "en": "Deals 3.5x ATK damage to all enemies and reduces their ATK by 25% for 6 seconds."
+    "ja": "敵全体に攻撃力×3.5。{duration}秒間、敵全体の攻撃力−25%",
+    "en": "Deals 3.5x ATK damage to all enemies and reduces their ATK by 25% for {duration}s."
   },
   "job.farmer.name": {
     "ja": "農民",
@@ -437,8 +437,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Knife Curtain"
   },
   "job.maid.ultimate.desc": {
-    "ja": "注目優先で攻撃力×0.75を6連投。注目中の敵への初弾は会心。6秒間自分の攻撃間隔−20%",
-    "en": "Throws 6 knives for 0.75x ATK each, prioritizing marked enemies. The first hit against a marked enemy is critical. Reduces own attack interval by 20% for 6 seconds."
+    "ja": "注目優先で攻撃力×0.75を6連投。注目中の敵への初弾は会心。{duration}秒間自分の攻撃間隔−20%",
+    "en": "Throws 6 knives for 0.75x ATK each, prioritizing marked enemies. The first hit against a marked enemy is critical. Reduces own attack interval by 20% for {duration}s."
   },
   "job.jiangshi.name": {
     "ja": "キョンシー",
@@ -461,8 +461,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Leaping Palm"
   },
   "job.jiangshi.skill.desc": {
-    "ja": "前方72ドット以内の敵1体に攻撃力×2、3秒間回避率＋20%",
-    "en": "Strikes one enemy within 72 dots ahead for 2x ATK damage and gains 20% evasion for 3 seconds."
+    "ja": "前方72ドット以内の敵1体に攻撃力×2、{duration}秒間回避率＋20%",
+    "en": "Strikes one enemy within 72 dots ahead for 2x ATK damage and gains 20% evasion for {duration}s."
   },
   "job.jiangshi.passive.name": {
     "ja": "貼り直しの霊符",
@@ -501,8 +501,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Scavenger's Ingenuity"
   },
   "job.vagabond.skill.desc": {
-    "ja": "敵全体に攻撃力×1.2、6秒間敵の攻撃力−15%・獲得小判＋15%",
-    "en": "Deals 1.2x ATK damage to all enemies. For 6 seconds, reduces enemy ATK by 15% and increases Koban gains by 15%."
+    "ja": "敵全体に攻撃力×1.2、{duration}秒間敵の攻撃力−15%・獲得小判＋15%",
+    "en": "Deals 1.2x ATK damage to all enemies. For {duration}s, reduces enemy ATK by 15% and increases Koban gains by 15%."
   },
   "job.vagabond.passive.name": {
     "ja": "目ざとい回収",
@@ -517,8 +517,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Junk Storm"
   },
   "job.vagabond.ultimate.desc": {
-    "ja": "敵全体に攻撃力×2、8秒間敵の攻撃力−25%・獲得小判＋30%",
-    "en": "Deals 2x ATK damage to all enemies. For 8 seconds, reduces enemy ATK by 25% and increases Koban gains by 30%."
+    "ja": "敵全体に攻撃力×2、{duration}秒間敵の攻撃力−25%・獲得小判＋30%",
+    "en": "Deals 2x ATK damage to all enemies. For {duration}s, reduces enemy ATK by 25% and increases Koban gains by 30%."
   },
   "job.rikishi.name": {
     "ja": "力士",
@@ -541,8 +541,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Open-Hand Strike"
   },
   "job.rikishi.skill.desc": {
-    "ja": "前方48ドット以内の敵1体に攻撃力×1.8、24ドット押し戻す。4秒間自分の被ダメージ−20%",
-    "en": "Hits one enemy within 48 dots ahead for 1.8x ATK damage and pushes it back 24 dots. Reduces own damage taken by 20% for 4 seconds."
+    "ja": "前方48ドット以内の敵1体に攻撃力×1.8、24ドット押し戻す。{duration}秒間自分の被ダメージ−20%",
+    "en": "Hits one enemy within 48 dots ahead for 1.8x ATK damage and pushes it back 24 dots. Reduces own damage taken by 20% for {duration}s."
   },
   "job.rikishi.passive.name": {
     "ja": "土俵の踏ん張り",
@@ -557,8 +557,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Grand Bout"
   },
   "job.rikishi.ultimate.desc": {
-    "ja": "敵全体に攻撃力×3、32ドット押し戻す。6秒間自分の被ダメージ−30%",
-    "en": "Deals 3x ATK damage to all enemies and pushes them back 32 dots. Reduces own damage taken by 30% for 6 seconds."
+    "ja": "敵全体に攻撃力×3、32ドット押し戻す。{duration}秒間自分の被ダメージ−30%",
+    "en": "Deals 3x ATK damage to all enemies and pushes them back 32 dots. Reduces own damage taken by 30% for {duration}s."
   },
   "job.sister.name": {
     "ja": "シスター",
@@ -589,16 +589,16 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Prayer of Protection"
   },
   "job.sister.passive.desc": {
-    "ja": "戦闘開始時、仲間全員に1戦1回の守護。致命傷をHP1で耐え、1.5秒間無敵",
-    "en": "At battle start, grants each ally protection once per battle. Survives a fatal hit at 1 HP and gains 1.5 seconds of invulnerability."
+    "ja": "戦闘開始時、仲間全員に1戦1回の守護。致命傷をHP1で耐え、{duration}秒間無敵",
+    "en": "At battle start, grants each ally protection once per battle. Survives a fatal hit at 1 HP and gains {duration}s of invulnerability."
   },
   "job.sister.ultimate.name": {
     "ja": "聖域の祈り",
     "en": "Sanctuary"
   },
   "job.sister.ultimate.desc": {
-    "ja": "仲間全員のHPを35%回復し、1.5秒間無敵",
-    "en": "Heals all allies for 35% max HP and grants 1.5 seconds of invulnerability."
+    "ja": "仲間全員のHPを35%回復し、{duration}秒間無敵",
+    "en": "Heals all allies for 35% max HP and grants {duration}s of invulnerability."
   },
   "job.tono.name": {
     "ja": "殿",
@@ -621,8 +621,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Splendid Orders"
   },
   "job.tono.skill.desc": {
-    "ja": "6秒間、仲間全員の攻撃力＋15%。必ず成功",
-    "en": "Grants all allies 15% ATK for 6 seconds. Always succeeds."
+    "ja": "{duration}秒間、仲間全員の攻撃力＋15%。必ず成功",
+    "en": "Grants all allies 15% ATK for {duration}s. Always succeeds."
   },
   "job.tono.passive.name": {
     "ja": "殿のお墨付き",
@@ -637,8 +637,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Make Way for the Lord"
   },
   "job.tono.ultimate.desc": {
-    "ja": "8秒間、仲間全員の攻撃力＋25%・攻撃間隔−20%。費用なし",
-    "en": "For 8 seconds, grants all allies 25% ATK and reduces attack intervals by 20%. No cost."
+    "ja": "{duration}秒間、仲間全員の攻撃力＋25%・攻撃間隔−20%。費用なし",
+    "en": "For {duration}s, grants all allies 25% ATK and reduces attack intervals by 20%. No cost."
   },
   "job.gariben.name": {
     "ja": "ガリ勉",
@@ -661,8 +661,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Difficult Question"
   },
   "job.gariben.skill.desc": {
-    "ja": "6秒間、敵全体の攻撃間隔＋25%",
-    "en": "Increases all enemies' attack intervals by 25% for 6 seconds."
+    "ja": "{duration}秒間、敵全体の攻撃間隔＋25%",
+    "en": "Increases all enemies' attack intervals by 25% for {duration}s."
   },
   "job.gariben.passive.name": {
     "ja": "弱点分析",
@@ -677,8 +677,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "All-Night Answer"
   },
   "job.gariben.ultimate.desc": {
-    "ja": "8秒間、敵全体の攻撃間隔＋40%・仲間全員の会心率＋10%",
-    "en": "For 8 seconds, increases all enemies' attack intervals by 40% and grants all allies 10% critical chance."
+    "ja": "{duration}秒間、敵全体の攻撃間隔＋40%・仲間全員の会心率＋10%",
+    "en": "For {duration}s, increases all enemies' attack intervals by 40% and grants all allies 10% critical chance."
   },
   "role.tank": {
     "ja": "タンク",
@@ -1626,6 +1626,7 @@ export const gameEnglish: Readonly<Record<string, string>> = Object.freeze(Objec
 
 /** Only complete phrases and anchored, explicit templates are translated. Save IDs and unknown text pass through. */
 export const gameTranslationTemplates: ReadonlyArray<{ ja: string; en: string }> = [
+  ...Object.values(gameTranslations).filter(entry => entry.ja.includes('{duration}')),
   { ja: '{description}（{seconds}秒ごと）', en: '{description} (every {seconds}s)' },
   { ja: '{attribute}{required}必要（現在{current}）', en: 'Requires {attribute} {required} (current {current})' },
   { ja: '基礎性能{percent}%（85〜115%）', en: 'Base roll {percent}% (85-115%)' },
