@@ -66,7 +66,7 @@ export class GameHost {
     return true
   }
   recoverPreparedProfile(game: Game) { this.failure = undefined; this.replacePreparedProfile(game) }
-  view(): ProfileView { return this.unwrap(this.attempt(() => buildView(this.game.profile, this.game.world.loop))) }
+  view(): ProfileView { return this.unwrap(this.attempt(() => buildView(this.game.profile, this.game.world.loop, this.game.world.pending))) }
   frame(events: SimEvent[] = []): Frame { return this.unwrap(this.attempt(() => ({ snapshot: snapshot(this.game.world, this.game.profile.koban), events }))) }
   setPaused(paused: boolean) { this.paused = paused || Boolean(this.failure); this.accumulated = 0; this.last = performance.now() }
 

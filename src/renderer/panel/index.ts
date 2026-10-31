@@ -5,6 +5,8 @@ import { roleLabels, type JobRole, type ItemView, type JobId, type MemberView, t
 import type { PanelTab, ShellState } from '../../shared/api'
 import { attributeKeys, attributeLabels } from '../../core/data/attributes.ts'
 import { renderDungeon } from './dungeon'
+import { DungeonTravelDraft } from './dungeonTravel'
+import { renderDefeatReview } from './defeatReview'
 import type { StoreView } from '../../shared/commerce'
 import { renderStore } from './store'
 import { renderHelp } from './help'
@@ -56,6 +58,7 @@ async function command(...args: Parameters<typeof window.game.command>) {
   try {
     const result = await window.game.command(...args)
     if (!result.ok) showToast(result.reason)
+    if (args[0].c === 'selectStage') dungeonTravelDraft.completed(result)
     view = await window.game.getView()
   } catch (error) { showToast(reportRendererError('操作を完了できませんでした。少し待って再度お試しください。', error)) }
   finally { commandPending = false; render(true) }
@@ -122,6 +125,11 @@ let reserveRole: JobRole | 'all' = 'all'
 function partyTab(v: ProfileView) {
   const order = v.party.map((member) => member.job)
   return h('section', {},
+    renderDefeatReview(v.lastDefeat, {
+      formation: () => { const roster = root.querySelector<HTMLElement>('.deployed-roster'); roster?.scrollIntoView({ block: 'start', behavior: 'smooth' }); roster?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true }) },
+      equipment: job => { gearJob = job; gearFilter = 'armor'; compareItem = undefined; tab = 'gear'; render() },
+      retry: record => { tab = 'stage'; void command({ c: 'selectStage', stageNo: record.floor, depthRank: record.depthRank }) },
+    }, v.lastDefeatResolved, v.dungeon),
     renderNextChoice(v, (job, item) => { gearJob = job; gearFilter = item.slot; compareItem = item.id; tab = 'gear'; render() }),
     h('div', { class: 'journey' },
       h('div', {}, h('span', { class: 'eyebrow' }, '黄泉の迷宮へ、三人で潜る'), h('h2', {}, `出撃パーティ ${v.partySize}人`),
@@ -255,6 +263,7 @@ function offlineModal(v: ProfileView) {
 }
 
 const panelPositions = new PanelPositions()
+const dungeonTravelDraft = new DungeonTravelDraft()
 const saveImport = new SaveImportController(window.game, () => render(true))
 const modalFocus = new PanelModalFocus('[data-panel-dialog]', () => { void saveImport.cancel() })
 function render(force = false) {
@@ -281,7 +290,7 @@ function render(force = false) {
         finally { commandPending = false; render(true) }
       } }, '保存を再試行') : null,
       h('button', { onclick: () => window.game.exportSave() }, 'セーブを書き出す')) : '',
-    h('main', { id: 'panel-content' }, !v ? h('p', {}, '読み込み中…') : tab === 'party' ? partyTab(v) : tab === 'gear' ? gearTab(v) : tab === 'dojo' ? dojoTab(v) : tab === 'stage' ? renderDungeon(v, command) : tab === 'dex' ? renderDex(v, spriteImage) : tab === 'store' ? storeView ? renderStore(storeView, { updated: next => { storeView = next; render(true) }, toast: showToast }) : h('p', {}, 'ストアを読み込み中…') : tab === 'help' ? renderHelp() : settingsTab()),
+    h('main', { id: 'panel-content' }, !v ? h('p', {}, '読み込み中…') : tab === 'party' ? partyTab(v) : tab === 'gear' ? gearTab(v) : tab === 'dojo' ? dojoTab(v) : tab === 'stage' ? renderDungeon(v, command, dungeonTravelDraft) : tab === 'dex' ? renderDex(v, spriteImage) : tab === 'store' ? storeView ? renderStore(storeView, { updated: next => { storeView = next; render(true) }, toast: showToast }) : h('p', {}, 'ストアを読み込み中…') : tab === 'help' ? renderHelp() : settingsTab()),
     renderSaveImportDialog(saveImport) ?? (v ? offlineModal(v) : null) ?? '',
     toast ? h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' }, toast) : '')
   assignFocusKeys(root, tab)

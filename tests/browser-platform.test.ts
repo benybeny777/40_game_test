@@ -74,7 +74,7 @@ it('counts browser stalls as active time without retaining a battle backlog', as
 })
 
 it('runs 1200 browser ticks per real minute with one real minute of play and income', async () => {
-  const { storage } = browser(), profile = newProfile(new Date(start).toISOString(), 7)
+  const { storage, window } = browser(), profile = newProfile(new Date(start).toISOString(), 7)
   seed(storage, profile)
   const api = initializePlatform()
   let tick = 0
@@ -82,7 +82,15 @@ it('runs 1200 browser ticks per real minute with one real minute of play and inc
   vi.advanceTimersByTime(60000)
   expect(tick).toBe(1200)
   expect((await api.getView()).stats.playMs).toBe(60000)
+  // Stage clears also save and shift the five-second autosave deadline. Flush via
+  // the real lifecycle path instead of assuming storage is current on minute 1.
+  const previous = JSON.parse(storage.getItem(storageKey)!).profile as Profile
+  expect(previous.stats.playMs).toBeGreaterThanOrEqual(55000)
+  expect(previous.stats.playMs).toBeLessThanOrEqual(60000)
+  window.dispatchEvent(new Event('pagehide'))
   const saved = JSON.parse(storage.getItem(storageKey)!).profile as Profile
+  expect(saved.stats.playMs).toBe(60000)
+  expect(saved.rates.elapsedMs).toBe(0)
   expect(saved.rates.minutes).toHaveLength(1)
 })
 afterEach(() => { setLocale('ja'); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })

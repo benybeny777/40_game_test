@@ -1,5 +1,5 @@
-/** One material-backed five-frame stride covers forty ground dots at fifty dots/second. */
-export const gaitTiming = { frames: 5, strideDots: 40, dotsPerSecond: 50, fps: 6.25 } as const
+/** One material-backed five-frame stride; feet and scenery share the faster travel clock. */
+export const gaitTiming = { frames: 5, strideDots: 40, dotsPerSecond: 100, fps: 12.5 } as const
 
 /** Render-only offsets: frame selection and foot placement share the same travelled-ground clock. */
 export function walkPose(id: string, slot: number, groundDots: number) {

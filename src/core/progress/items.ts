@@ -6,6 +6,7 @@ import { uniqueDefs, affixes, armorNames, charmNames, gearWeights, itemBalance a
 import { deployedJobs, jobs, partyOrder } from '../data/jobs.ts'
 import { dojo as dojoDefs } from '../data/progress.ts'
 import { random } from '../sim/rng.ts'
+import { lootTendency } from '../data/loot.ts'
 import { computeStats } from '../sim/stats.ts'
 import type { GearStats, JobId, Stats } from '../sim/types.ts'
 import type { Profile } from './profile.ts'
@@ -36,9 +37,11 @@ export const lootRank = (floor: number, difficulty: Difficulty) => progressionDe
 const deepRanks = (rank: number) => Math.log2(1 + Math.max(0, rank - ib.softIlvl) / ib.deepRankSpan)
 const scaledRank = (rank: number) => Math.min(rank, ib.softIlvl) + deepRanks(rank) * 5
 
-export interface RollOptions { ilvl: number; luk: number; jobs: readonly JobId[]; activeJobs?: readonly JobId[]; slot?: SlotId; minRarity?: Rarity; maxRarity?: Rarity }
+// Absent floor is an area-neutral roll for callers without an expedition context.
+export interface RollOptions { ilvl: number; floor?: number; luk: number; jobs: readonly JobId[]; activeJobs?: readonly JobId[]; slot?: SlotId; minRarity?: Rarity; maxRarity?: Rarity }
 /** Rarity weights r≥1 grow with party LUK (03 §3.1). Uses the profile's own RNG stream, separate from the battle. */
 export function rollItem(state: { rng: number }, id: string, options: RollOptions): Item {
+  const tendency = options.floor === undefined ? undefined : lootTendency(options.floor)
   options = { ...options, ilvl: Math.max(1, Math.min(ib.maxIlvl, Math.floor(options.ilvl))) }
   const min = options.minRarity ?? 0, max = options.maxRarity ?? (rarities.length - 1) as Rarity
   const candidates = rarities.map((rarity, index) => ({ index: index as Rarity, weight: rarity.weight * (index ? 1 + options.luk / ib.lukRarityDiv * index : 1) }))
@@ -46,7 +49,7 @@ export function rollItem(state: { rng: number }, id: string, options: RollOption
   const rarity = pick(state, candidates, (entry) => entry.weight).index
   const uniqueEntry = rarity === ib.uniqueRarity ? pick(state, Object.entries(uniqueDefs).filter(([, def]) => !def.main || options.jobs.some((job) => attributeDefs[job].main === def.main)), () => 1) : undefined
   const unique = uniqueEntry?.[1]
-  const slot = unique?.slot ?? options.slot ?? pick(state, slotIds, (key) => slots[key].weight)
+  const slot = unique?.slot ?? options.slot ?? pick(state, slotIds, (key) => tendency ? tendency.weights[key] : slots[key].weight)
   const availableJobs = unique?.main ? options.jobs.filter((job) => attributeDefs[job].main === unique.main) : options.jobs
   const active = availableJobs.filter(job => options.activeJobs?.includes(job))
   const reserves = availableJobs.filter(job => !active.includes(job))

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { balance as b, createWorld, resolveHit, snapshot, step } from '../../src/core/index.ts'
 import { chooseTarget } from '../../src/core/sim/combat.ts'
 import { random } from '../../src/core/sim/rng.ts'
+import { dojo } from '../../src/core/data/progress.ts'
 import type { World, Phase, Stats } from '../../src/core/index.ts'
 
 function advanceTo(world: World, phase: Phase, limit = 2000) {
@@ -92,11 +93,25 @@ describe('固定ティックと状態', () => {
   })
 })
 describe('フェーズ遷移と回復', () => {
-  it('歩行4秒分だけ回復し、出現への遷移時に余分に回復しない', () => {
+  it('短縮した歩行でも1区間の回復予算を保ち、出現への遷移時に余分に回復しない', () => {
     const world = createWorld(), ally = world.units[0]
     ally.hp = 1
     advanceTo(world, 'spawning')
-    expect(ally.hp).toBeCloseTo(1 + ally.stats.maxHp * b.walkHealPerSecond * b.walkMs / 1000)
+    expect(ally.hp).toBeCloseTo(1 + ally.stats.maxHp * b.walkHealPerSecond * b.walkRecoveryMs / 1000)
+  })
+  it.each(Array.from({ length: 11 }, (_, level) => level))('歩行強化Lv%iの丸め込みの回復量を短縮前と同量に保つ', level => {
+    const moveBonus = level * dojo.walk.per, world = createWorld({ moveBonus }), ally = world.units[0]
+    ally.hp = 1
+    const durationTicks = Math.ceil(b.walkMs / (1 + moveBonus) / b.tickMs)
+    const recoveryTicks = Math.ceil(b.walkRecoveryMs / (1 + moveBonus) / b.tickMs)
+    expect(world.phaseUntilTick).toBe(durationTicks)
+    expect(durationTicks).toBeLessThan(recoveryTicks)
+    for (let tick = 0; tick < durationTicks; tick++) step(world)
+    expect(world.phase).toBe('walking')
+    expect(ally.hp).toBeCloseTo(1 + ally.stats.maxHp * b.walkHealPerSecond * recoveryTicks * b.tickMs / 1000)
+    const healed = ally.hp
+    step(world)
+    expect(world.phase).toBe('spawning'); expect(ally.hp).toBe(healed)
   })
   it('waveClear→次のwalking、倒れた味方は30%で復帰', () => {
     const world = battle()

@@ -10,6 +10,7 @@ import type { JobId, SimEvent } from '../sim/types.ts'
 import { dropChance, lootRank, partyLuk, receiveItem, reconcileEquipment, requirementsOf, rollItem, type Item } from './items.ts'
 import { random } from '../sim/rng.ts'
 import { validateAbyssRecords, type AbyssRecord } from './abyss.ts'
+import { validateDefeatRecord, type DefeatRecord } from './defeat.ts'
 
 export const PROFILE_VERSION = 3
 export interface Gain { koban: number; exp: number }
@@ -25,6 +26,7 @@ export interface Profile {
   dungeonSeed: number
   dungeonRecords: Record<string, DungeonProgress>
   abyssRecords: Record<string, AbyssRecord>
+  lastDefeat: DefeatRecord | null
   party: { order: JobId[]; members: Record<JobId, Member> }
   koban: number
   dojo: Record<DojoKey, number>
@@ -42,7 +44,7 @@ const emptyEquip = (): Record<SlotId, string | null> => ({ weapon: null, armor: 
 export function newProfile(savedAt: string, seed = 1): Profile {
   const progress: DungeonProgress = { unlockedStage: 1, currentStage: 1, loop: false, inTown: false, depthRank: 0, unlockedDepths: [1, 0, 0], eventDepths: [0, 0, 0] }
   return { version: PROFILE_VERSION, savedAt, rng: seed >>> 0,
-    progress, dungeonId: 'yomi', dungeonSeed: seed >>> 0, dungeonRecords: { yomi: progress }, abyssRecords: {},
+    progress, dungeonId: 'yomi', dungeonSeed: seed >>> 0, dungeonRecords: { yomi: progress }, abyssRecords: {}, lastDefeat: null,
     party: { order: [...defaultFormation], members: Object.fromEntries(partyOrder.map((id) => [id, { lv: 1, exp: 0, allocated: emptyAttributes(), autoStats: true, equip: emptyEquip() }])) as Profile['party']['members'] },
     koban: 0, dojo: { atk: 0, hp: 0, walk: 0, drop: 0, offline: 0 }, inventory: [], nextItemId: 1,
     options: { autoSellMaxRarity: null, autoEquip: true },
@@ -87,7 +89,7 @@ export function addKoban(profile: Profile, koban: number) { profile.koban = capp
 /** Rolls and stores one item; emits a 'drop' event for the strip. */
 export function dropItem(profile: Profile, floor: number, x: number, out: SimEvent[], range: { min?: Rarity; max?: Rarity; slot?: SlotId; job?: JobId; holdForReview?: boolean; difficulty?: Difficulty } = {}, activeJobs = deployedJobs(profile.party.order)) {
   if (!Number.isSafeInteger(profile.nextItemId) || profile.nextItemId >= Number.MAX_SAFE_INTEGER - 1) throw new RangeError('item id sequence exhausted')
-  const item = rollItem(profile, `i${profile.nextItemId++}`, { ilvl: lootRank(floor, range.difficulty ?? profile.progress.depthRank), luk: partyLuk(profile, activeJobs), jobs: range.job ? [range.job] : partyOrder,
+  const item = rollItem(profile, `i${profile.nextItemId++}`, { floor, ilvl: lootRank(floor, range.difficulty ?? profile.progress.depthRank), luk: partyLuk(profile, activeJobs), jobs: range.job ? [range.job] : partyOrder,
     activeJobs, slot: range.slot, minRarity: range.min, maxRarity: range.max })
   const kind = `${item.slot}:${item.job ?? ''}:${item.name}`
   if (!profile.seenItems.includes(kind)) profile.seenItems.push(kind)
@@ -338,6 +340,7 @@ export function validateProfile(input: unknown): Profile {
   profile.dungeonRecords = isObject(raw.dungeonRecords) ? { ...raw.dungeonRecords } as Record<string, DungeonProgress> : {}
   profile.dungeonRecords[profile.dungeonId] = profile.progress
   profile.abyssRecords = validateAbyssRecords(raw.abyssRecords)
+  profile.lastDefeat = validateDefeatRecord(raw.lastDefeat)
   profile.seenEnemies = Array.isArray(raw.seenEnemies) ? raw.seenEnemies.filter((id): id is string => typeof id === 'string' && id in enemies) : []
   profile.seenItems = Array.isArray(raw.seenItems) ? raw.seenItems.filter((id): id is string => typeof id === 'string') : []
   if (raw.pendingOffline !== undefined && raw.pendingOffline !== null

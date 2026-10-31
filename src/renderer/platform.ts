@@ -91,7 +91,7 @@ export function initializePlatform(): ShellApi {
     }
   }
   const currentFrame = (events: SimEvent[] = []): Frame => ({ snapshot: snapshot(game.world, game.profile.koban), events })
-  const currentView = () => buildView(game.profile, game.world.loop)
+  const currentView = () => buildView(game.profile, game.world.loop, game.world.pending)
   const currentLayout = (): StripLayout => ({ dotPx: Math.max(1, Math.round(window.devicePixelRatio || 1)), playDots: PLAY_DOTS,
     scaleFactor: window.devicePixelRatio || 1, headroomDip: 72 })
   const publishState = () => emit(subscribers.state, state)

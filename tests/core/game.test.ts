@@ -117,6 +117,64 @@ describe('育成と進行（M4の一部）', () => {
     expect(runCommand(game, { c: 'selectStage', stageNo: 3 }).ok).toBe(false)
     expect(runCommand(game, { c: 'setLoop', loop: true })).toEqual({ ok: true }); expect(game.world.loop).toBe(true)
   })
+  it.each([
+    { alreadyAutoLooping: false, depthRank: 0 as const }, { alreadyAutoLooping: true, depthRank: 0 as const },
+    { alreadyAutoLooping: false, depthRank: 1 as const }, { alreadyAutoLooping: true, depthRank: 1 as const },
+  ])('全滅時の自動後退は明示した移動予約を上書きしない: %j', ({ alreadyAutoLooping, depthRank }) => {
+    const profile = newProfile('t')
+    profile.progress.currentStage = 30; profile.progress.unlockedStage = 100; profile.progress.unlockedDepths = [100, 30, 0]
+    const game = createGame(profile, 1)
+    for (let count = 0; game.world.phase !== 'battle' && count < 2000; count++) advance(game)
+    expect(game.world.phase).toBe('battle')
+    game.world.wipeStreak = b.wipeLoopThreshold - 1
+    game.world.loop = alreadyAutoLooping
+    expect(runCommand(game, { c: 'selectStage', stageNo: 25, depthRank })).toEqual({ ok: true })
+    for (const unit of game.world.units) if (unit.side === 'ally') unit.hp = 0
+    const result = advance(game)
+    expect(result.events.some(event => event.t === 'phase' && event.phase === 'wipe')).toBe(true)
+    expect(game.world.pending.stageNo).toBe(25)
+    expect(game.world.pending.depthRank).toBe(depthRank)
+    expect(game.world.loop).toBe(false)
+    for (let count = 0; game.world.phase !== 'walking' && count < 2000; count++) advance(game)
+    expect(game.world.phase).toBe('walking')
+    expect(game.world.stageNo).toBe(25); expect(game.world.depthRank).toBe(depthRank)
+    expect(game.profile.progress.currentStage).toBe(25); expect(game.profile.progress.depthRank).toBe(depthRank)
+    expect(game.world.loop).toBe(profile.progress.loop)
+    expect(game.world.pending.stageNo).toBeUndefined()
+  })
+  it('手動周回ONの場合は全滅後の予約先でも周回設定を保持する', () => {
+    const profile = newProfile('t'); profile.progress.currentStage = 30; profile.progress.unlockedStage = 30; profile.progress.unlockedDepths = [30, 0, 0]
+    const game = createGame(profile, 1)
+    runCommand(game, { c: 'setLoop', loop: true })
+    for (let count = 0; game.world.phase !== 'battle' && count < 2000; count++) advance(game)
+    game.world.wipeStreak = b.wipeLoopThreshold - 1
+    runCommand(game, { c: 'selectStage', stageNo: 25 })
+    for (const unit of game.world.units) if (unit.side === 'ally') unit.hp = 0
+    advance(game)
+    for (let count = 0; game.world.phase !== 'walking' && count < 2000; count++) advance(game)
+    expect(game.world.stageNo).toBe(25)
+    expect(game.world.loop).toBe(true); expect(profile.progress.loop).toBe(true)
+  })
+  it.each(['walking', 'battle', 'wipe', 'stageClear'] as const)('現在地の再指定は%s中の進行を巻き戻さない', phase => {
+    const profile = newProfile('t'); profile.progress.currentStage = 30; profile.progress.unlockedStage = 30; profile.progress.unlockedDepths = [30, 0, 0]
+    const game = createGame(profile, 1)
+    game.world.phase = phase; game.world.wave = 7; game.world.phaseUntilTick = 99
+    game.autoFarmClears = 2
+    const before = { world: structuredClone(game.world), profile: structuredClone(profile), autoFarmClears: game.autoFarmClears }
+    expect(runCommand(game, { c: 'selectStage', stageNo: 30, depthRank: 0 })).toEqual({ ok: true })
+    expect({ world: game.world, profile, autoFarmClears: game.autoFarmClears }).toEqual(before)
+  })
+  it('街から同じ階へは出発でき、同階でも違う難度へは予約できる', () => {
+    const profile = newProfile('t'); profile.progress.currentStage = 30; profile.progress.unlockedStage = 100; profile.progress.unlockedDepths = [100, 30, 0]
+    const game = createGame(profile, 1)
+    runCommand(game, { c: 'returnTown' })
+    expect(runCommand(game, { c: 'selectStage', stageNo: 30, depthRank: 0 })).toEqual({ ok: true })
+    expect(game.world.phase).toBe('walking'); expect(profile.progress.inTown).toBe(false)
+    game.world.phase = 'battle'; game.world.wave = 7
+    expect(runCommand(game, { c: 'selectStage', stageNo: 30, depthRank: 1 })).toEqual({ ok: true })
+    expect(game.world.pending).toMatchObject({ stageNo: 30, depthRank: 1 })
+    expect(game.world.wave).toBe(7)
+  })
 })
 
 describe('セーブ', () => {

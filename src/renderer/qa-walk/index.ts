@@ -4,6 +4,7 @@ import { gaitTiming, walkPose } from '../strip/gait'
 import { GAME_SPEED } from '../../core/data/timing'
 
 const root = document.querySelector('#jobs')!
+document.querySelector('#timing')!.textContent = `開発専用。ゲーム本体と同じ素材・歩行関数・フレーム選択。歩幅${gaitTiming.strideDots}ドット、実時間毎秒${gaitTiming.dotsPerSecond * GAME_SPEED}ドット、1周期${gaitTiming.strideDots / (gaitTiming.dotsPerSecond * GAME_SPEED) * 1000}ms。`
 let paused = false, distance = 0, last = 0
 const pause = document.querySelector<HTMLButtonElement>('#pause')!
 pause.onclick = () => { paused = !paused; pause.textContent = paused ? '再開' : '一時停止' }

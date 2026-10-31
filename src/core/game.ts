@@ -2,6 +2,7 @@ import { attributeKeys, type AttributeKey } from './data/attributes.ts'
 import { availablePoints, resetAllocation, spendAuto } from './progress/attributes.ts'
 import { REAL_TICK_MS } from './data/timing.ts'
 import { recordAbyssClear } from './progress/abyss.ts'
+import { DefeatTracker } from './progress/defeat.ts'
 import { cappedAmount, difficulties, maxFloor, type Difficulty } from './data/dungeon.ts'
 import { rarities, type Rarity, type SlotId } from './data/items.ts'
 import { partyOrder } from './data/jobs.ts'
@@ -12,7 +13,7 @@ import type { JobId, SimEvent, World } from './sim/types.ts'
 import { createWorld, refreshParty, requestOrder, requestStage, returnToTown, step } from './sim/world.ts'
 
 /** World + Profile wired together. Shared by the Electron main loop and the headless simulator. */
-export interface Game { world: World; profile: Profile; autoFarmClears: number; playMsRemainder: number }
+export interface Game { world: World; profile: Profile; autoFarmClears: number; playMsRemainder: number; defeatTracker: DefeatTracker }
 export type Command =
   | { c: 'setLoop'; loop: boolean }
   | { c: 'selectStage'; stageNo: number; depthRank?: Difficulty }
@@ -41,12 +42,13 @@ export function createGame(profile: Profile, seed: number): Game {
     dojo: profile.dojo, gear: gearMap(profile), allocated: allocationMap(profile), loop: profile.progress.loop, depthRank: profile.progress.depthRank, dungeonSeed: profile.dungeonSeed, eventDepths: profile.progress.eventDepths })
   if (profile.progress.inTown) returnToTown(world)
   profile.offlineJobs = actualJobs(world)
-  return { world, profile, autoFarmClears: 0, playMsRemainder: 0 }
+  return { world, profile, autoFarmClears: 0, playMsRemainder: 0, defeatTracker: new DefeatTracker() }
 }
 export function advance(game: Game, elapsedMs = REAL_TICK_MS): { events: SimEvent[]; changed: boolean; stageCleared: boolean } {
   if (!Number.isFinite(elapsedMs) || elapsedMs <= 0 || elapsedMs > pb.minuteMs) throw new Error('Invalid simulation step elapsed time')
   const { world, profile } = game
   const events = step(world)
+  game.defeatTracker.observe(profile, world, events)
   profile.offlineJobs = actualJobs(world)
   for (const event of events) {
     if (event.t === 'phase' && event.phase === 'stageClear' && (event.depthRank ?? world.depthRank) === 2) recordAbyssClear(profile, event.stageNo, profile.offlineJobs)
@@ -55,7 +57,12 @@ export function advance(game: Game, elapsedMs = REAL_TICK_MS): { events: SimEven
   if (result.levelsChanged) refresh(game)
   // 3 wipes in a row turn on world.loop; step back to the last cleared stage to farm, then retry.
   const autoLoop = world.loop && !profile.progress.loop
-  if (autoLoop && world.stageNo > 1 && events.some((event) => event.t === 'phase' && event.phase === 'wipe')) requestStage(world, world.stageNo - 1)
+  if (autoLoop && events.some((event) => event.t === 'phase' && event.phase === 'wipe')) {
+    if (world.pending.stageNo !== undefined) {
+      // A deliberate destination also takes priority over the emergency farming mode.
+      world.loop = profile.progress.loop; game.autoFarmClears = 0
+    } else if (world.stageNo > 1) requestStage(world, world.stageNo - 1)
+  }
   if (result.stageCleared && world.loop && !profile.progress.loop && world.stageNo < profile.progress.unlockedStage) {
     if (++game.autoFarmClears >= pb.autoFarmClears) { world.loop = false; world.wipeStreak = 0; game.autoFarmClears = 0 }
   }
@@ -83,6 +90,7 @@ export function runCommand(game: Game, command: Command): CommandResult & { even
       return { ok: true }
     case 'returnTown': {
       const events = returnToTown(world)
+      game.defeatTracker.observe(profile, world, events)
       profile.offlineJobs = actualJobs(world)
       applyRewards(profile, events, profile.offlineJobs); game.autoFarmClears = 0
       return { ok: true, events }
@@ -91,6 +99,7 @@ export function runCommand(game: Game, command: Command): CommandResult & { even
       const rank = command.depthRank ?? profile.progress.depthRank
       if (!Number.isInteger(rank) || rank < 0 || rank >= difficulties.length || !Number.isSafeInteger(command.stageNo)
         || command.stageNo < 1 || command.stageNo > Math.min(maxFloor(rank), profile.progress.unlockedDepths[rank])) return { ok: false, reason: 'まだ解放されていない階層・難易度です' }
+      if (world.phase !== 'town' && command.stageNo === world.stageNo && rank === world.depthRank) return { ok: true }
       const immediate = world.phase === 'town' || world.phase === 'walking'
       requestStage(world, command.stageNo, rank); world.loop = profile.progress.loop; game.autoFarmClears = 0
       if (immediate) { profile.progress.depthRank = rank; profile.progress.currentStage = command.stageNo; profile.progress.unlockedStage = profile.progress.unlockedDepths[rank]; profile.progress.inTown = false }

@@ -10,9 +10,11 @@ import { deployedJobs, jobs, partySize, roleLabels, type JobRole } from '../data
 import { dojo as dojoDefs, type DojoKey } from '../data/progress.ts'
 import { stageLabel } from '../data/stages.ts'
 import type { JobId, Stats } from '../sim/types.ts'
+import type { World } from '../sim/types.ts'
 import { createEquipmentComparison, describe, ownerOf, requirementsOf, sellPrice, statsOf, type Item } from './items.ts'
 import { activeExperienceMultiplier, dojoCost, expToNext, perMinute, type OfflineResult, type Profile } from './profile.ts'
 import { abyssView, type AbyssView } from './abyss.ts'
+import { lastDefeatResolved, type DefeatRecord } from './defeat.ts'
 
 export interface ItemView {
   id: string; name: string; slot: SlotId; slotName: string; job?: JobId; jobName?: string; ilvl: number
@@ -31,7 +33,9 @@ export interface MemberView {
   equip: Record<SlotId, ItemView | null>
 }
 export interface ProfileView {
-  dungeon: { id: string; name: string; depth: number; best: number; difficulty: Difficulty; difficultyLabel: string; unlockedDifficulty: number; floorLimit: number | null; town: boolean; theme: string; floorEvent: { kind: FloorFeature; claimed: boolean }; abyss: AbyssView }
+  lastDefeat: DefeatRecord | null
+  lastDefeatResolved: boolean
+  dungeon: { id: string; name: string; depth: number; best: number; difficulty: Difficulty; difficultyLabel: string; unlockedDifficulty: number; floorLimit: number | null; town: boolean; theme: string; pendingTravel?: { depth: number; difficulty: Difficulty }; floorEvent: { kind: FloorFeature; claimed: boolean }; abyss: AbyssView }
   koban: number; totalKoban: number
   stage: { current: number; unlocked: number; label: string; areaName: string; loop: boolean; max: number }
   partySize: number
@@ -64,7 +68,7 @@ function itemView(profile: Profile, item: Item, compare: ReturnType<typeof creat
     delta: Object.fromEntries(comparisons.map(({ job, delta }) => [job, round(delta, 1)])) }
 }
 
-export function buildView(profile: Profile, loop: boolean): ProfileView {
+export function buildView(profile: Profile, loop: boolean, pending?: World['pending']): ProfileView {
   const current = stageLabel(profile.progress.currentStage)
   const rate = perMinute(profile)
   const compare = createEquipmentComparison(profile)
@@ -73,7 +77,10 @@ export function buildView(profile: Profile, loop: boolean): ProfileView {
   const visibleFloors = limit === null ? [...new Set([1, best, ...Array.from({ length: db.stageWindow * 2 + 1 }, (_, index) => profile.progress.currentStage - db.stageWindow + index)])].filter((depth) => Number.isSafeInteger(depth) && depth >= 1 && depth <= best).sort((a, z) => a - z)
     : Array.from({ length: limit }, (_, index) => index + 1)
   return {
+    lastDefeat: structuredClone(profile.lastDefeat),
+    lastDefeatResolved: lastDefeatResolved(profile),
     dungeon: { id: profile.dungeonId, name: dungeons[profile.dungeonId].name, depth: profile.progress.currentStage, best, difficulty: rank,
+      pendingTravel: pending?.stageNo === undefined ? undefined : { depth: pending.stageNo, difficulty: pending.depthRank ?? rank },
       abyss: abyssView(profile),
       difficultyLabel: difficulties[rank].name, unlockedDifficulty: profile.progress.unlockedDepths.reduce((highest, depth, index) => depth > 0 ? index : highest, 0),
       floorLimit: limit, town: profile.progress.inTown, theme: current.areaName,

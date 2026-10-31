@@ -1,0 +1,13 @@
+.defeat-review { margin-bottom:16px; padding:14px; background:#2a2026; border:1px solid #825764; border-left:3px solid #d49b91; }
+.defeat-heading { display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; color:#f0bbb0; }
+.defeat-heading span { font-size:12px; }
+.defeat-review summary { cursor:pointer; padding:12px 0; min-height:44px; box-sizing:border-box; }
+.defeat-party { display:grid; grid-template-columns:repeat(auto-fit,minmax(175px,1fr)); gap:10px; }
+.defeat-party article { min-width:0; padding:10px; background:var(--card); border:1px solid var(--line); }
+.defeat-party h3 { margin:0 0 8px; font-size:14px; }
+.defeat-party p { margin:5px 0; font-size:12px; overflow-wrap:anywhere; }
+.defeat-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.defeat-review button { min-height:44px; padding:8px 12px; border:1px solid #825764; border-radius:4px; background:#332934; color:var(--text); font:inherit; cursor:pointer; }
+.defeat-party button { width:100%; margin-top:8px; }
+.defeat-review button:disabled { opacity:.55; cursor:default; }
+.defeat-history > summary { color:var(--muted); cursor:pointer; min-height:44px; padding:12px 0; box-sizing:border-box; }

@@ -1,13 +1,14 @@
 import { dungeons } from './dungeon.ts'
 export const balance = {
-  tickMs: 100, walkMs: 1200, waveClearMs: 300, stageClearMs: 800, wipeMs: 1800,
+  tickMs: 100, walkMs: 600, waveClearMs: 300, stageClearMs: 800, wipeMs: 1800,
   bossIntroMs: 900, spawnMs: 100, windupMs: 100, projectileDotsPerSecond: 360,
   bossInterruptDots: 18,
   allyAttackIntervalMul: 0.5,
   // spawnX was 160 in the first draft; ranged allies (220) then killed everything before melee contact.
   formationGap: 18, spawnX: 40, enemyStop: 14, enemyGap: 10,
   meleeRange: 16, rangedRange: 220, waves: 10, maxStage: dungeons.yomi.floorCount, maxLevel: 60,
-  walkHealPerSecond: 0.065, clearHeal: 0.3, frontTargetChance: 0.7, wipeLoopThreshold: 3,
+  // Recovery budget is independent of presentation tempo; dojo still reduces its duration.
+  walkRecoveryMs: 1200, walkHealPerSecond: 0.065, clearHeal: 0.3, frontTargetChance: 0.7, wipeLoopThreshold: 3,
   criMulBase: 1.5, defBase: 100, defK: 2, variance: 0.1,
   ultFromDealt: 5, ultFromTaken: 50, maxGauge: 100, minIntervalMul: 0.3, maxEva: 0.75,
   waveGrowth: 0.03, armorCritBonusMul: 0.5, obsessionMul: 1.15, obsessionMs: 5000,

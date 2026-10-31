@@ -24,6 +24,8 @@ function makeUnit(world: World, side: Unit['side'], defId: string, slot: number,
     attackReadyTick: 0, skillReadyTick: 0, ult: 0, gauges: {}, effects: [], aggro: 1 }
 }
 const walkTicks = (world: World) => ticks(b.walkMs / (1 + world.moveBonus))
+const walkRecoveryPerTick = (world: World) => b.walkHealPerSecond * b.tickMs / 1000
+  * ticks(b.walkRecoveryMs / (1 + world.moveBonus)) / walkTicks(world)
 const validOrder = (order: readonly JobId[]) => order.length === partyOrder.length && partyOrder.every((id) => order.includes(id))
 
 export function createWorld(options: WorldOptions = {}): World {
@@ -187,7 +189,8 @@ function phaseStep(world: World, events: SimEvent[]) {
     }
   }
   if (world.phase === 'walking' && world.tick < world.phaseUntilTick) {
-    for (const unit of world.units.filter(living)) healUnit(unit, unit.stats.maxHp * b.walkHealPerSecond * b.tickMs / 1000, unit.uid, events)
+    const recovery = walkRecoveryPerTick(world)
+    for (const unit of world.units.filter(living)) healUnit(unit, unit.stats.maxHp * recovery, unit.uid, events)
   }
   if (world.phase === 'spawning' && world.tick >= world.nextSpawnTick) {
     const id = world.spawnQueue[world.spawnIndex]

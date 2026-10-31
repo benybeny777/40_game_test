@@ -48,7 +48,7 @@ describe('3人出撃と控え', () => {
     step(world)
     expect(world.units.map((unit) => unit.defId)).toEqual(order.slice(0, partySize))
     expect(world.units[0]).toBe(reserve)
-    expect(reserve.hp).toBeCloseTo(37 + reserve.stats.maxHp * balance.walkHealPerSecond * balance.tickMs / 1000)
+    expect(reserve.hp).toBeCloseTo(37 + reserve.stats.maxHp * balance.walkHealPerSecond * balance.tickMs / 1000 * balance.walkRecoveryMs / balance.walkMs)
     expect(world.reserves).toContain(samurai)
     expect(samurai.hp).toBe(41)
     expect(world.units.map((unit) => unit.slot)).toEqual([0, 1, 2])
