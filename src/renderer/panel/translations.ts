@@ -1,6 +1,8 @@
 import { registerTranslations, registerTranslationTemplates } from '../../shared/i18n'
 
 registerTranslations({
+  '装備の発見数': 'Equipment found',
+  '発見した装備にも自動装備・自動売却・所持上限の設定が適用されます。': 'Auto equip, auto sell and inventory limits also apply to the equipment found.',
   '保存日時からの放置報酬も再計算します。現在の所持金・経験値・装備に追加するのではなく、ファイルの進行へ戻してから受け取ります。': 'Offline rewards since the save date are recalculated. Your current koban, experience and gear are replaced by the file before you collect those rewards.',
   'キャンセル':'Cancel', '処理中…':'Working…',
   'セーブファイルの取り込み':'Import a save file',
@@ -69,6 +71,9 @@ registerTranslations({
   '開発テスト・実決済なし。テストで取得した外観は製品版へ移りません。':'Development test — no real payment. Test cosmetics do not transfer to the released game.',
   '購入記録の確認待ちです。同じ商品を再購入せず、確認をお待ちください。':'Your purchase record is being verified. Please wait without purchasing the same item again.',
   '未購入の外観も30秒間試着できます。':'Try any cosmetic for 30 seconds, even before purchase.',
+  '外観':'Appearance', '外観プレビュー':'Appearance preview',
+  '外観を30秒間試着できます。':'Preview an appearance for 30 seconds.',
+  'この環境では試着と取得済み外観の適用を利用できます。購入機能はありません。':'You can preview appearances and apply those you already own. Purchasing is unavailable in this environment.',
   '外観を試着できませんでした。もう一度お試しください。':'Could not preview this cosmetic. Please try again.',
   'ストアとの通信を確認できませんでした。購入を繰り返さず、状態の更新をお待ちください。':'The store response could not be confirmed. Wait for an update without repeating the purchase.',
   '試着を取り消す':'Cancel preview', '試着なし':'No active preview', '試着を取り消しました。':'Preview cancelled.', '既定の足元に戻す':'Use default ground', '既定の足元に戻しました。':'Default ground restored.',

@@ -1,6 +1,7 @@
 import type { ProfileView, JobId } from '../../core/index.ts'
 import { jobs } from '../../core/data/jobs.ts'
 import { enemies } from '../../core/data/enemies.ts'
+import { bossSkillById } from '../../core/data/bossPatterns.ts'
 import { difficulties } from '../../core/data/dungeon.ts'
 import { formatNumber, registerTranslations, registerTranslationTemplates, translatedLabel as tr } from '../../shared/i18n'
 import { h } from './dom'
@@ -49,7 +50,9 @@ export function renderDefeatReview(record: Defeat | null, actions: DefeatActions
       h('div', { class: 'defeat-party' }, ...record.party.map(member => {
         const source = member.fatalSource
         const enemy = source ? enemies[source.enemyId] : null
-        const attack = !source ? '記録なし' : source.skillId === 'explode' ? '自爆' : source.skillId ? enemy!.boss!.skill.name : '通常攻撃'
+        const skill = source?.skillId && source.skillId !== 'explode' ? bossSkillById(source.enemyId, source.skillId) : undefined
+        if (source?.skillId && source.skillId !== 'explode' && !skill) throw new Error(`Unknown defeat skill: ${source.enemyId}/${source.skillId}`)
+        const attack = !source ? '記録なし' : source.skillId === 'explode' ? '自爆' : skill ? skill.name : '通常攻撃'
         return h('article', {},
           h('h3', {}, `${tr(jobs[member.job].name)} · Lv ${member.lv}`),
           h('p', {}, member.fallOrder === null ? tr('記録なし') : `倒れた順 ${member.fallOrder}`),

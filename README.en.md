@@ -26,6 +26,8 @@ These are captures of the game's own windows. Current character and enemy artwor
 - Combine attackers, tanks, healers, buffers, and debuffers. The roster includes Samurai, Ninja, Jirai Girl, Otaku, Pachinko Pro, Shrine Maiden, Bancho, Gyaru, Sukeban, Farmer, Maid, Jiangshi, Vagabond, Sumo Wrestler, Sister, Goofy Lord, and Bookworm.
 - Allocate STR, DEX, VIT, and INT manually or automatically. Reset allocations for free. Equipment requires suitable jobs and attributes, with no character-level requirement.
 - Find weapons, armor, and charms with random base values and modifiers, including Mythic equipment for specialized builds.
+- Extreme and Legendary weapons may carry an engraving that improves skill power or duration at the cost of a longer cooldown. Comparisons explain both sides, and useful upgrades appear first.
+- Preview roles, combinations, and deployed catch-up experience before changing your party. Later bosses cycle attack patterns; at each hundred-floor milestone, their skill changes below half HP.
 - Your first floor clear awards a usable weapon for an active companion. First clears of every tenth floor award Epic or better gear; floor 100 awards Legendary or better gear. Compare actual stat changes before equipping. Gear strength continues across difficulty boundaries.
 - Read boss warnings and targets, then adjust your party. Sumo Wrestler can interrupt casts; Maid follows marked targets, Sukeban punishes slowed enemies, and Bancho counters harder while warded.
 - Fight ten waves per floor. Every tenth floor ends with a boss; other final waves contain elites. Find treasure and altars, return to town, revisit unlocked floors, or farm a floor repeatedly.

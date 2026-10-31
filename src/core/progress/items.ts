@@ -2,10 +2,12 @@ import { cappedAmount, depthScale, progressionDepth, type Difficulty } from '../
 import { balance as b } from '../data/balance.ts'
 import { attributeDefs, attributeKeys, attributeLabels, requirementsBalance as rb, emptyAttributes, type Attributes } from '../data/attributes.ts'
 import { attributesOf } from './attributes.ts'
-import { uniqueDefs, affixes, armorNames, charmNames, gearWeights, itemBalance as ib, rarities, slots, weaponNames, type AffixKey, type Rarity, type SlotId } from '../data/items.ts'
+import { uniqueDefs, affixes, armorClassNames, charmNames, gearWeights, itemBalance as ib, rarities, slots, weaponNames, type AffixKey, type Rarity, type SlotId } from '../data/items.ts'
+import { equipmentNameRanks, equipmentMarkStart, equipmentMarkSpan, type ArmorClass } from '../data/itemNames.ts'
 import { deployedJobs, jobs, partyOrder } from '../data/jobs.ts'
 import { dojo as dojoDefs } from '../data/progress.ts'
 import { random } from '../sim/rng.ts'
+import { engravingBalance, engravingCandidates, skillEngravings } from '../data/skillEngravings.ts'
 import { lootTendency } from '../data/loot.ts'
 import { computeStats } from '../sim/stats.ts'
 import type { GearStats, JobId, Stats } from '../sim/types.ts'
@@ -23,11 +25,11 @@ const pick = <T>(state: { rng: number }, entries: readonly T[], weight: (entry: 
 }
 const round3 = (value: number) => Math.round(value * 1000) / 1000
 
-export function itemName(slot: SlotId, job: JobId | undefined, ilvl: number) {
-  const band = Math.floor((ilvl - 1) / ib.nameBand)
-  const names = slot === 'weapon' ? weaponNames[job!] : slot === 'armor' ? armorNames : charmNames
+export function itemName(slot: SlotId, job: JobId | undefined, ilvl: number, armorClass: ArmorClass = 'light') {
+  const band = equipmentNameRanks.reduce((band, rank, index) => ilvl >= rank ? index : band, 0)
+  const names = slot === 'weapon' ? weaponNames[job!] : slot === 'armor' ? armorClassNames[armorClass] : charmNames
   const base = names[Math.min(band, names.length - 1)]
-  const extra = band - (names.length - 1)
+  const extra = ilvl < equipmentMarkStart ? 0 : Math.floor((ilvl - equipmentMarkStart) / equipmentMarkSpan) + 1
   const tier = extra <= 8 ? '弐参肆伍陸漆捌玖'[extra - 1] : String(extra + 1)
   return extra > 0 ? `${base}・改${tier}` : base
 }
@@ -69,9 +71,14 @@ export function rollItem(state: { rng: number }, id: string, options: RollOption
     const value = (def.min + (def.max - def.min) * random(state)) * rarities[rarity].mul * (def.scale ? 1 + scaledRank(options.ilvl) * ib.lukScalePerIlvl : 1)
     rolled.push({ k: key, v: def.percent ? round3(value) : Math.round(value * 10) / 10 })
   }
-  const item: Item = { id, slot, job, ilvl: options.ilvl, rarity, name: unique?.name ?? itemName(slot, job, options.ilvl), locked: false, isNew: true, baseRoll, equipmentClass, uniqueId: uniqueEntry?.[0], marketEligible: false,
+  const item: Item = { id, slot, job, ilvl: options.ilvl, rarity, name: unique?.name ?? itemName(slot, job, options.ilvl, equipmentClass === 'unique' ? undefined : equipmentClass), locked: false, isNew: true, baseRoll, equipmentClass, uniqueId: uniqueEntry?.[0], marketEligible: false,
     atk: slot === 'weapon' ? round3(ib.weaponAtk * ib.jobAtkMul[job!] * growth.hp * rarityMul * baseRoll * (unique?.atkMul ?? 1)) : 0,
     hp: slot === 'armor' ? round3(ib.armorHp * growth.atk * rarityMul * baseRoll * (unique?.hpMul ?? 1)) : 0, def: slot === 'armor' ? round3(ib.armorDef * growth.def * rarityMul * baseRoll * (unique?.defMul ?? 1)) : 0, affixes: rolled }
+  if (slot === 'weapon' && job && !unique && (rarity === 3 || rarity === 4) && random(state) < engravingBalance.chance) {
+    const candidates = engravingCandidates(job)
+    if (!candidates.length) throw new Error(`No engraving for ${job}`)
+    item.engraving = candidates[Math.floor(random(state) * candidates.length)]
+  }
   item.requirements = requirementsOf(item)
   return item
 }
@@ -109,6 +116,7 @@ export function reconcileEquipment(profile: Profile) {
 export function describe(item: Item): string[] {
   const lines: string[] = [`基礎性能${Math.round((item.baseRoll ?? 1) * 100)}%（85〜115%）`]
   if (item.uniqueId && uniqueDefs[item.uniqueId]) lines.push(uniqueDefs[item.uniqueId].build)
+  if (item.engraving) lines.push(skillEngravings[item.engraving].description)
   if (item.slot === 'weapon' && item.job) lines.push(jobs[item.job].name + '専用')
   if (item.equipmentClass === 'heavy') lines.push('重装：筋力主ジョブ専用')
   if (item.equipmentClass === 'robe') lines.push('法衣：知力主ジョブ専用')
@@ -138,7 +146,10 @@ export function power(job: JobId, stats: Stats) {
   const w = gearWeights[job]
   const dps = stats.atk * 1000 / stats.intervalMs * (1 + stats.cri * (stats.criMul - 1))
   const tank = stats.maxHp * (1 + stats.def * b.defK / b.defBase) / ((1 - Math.min(stats.eva, b.maxEva)) * stats.dmgTakenMul)
-  return dps * (w.dps + w.koban * (stats.kobanMul - 1) + w.cooldown * (1 / stats.cooldownMul - 1) + (stats.dropMul - 1))
+  // Positive weighted averages: longer cooldowns cannot make more ATK lower the score.
+  const cooldown = (1 + w.cooldown / stats.cooldownMul) / (1 + w.cooldown)
+  const income = (1 + w.koban * stats.kobanMul) / (1 + w.koban)
+  return dps * w.dps * cooldown * income * stats.dropMul
     + tank * w.tank + stats.luk * w.luk
 }
 /** Power change if `item` replaced what `job` wears in that slot. */
@@ -150,7 +161,12 @@ export function compareEquipment(profile: Profile, job: JobId, item: Item) {
 function compareWithCurrent(profile: Profile, job: JobId, item: Item, current: Item[], before: Stats) {
   const swapped = [...current.filter((worn) => worn.slot !== item.slot && worn.id !== item.id), item]
   const after = statsOf(profile, job, swapped)
-  return { before, after, replaced: current.find(worn => worn.slot === item.slot), delta: power(job, after) - power(job, before) }
+  const replaced = current.find(worn => worn.slot === item.slot)
+  const skillTradeoff = item.engraving !== replaced?.engraving ? {
+    before: replaced?.engraving ? skillEngravings[replaced.engraving].description : undefined,
+    after: item.engraving ? skillEngravings[item.engraving].description : undefined,
+  } : undefined
+  return { before, after, replaced, skillTradeoff, delta: skillTradeoff ? null : power(job, after) - power(job, before) }
 }
 /** Synchronous view-build scope only. Never retain this context across profile mutations. */
 export function createEquipmentComparison(profile: Profile) {
@@ -172,9 +188,9 @@ export function scoreDelta(profile: Profile, job: JobId, item: Item) {
 /** Automation only accepts an upgrade without sacrificing another stat or a chosen unique build. */
 function automaticUpgrade(profile: Profile, job: JobId, item: Item): number | null {
   const comparison = compareEquipment(profile, job, item)
-  if (!comparison || comparison.delta <= 0 || item.uniqueId) return null
+  if (!comparison || comparison.delta === null || comparison.delta <= 0 || item.uniqueId || item.engraving) return null
   const { before, after, replaced, delta } = comparison
-  if (replaced?.uniqueId || replaced?.locked) return null
+  if (replaced?.uniqueId || replaced?.locked || replaced?.engraving) return null
   const higher: Array<keyof Stats> = ['atk', 'maxHp', 'def', 'cri', 'criMul', 'eva', 'luk', 'kobanMul', 'dropMul']
   const lower: Array<keyof Stats> = ['intervalMs', 'cooldownMul', 'dmgTakenMul']
   return higher.every(key => after[key] >= before[key]) && lower.every(key => after[key] <= before[key]) ? delta : null

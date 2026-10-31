@@ -31,7 +31,8 @@ describe('batched scene events', () => {
       { t: 'bossInterrupt', uid: 45, skillId: 'kanabo' },
       { t: 'death', uid: 45 },
     ] }, 1000)).not.toThrow()
-    expect(banner.mock.calls).toEqual([['金棒振り 準備中', 'boss'], ['金棒振り 中断！', 'good']])
+    // The interruption must replace the warning immediately, ahead of queued loot.
+    expect(banner.mock.calls).toEqual([['金棒振り 準備中', 'boss'], ['金棒振り 中断！', 'boss']])
     expect(label).not.toHaveBeenCalled()
   })
   it.each(['bossTell', 'bossInterrupt'] as const)('rejects an unknown %s skill rather than hiding corrupted event data', t => {

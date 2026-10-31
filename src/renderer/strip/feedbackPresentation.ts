@@ -1,11 +1,11 @@
-import { enemies } from '../../core/data/enemies.ts'
+import { bossSkillOwner } from '../../core/data/bossPatterns.ts'
 import type { SnapshotUnit } from '../../core/sim/types.ts'
 
 /** Events may outlive their actor when a frame batches tell, death, and next-wave reset. */
 export function bossCue(skillId: string, actor?: Pick<SnapshotUnit, 'side' | 'defId'>) {
-  const owner = Object.values(enemies).find(enemy => enemy.boss?.skill.id === skillId)
-  if (!owner?.boss) throw new Error(`Unknown boss skill: ${skillId}`)
-  return { skill: owner.boss.skill, attack: owner.attack, actorPresent: actor?.side === 'enemy' && actor.defId === owner.id }
+  const owner = bossSkillOwner(skillId)
+  if (!owner) throw new Error(`Unknown boss skill: ${skillId}`)
+  return { skill: owner.skill, attack: owner.enemy.attack, actorPresent: actor?.side === 'enemy' && actor.defId === owner.enemy.id }
 }
 
 export interface LabelBox { x: number; y: number; width: number; height: number }

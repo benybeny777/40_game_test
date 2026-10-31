@@ -20,7 +20,7 @@ function hashRun(seed: number) {
   }
   return hash.digest('hex')
 }
-const plain: Stats = { maxHp: 100, atk: 20, def: 0, intervalMs: 1000, cri: 0, criMul: 1.5, eva: 0, luk: 0, rangeDots: 16, dmgTakenMul: 1, kobanMul: 1, dropMul: 1, cooldownMul: 1 }
+const plain: Stats = { maxHp: 100, atk: 20, def: 0, intervalMs: 1000, cri: 0, criMul: 1.5, eva: 0, luk: 0, rangeDots: 16, dmgTakenMul: 1, kobanMul: 1, dropMul: 1, cooldownMul: 1, skillPowerMul: 1, skillDurationMul: 1 }
 describe('命中・計算式', () => {
   it('DEF0・非会心・ばらつきなしではATK×倍率', () => {
     expect(resolveHit(plain, plain, { mul: 2 }, [0.5, 0.5, 0.5], { variance: 0 }).amount).toBe(40)

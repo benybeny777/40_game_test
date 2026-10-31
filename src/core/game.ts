@@ -29,6 +29,7 @@ export type Command =
   | { c: 'setAutoStats'; job: JobId; enabled: boolean }
   | { c: 'resetStats'; job: JobId }
   | { c: 'markSeen' }
+  | { c: 'markItemSeen'; itemId: string }
   | { c: 'setOptions'; autoEquip?: boolean; autoSellMaxRarity?: Rarity | null }
 export type CommandResult = { ok: true } | { ok: false; reason: string }
 
@@ -160,6 +161,13 @@ export function runCommand(game: Game, command: Command): CommandResult & { even
       const member = profile.party.members[command.job]
       if (!member) return { ok: false, reason: '不明なジョブです' }
       resetAllocation(member); refresh(game); return { ok: true }
+    }
+    case 'markItemSeen': {
+      const item = profile.inventory.find(item => item.id === command.itemId)
+      if (!item) return { ok: false, reason: '持っていない装備です' }
+      if (ownerOf(profile, item.id)) return { ok: false, reason: '装備中の品は保留できません。持ち物を確認してください。' }
+      item.isNew = false
+      return { ok: true }
     }
     case 'markSeen':
       for (const item of profile.inventory) item.isNew = false

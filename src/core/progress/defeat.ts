@@ -1,6 +1,7 @@
 import { balance } from '../data/balance.ts'
 import { cappedAmount, dungeons, maxFloor, type Difficulty, type DungeonId } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
+import { bossSkillById } from '../data/bossPatterns.ts'
 import { jobs, partySize } from '../data/jobs.ts'
 import type { JobId, SimEvent, World } from '../sim/types.ts'
 import type { Profile } from './profile.ts'
@@ -51,7 +52,7 @@ export class DefeatTracker {
           member.damageTaken = cappedAmount(member.damageTaken + event.amount)
           const source = world.units.find(unit => unit.uid === event.sourceUid && unit.side === 'enemy')
           const enemy = source && enemies[source.defId]
-          const skillId = enemy?.boss?.skill?.id
+          const skillId = source && event.tags?.find(tag => bossSkillById(source.defId, tag))
           lethalCandidates.set(unit.uid, source && enemy ? { enemyId: source.defId,
             skillId: skillId && event.tags?.includes(skillId) ? skillId : enemy.traits.explode && event.tags?.includes('explode') ? 'explode' : null } : null)
         } else if (event.t === 'death') {
@@ -107,7 +108,7 @@ export function validateDefeatRecord(raw: unknown): DefeatRecord | null {
       if (member.fallOrder === null) return fail(`${path}.fatalSource`, 'requires an observed fallOrder')
       if (typeof source.enemyId !== 'string' || !Object.hasOwn(enemies, source.enemyId)) return fail(`${path}.fatalSource.enemyId`, 'must identify a supported enemy')
       const enemy = enemies[source.enemyId]
-      if (!(source.skillId === null || typeof source.skillId === 'string' && (source.skillId === enemy.boss?.skill?.id || source.skillId === 'explode' && enemy.traits.explode))) return fail(`${path}.fatalSource.skillId`, 'must be null or a skill belonging to the recorded enemy')
+      if (!(source.skillId === null || typeof source.skillId === 'string' && (bossSkillById(source.enemyId, source.skillId) || source.skillId === 'explode' && enemy.traits.explode))) return fail(`${path}.fatalSource.skillId`, 'must be null or a skill belonging to the recorded enemy')
       fatalSource = { enemyId: source.enemyId, skillId: source.skillId as string | null }
     }
     party.push({ job: member.job as JobId, lv: member.lv, damageTaken: member.damageTaken, fallOrder: member.fallOrder, fatalSource })

@@ -7,7 +7,8 @@ import { dojo as dojoDefs } from '../data/progress.ts'
 import { areaOf, areas, previousAreaShare, stagesPerArea, waveSizes } from '../data/stages.ts'
 import { healUnit, kobanMul, passiveOn, strike } from './actions.ts'
 import { attackDef, chooseTarget, living, normalAttackInRange, opponents } from './combat.ts'
-import { bossSkillCandidates, canStartBossSkill, summonCapacity } from './boss.ts'
+import { bossSkillCandidates, canStartBossSkill, summonCapacity, currentBossPattern } from './boss.ts'
+import { bossSkillById } from '../data/bossPatterns.ts'
 import { random } from './rng.ts'
 import { onBattleStart, refreshStats, rollOatari, skills, ultimates } from './skills.ts'
 import { computeStats, type DojoLevels } from './stats.ts'
@@ -264,7 +265,7 @@ function decide(world: World, unit: Unit, events: SimEvent[]) {
   } else {
     const boss = enemies[unit.defId].boss
     if (boss && unit.skillReadyTick <= world.tick && bossSkill(world, unit, events)) {
-      unit.skillReadyTick = world.tick + ticks(boss.skill.cooldownMs)
+      unit.skillReadyTick = world.tick + ticks(currentBossPattern(world, unit)!.skill.cooldownMs)
       unit.attackReadyTick = world.tick + ticks(unit.stats.intervalMs)
       return
     }
@@ -358,11 +359,12 @@ function shuffle<T>(world: World, list: readonly T[]) {
 }
 /** Lock visible targets before charging. Guard, debuffs, burst and displacement are distinct counters. */
 function bossSkill(world: World, self: Unit, events: SimEvent[]): boolean {
-  const skill = enemies[self.defId].boss?.skill
+  const skill = currentBossPattern(world, self)?.skill
   if (!skill || !canStartBossSkill(world, self)) return false
   const allies = bossSkillCandidates(world, self)
   const targets = skill.kind === 'summon' ? [] : skill.kind === 'frontStrike'
     ? allies.slice(0, skill.targets)
+    : skill.kind === 'rearStrike' ? [...allies].sort((a, b) => b.slot - a.slot).slice(0, skill.targets)
     : shuffle(world, allies).slice(0, skill.targets)
   if (skill.kind !== 'summon' && !targets.length) return false
   const targetUids = targets.map((unit) => unit.uid)
@@ -372,7 +374,8 @@ function bossSkill(world: World, self: Unit, events: SimEvent[]): boolean {
   return true
 }
 function resolveBossSkill(world: World, self: Unit, action: Unit['action'], events: SimEvent[]) {
-  const skill = enemies[self.defId].boss!.skill
+  const skill = bossSkillById(self.defId, action.skillId!)
+  if (!skill) throw new Error(`Unknown boss action: ${self.defId}/${action.skillId}`)
   // Harite and the sumo ultimate can break a charge. The cooldown was already spent.
   if (Math.abs(self.x - action.originX!) >= b.bossInterruptDots) {
     events.push({ t: 'bossInterrupt', uid: self.uid, skillId: skill.id, sourceUid: action.interruptSource?.uid, interruptSkillId: action.interruptSource?.skillId })
@@ -381,11 +384,16 @@ function resolveBossSkill(world: World, self: Unit, action: Unit['action'], even
   events.push({ t: 'skill', uid: self.uid, skillId: skill.id })
   if (skill.kind === 'summon') {
     const count = summonCapacity(world, skill)
-    for (let index = 0; index < count; index++) spawnEnemy(world, skill.summon, self.x + (index + 1) * b.enemyGap, events)
+    for (let index = 0; index < count; index++) {
+      const entry = skill.roster ? skill.roster[index % skill.roster.length] : { id: skill.summon, atkMul: 1 }
+      if (!entry) throw new Error(`Empty boss summon roster: ${skill.id}`)
+      const stats = enemyStats(world, entry.id)
+      spawnEnemy(world, entry.id, self.x + (index + 1) * b.enemyGap, events, { ...stats, atk: stats.atk * entry.atkMul })
+    }
     return
   }
   const targets = world.units.filter((unit) => living(unit) && action.targetUids!.includes(unit.uid)
-    && (skill.kind !== 'frontStrike' || Math.abs(unit.x - self.x) <= self.stats.rangeDots + b.formationGap))
+    && (skill.kind !== 'frontStrike' || Math.abs(unit.x - self.x) <= self.stats.rangeDots + b.formationGap * (skill.targets - 1)))
   for (const target of targets) strike(world, self, target, { mul: skill.mul, tags: [skill.id] }, events)
 }
 function battleStep(world: World, events: SimEvent[]) {
@@ -412,10 +420,11 @@ export function step(world: World, commands: readonly never[] = []): SimEvent[] 
 export function snapshot(world: World, koban = 0): Snapshot {
   return { tick: world.tick, phase: world.phase, stageNo: world.stageNo, depthRank: world.depthRank, wave: world.wave, koban, loop: world.loop,
     units: world.units.map((unit) => {
-      const cooldown = unit.side === 'ally' ? ticks(jobs[unit.defId as JobId].skill.cooldownMs ?? 0) : 0
+      const cooldown = unit.side === 'ally' ? ticks((jobs[unit.defId as JobId].skill.cooldownMs ?? 0) * unit.stats.cooldownMul) : 0
       return { uid: unit.uid, side: unit.side, defId: unit.defId, slot: unit.slot, x: unit.x, lv: unit.lv,
         hp: Math.max(0, unit.hp), maxHp: unit.stats.maxHp, hpRatio: Math.max(0, Math.min(1, unit.hp / unit.stats.maxHp)), alive: unit.alive,
         action: unit.action.kind, ult: unit.ult, ultOn: unit.lv >= b.ultLv, jonen: unit.gauges.jonen,
+        skillRemainingMs: Math.max(0, unit.skillReadyTick - world.tick) * b.tickMs,
         skillReady: cooldown ? Math.max(0, Math.min(1, 1 - (unit.skillReadyTick - world.tick) / cooldown)) : 1,
         effects: unit.effects.map((effect) => effect.tag),
         bossCast: unit.side === 'enemy' && unit.action.kind === 'cast'

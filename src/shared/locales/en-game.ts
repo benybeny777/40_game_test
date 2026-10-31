@@ -1,5 +1,21 @@
+import { equipmentNameEnglish } from '../../core/data/itemNames.ts'
 /** Stable display keys. Japanese source and save IDs stay in core; only presentation uses this dictionary. */
 export const gameTranslations: Readonly<Record<string, { readonly ja: string; readonly en: string }>> = {
+  "boss.late.ooni.name": { ja: "金棒薙ぎ払い", en: "Sweeping Iron Club" },
+  "boss.late.cat.name": { ja: "千客万来・曲芸隊", en: "Grand Welcome: Acrobat Troupe" },
+  "boss.late.fox.name": { ja: "背後の狐火", en: "Foxfire from Behind" },
+  "boss.late.ooni.description": { ja: "金棒薙ぎ払い。前方三人を広く狙う代わりに一人への威力は控えめ。全体回復・結界で支えるか、力士の押し戻しで構えを崩す。", en: "Sweeping Iron Club hits the front three with lower damage per target. Support them with party healing or barriers, or interrupt the windup with a Sumo push." },
+  "boss.late.cat.description": { ja: "千客万来・曲芸隊。招き猫もどきと攻撃力を抑えた化け猫を一体ずつ呼ぶ。手下は二種合わせて四体まで。範囲攻撃でまとめて減らすか、召喚の構えを中断する。", en: "Grand Welcome: Acrobat Troupe summons one Lucky Cat Mimic and one Monster Cat with reduced attack. Both types share a limit of four minions. Use area attacks to thin them out or interrupt the summoning windup." },
+  "boss.late.fox.description": { ja: "背後の狐火。隊列の後ろ二人へ狙いを絞る。一人への威力が高いため、後ろ二人にも耐久が必要。後衛の防具・回復を整え、詠唱の狙いを見て隊列を見直す。", en: "Foxfire from Behind targets the rear two, with higher damage per target, so both rear companions need durability. Equip and heal the back line, and check the cast targets when arranging your party." },
+  "boss.late.rear.role": { ja: "ボス・後衛狙い", en: "Boss: back-line attacks" },
+  "boss.codex.band": { ja: "現在の進行帯での技", en: "Skill at your current progression" },
+  'enemy.archive.spirit': { ja: '書喰いの蟲', en: 'Tome-Eater' },
+  'enemy.archive.fragment': { ja: '書喰いの幼蟲', en: 'Tome-Eater Larva' },
+  'enemy.archive.spirit.desc': { ja: '禁書を喰らって育った蟲。倒すと小さく分裂する。', en: 'A creature nourished by forbidden books. Splits into smaller fragments when defeated.' },
+  'enemy.archive.doll': { ja: '呪いの人形', en: 'Cursed Doll' },
+  'enemy.archive.oni': { ja: '呪いの映し箱', en: 'Cursed Picture Box' },
+  'enemy.archive.oni.desc': { ja: '書庫に封じられた異界の映像。先頭に飛びついて自爆する。近づく前に倒したい。', en: 'An otherworldly image sealed in the archive. Leaps at the front line and explodes; defeat it before it reaches you.' },
+  'enemy.archive.fox': { ja: '禁書の九尾', en: 'Nine-Tailed Archivist' },
   "job.samurai.name": {
     "ja": "サムライ",
     "en": "Samurai"
@@ -21,8 +37,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Quick Draw"
   },
   "job.samurai.skill.desc": {
-    "ja": "次の一撃が必ず会心になり、威力2.5倍",
-    "en": "The next hit always crits and deals 2.5x damage."
+    "ja": "次の一撃が必ず会心になり、威力{power}倍",
+    "en": "The next hit always crits and deals {power}x damage."
   },
   "job.samurai.passive.name": {
     "ja": "仁王立ち",
@@ -101,8 +117,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Plant Mine"
   },
   "job.jirai.skill.desc": {
-    "ja": "敵の足元に地雷。踏まれると範囲に攻撃力×2.5",
-    "en": "Places a mine beneath the front enemy. Detonates for 2.5x ATK area damage when triggered."
+    "ja": "敵の足元に地雷。踏まれると範囲に攻撃力×{power}",
+    "en": "Places a mine beneath the front enemy. Detonates for {power}x ATK area damage when triggered."
   },
   "job.jirai.passive.name": {
     "ja": "重い愛",
@@ -141,8 +157,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Care Package"
   },
   "job.otaku.skill.desc": {
-    "ja": "HPの割合が一番低い仲間を回復（攻撃力×3＋最大HPの10%）",
-    "en": "Heals the ally with the lowest HP ratio for 3x ATK + 10% of their max HP."
+    "ja": "HPの割合が一番低い仲間を回復（攻撃力×{power}＋最大HPの10%）",
+    "en": "Heals the ally with the lowest HP ratio for {power}x ATK + 10% of their max HP."
   },
   "job.otaku.passive.name": {
     "ja": "推しへの愛",
@@ -381,8 +397,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Piercing Thrust"
   },
   "job.farmer.skill.desc": {
-    "ja": "前方72ドット以内の敵を3体まで、攻撃力×1.6で貫く",
-    "en": "Pierces up to 3 enemies within 72 dots ahead for 1.6x ATK damage."
+    "ja": "前方72ドット以内の敵を3体まで、攻撃力×{power}で貫く",
+    "en": "Pierces up to 3 enemies within 72 dots ahead for {power}x ATK damage."
   },
   "job.farmer.passive.name": {
     "ja": "逃げ腰",
@@ -421,8 +437,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Concealed Triple Throw"
   },
   "job.maid.skill.desc": {
-    "ja": "注目マークの敵を優先して攻撃力×0.65のナイフを3連投。注目中の敵への初弾は会心",
-    "en": "Throws 3 knives for 0.65x ATK each, prioritizing marked enemies. The first hit against a marked enemy is a critical hit."
+    "ja": "注目マークの敵を優先して攻撃力×{power}のナイフを3連投。注目中の敵への初弾は会心",
+    "en": "Throws 3 knives for {power}x ATK each, prioritizing marked enemies. The first hit against a marked enemy is a critical hit."
   },
   "job.maid.passive.name": {
     "ja": "鮮やかな手際",
@@ -461,8 +477,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Leaping Palm"
   },
   "job.jiangshi.skill.desc": {
-    "ja": "前方72ドット以内の敵1体に攻撃力×2、{duration}秒間回避率＋20%",
-    "en": "Strikes one enemy within 72 dots ahead for 2x ATK damage and gains 20% evasion for {duration}s."
+    "ja": "前方72ドット以内の敵1体に攻撃力×{power}、{duration}秒間回避率＋20%",
+    "en": "Strikes one enemy within 72 dots ahead for {power}x ATK damage and gains 20% evasion for {duration}s."
   },
   "job.jiangshi.passive.name": {
     "ja": "貼り直しの霊符",
@@ -501,8 +517,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Scavenger's Ingenuity"
   },
   "job.vagabond.skill.desc": {
-    "ja": "敵全体に攻撃力×1.2、{duration}秒間敵の攻撃力−15%・獲得小判＋15%",
-    "en": "Deals 1.2x ATK damage to all enemies. For {duration}s, reduces enemy ATK by 15% and increases Koban gains by 15%."
+    "ja": "敵全体に攻撃力×{power}、{duration}秒間敵の攻撃力−15%・獲得小判＋15%",
+    "en": "Deals {power}x ATK damage to all enemies. For {duration}s, reduces enemy ATK by 15% and increases Koban gains by 15%."
   },
   "job.vagabond.passive.name": {
     "ja": "目ざとい回収",
@@ -541,8 +557,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Open-Hand Strike"
   },
   "job.rikishi.skill.desc": {
-    "ja": "前方48ドット以内の敵1体に攻撃力×1.8、24ドット押し戻す。{duration}秒間自分の被ダメージ−20%",
-    "en": "Hits one enemy within 48 dots ahead for 1.8x ATK damage and pushes it back 24 dots. Reduces own damage taken by 20% for {duration}s."
+    "ja": "前方48ドット以内の敵1体に攻撃力×{power}、24ドット押し戻す。{duration}秒間自分の被ダメージ−20%",
+    "en": "Hits one enemy within 48 dots ahead for {power}x ATK damage and pushes it back 24 dots. Reduces own damage taken by 20% for {duration}s."
   },
   "job.rikishi.passive.name": {
     "ja": "土俵の踏ん張り",
@@ -581,8 +597,8 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
     "en": "Healing Hands"
   },
   "job.sister.skill.desc": {
-    "ja": "HP割合が最も低い仲間を攻撃力×2＋最大HPの15%回復",
-    "en": "Heals the ally with the lowest HP ratio for 2x ATK + 15% of their max HP."
+    "ja": "HP割合が最も低い仲間を攻撃力×{power}＋最大HPの15%回復",
+    "en": "Heals the ally with the lowest HP ratio for {power}x ATK + 15% of their max HP."
   },
   "job.sister.passive.name": {
     "ja": "守護の祈り",
@@ -1622,11 +1638,14 @@ export const gameTranslations: Readonly<Record<string, { readonly ja: string; re
   }
 }
 
-export const gameEnglish: Readonly<Record<string, string>> = Object.freeze(Object.fromEntries(Object.values(gameTranslations).map(({ ja, en }) => [ja, en])))
+export const gameEnglish: Readonly<Record<string, string>> = Object.freeze({
+  ...equipmentNameEnglish, ...Object.fromEntries(Object.values(gameTranslations).map(({ ja, en }) => [ja, en])) })
 
 /** Only complete phrases and anchored, explicit templates are translated. Save IDs and unknown text pass through. */
 export const gameTranslationTemplates: ReadonlyArray<{ ja: string; en: string }> = [
-  ...Object.values(gameTranslations).filter(entry => entry.ja.includes('{duration}')),
+  { ja: '集中の刻印：通常スキルの攻撃力参照部分{power}倍・待ち時間{cooldown}倍', en: 'Focus engraving: normal skill ATK scaling x{power}; cooldown x{cooldown}' },
+  { ja: '持続の刻印：通常スキルの効果時間{duration}倍・待ち時間{cooldown}倍', en: 'Duration engraving: normal skill effect duration x{duration}; cooldown x{cooldown}' },
+  ...Object.values(gameTranslations).filter(entry => (entry.ja.includes('{duration}') || entry.ja.includes('{power}'))),
   { ja: '{description}（{seconds}秒ごと）', en: '{description} (every {seconds}s)' },
   { ja: '{attribute}{required}必要（現在{current}）', en: 'Requires {attribute} {required} (current {current})' },
   { ja: '基礎性能{percent}%（85〜115%）', en: 'Base roll {percent}% (85-115%)' },

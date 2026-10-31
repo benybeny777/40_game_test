@@ -82,7 +82,7 @@ describe('panel keyboard focus and scroll retention', () => {
   })
   it('retains keyed gear, training and records disclosures without tying them to member cards', () => {
     const before = panel()
-    const keys = ['gear-management', 'training-ninja', 'abyss-records']
+    const keys = ['gear-management', 'training-ninja', 'abyss-records', 'reserve-expand']
     const add = (root: Control, key: string, open = false) => {
       const details = new Control('DETAILS'), summary = new Control('SUMMARY')
       summary.dataset.focusKey = key; details.open = open; details.append(summary); root.append(details)
@@ -100,7 +100,7 @@ describe('panel keyboard focus and scroll retention', () => {
     expect(closed.open).toBe(false)
     rebuilt[0].open = false
     const updated = capturePanelPosition(dom(next.root))
-    expect(updated.openDetails).not.toContain('abyss-records')
+    expect(updated.openDetails).not.toContain('reserve-expand')
   })
   it('restores expanded disclosures only for their original screen on a tab round trip', () => {
     const positions = new PanelPositions()

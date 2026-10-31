@@ -1,6 +1,6 @@
 {
   "name": "taskbar-hyakkiko",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": true,
   "description": "はぐれものダンジョン — 3人編成の装備収集・放置RPG",
   "main": "./out/main/index.js",

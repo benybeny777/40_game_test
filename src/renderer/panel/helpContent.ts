@@ -111,12 +111,11 @@ export function getHelpContent() {
         text('保存エラー中は上書きを繰り返さず、セーブを書き出して進行を保護してください。', 'Do not repeatedly overwrite after a save error. Export your save to protect your progress.'),
       ]),
     ] },
-    { id: 'store', title: text('外観ストアとSteamアイテム取引', 'Cosmetic store and Steam trading'), blocks: [
+    { id: 'store', title: text('外観の試着と適用', 'Previewing and applying appearances'), blocks: [
       paragraph(text('外観ストアは足元の見た目を変えます。能力・経験値・ドロップ率は変わりません。30秒間試着でき、取り消すか時間が来ると元に戻ります。', 'Cosmetics change the ground appearance without affecting stats, experience or drop rates. Preview them for 30 seconds; cancel or wait to restore the previous appearance.')),
       list([
-        text('現在は販売前です。「販売準備中」の商品は購入できません。', 'Sales have not started. Coming soon products cannot be purchased.'),
-        text('Steamアイテム取引は準備中です。本編の装備や小判をSteamで売買することはできません。', 'Steam item trading is in preparation. Adventure equipment and koban cannot be sold or traded on Steam.'),
-        text('購入結果が未確認と表示された場合は、同じ商品を繰り返し購入せず、確認を待ちます。', 'If a purchase result is unconfirmed, wait for verification without buying the same item again.'),
+        text('「外観」で足元の見た目を試着できます。取得済みの外観は「この外観を使う」で適用します。', 'Use Appearance to preview ground styles. Choose Equip cosmetic to apply an appearance you already own.'),
+        text('「既定の足元に戻す」で元の見た目へ戻せます。本編で拾った装備や小判は変わりません。', 'Use default ground restores the original appearance. Adventure equipment and koban remain unchanged.'),
       ]),
     ] },
   ]

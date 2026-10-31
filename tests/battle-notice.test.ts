@@ -1,0 +1,38 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { createBattleNotice } from '../src/renderer/battleNotice'
+
+afterEach(() => vi.useRealTimers())
+it('drops both the visible warning and queued loot when the surface is hidden', () => {
+  vi.useFakeTimers()
+  const show = vi.fn(), hide = vi.fn()
+  const notice = createBattleNotice(show, hide)
+  notice('tell', 'boss'); notice('loot', 'good')
+  notice.clear()
+  vi.advanceTimersByTime(4000)
+  expect(show).toHaveBeenCalledTimes(1)
+  expect(hide).toHaveBeenCalledOnce()
+  notice('new battle', 'info')
+  expect(show).toHaveBeenLastCalledWith('new battle', 'info')
+})
+it('keeps a boss tell visible over loot and skill chatter, then shows loot', () => {
+  vi.useFakeTimers()
+  const show = vi.fn(), hide = vi.fn()
+  const notice = createBattleNotice(show, hide)
+  notice('tell', 'boss'); notice('loot', 'good'); notice('skill', 'info')
+  expect(show.mock.calls).toEqual([['tell', 'boss']])
+  vi.advanceTimersByTime(1800)
+  expect(show).toHaveBeenLastCalledWith('loot', 'good')
+  vi.advanceTimersByTime(1800)
+  expect(hide).toHaveBeenCalledOnce()
+})
+it('interrupts the tell with its outcome and clears obsolete pending chatter on defeat', () => {
+  vi.useFakeTimers()
+  const show = vi.fn(), hide = vi.fn()
+  const notice = createBattleNotice(show, hide)
+  notice('tell', 'boss'); notice('skill'); notice('interrupted', 'boss')
+  expect(show).toHaveBeenLastCalledWith('interrupted', 'boss')
+  notice('defeat', 'bad')
+  vi.advanceTimersByTime(1800)
+  expect(show).toHaveBeenLastCalledWith('defeat', 'bad')
+  expect(hide).toHaveBeenCalledOnce()
+})

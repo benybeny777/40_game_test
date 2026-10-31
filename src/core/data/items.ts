@@ -1,4 +1,5 @@
 import type { JobId } from '../sim/types.ts'
+import { armorNamePairs, charmNamePairs, weaponNamePairs, type ArmorClass } from './itemNames.ts'
 
 export type SlotId = 'weapon' | 'armor' | 'charm'
 export type Rarity = 0 | 1 | 2 | 3 | 4 | 5
@@ -30,32 +31,15 @@ export const affixes: Record<AffixKey, { name: string; min: number; max: number;
   dmgTakenPct: { name: '被ダメージ', min: -0.06, max: -0.02, percent: true },
   dropPct: { name: 'ドロップ率', min: 0.02, max: 0.06, percent: true },
 }
-// Names change every 5 item levels (03-progression-save.md §3.2). The last entry repeats beyond the table.
-export const weaponNames: Record<JobId, string[]> = {
-  samurai: ['錆び刀', '打刀', '名刀・無銘'],
-  ninja: ['苦無', '八方手裏剣', '影縫い'],
-  jirai: ['ハートの手鏡', '量産リボン杖', '激重ハサミ'],
-  otaku: ['ペンライト', '推し色サイリウム', '痛うちわ'],
-  pachipro: ['玉の箱', '千発箱', '黄金のドル箱'],
-  miko: ['紙の御幣', '白木の御幣', '神楽の御幣'],
-  bancho: ['拳帯', '鉄拳グローブ', '総長の拳'],
-  gyaru: ['デコスマホ', '盛りスマホ', '伝説のデコスマホ'],
-  sukeban: ['木刀', '樫の木刀', '夜露死苦木刀'],
-  farmer: ['竹槍', '節竹の槍', '豊穣の竹槍'],
-  maid: ['仕込みナイフ', '銀の投げナイフ', '三日月ナイフ'],
-  jiangshi: ['紙の霊符', '朱印の霊符', '鎮魂の霊符'],
-  vagabond: ['拾った空き缶', '道具の寄せ集め', '掘り出し物の道具箱'],
-  rikishi: ['稽古の手甲', '土俵の手甲', '横綱の手甲'],
-  sister: ['祈祷書', '銀装の祈祷書', '祝福の祈祷書'],
-  tono: ['紙の扇子', '金縁の扇子', 'あっぱれの扇子'],
-  gariben: ['古い参考書', '書き込み参考書', '秘伝の問題集'],
-}
-export const armorNames = ['着流し', '鎖帷子', '陣羽織']
-export const charmNames = ['交通安全守', '学業成就守', '金運招福守']
+/** Display names are derived from the same source as their English translations. */
+export const weaponNames = Object.fromEntries(Object.entries(weaponNamePairs).map(([job, names]) => [job, names.map(([ja]) => ja)])) as Record<JobId, string[]>
+export const armorClassNames = Object.fromEntries(Object.entries(armorNamePairs).map(([kind, names]) => [kind, names.map(([ja]) => ja)])) as Record<ArmorClass, string[]>
+export const armorNames = Object.values(armorClassNames).flat()
+export const charmNames = charmNamePairs.map(([ja]) => ja)
 export const itemBalance = {
   baseRollMin: 0.85, baseRollMax: 1.15, uniqueRarity: 5 as Rarity, maxIlvl: Number.MAX_SAFE_INTEGER,
   softIlvl: 60, deepRankSpan: 40, maxRequirementRank: 160, activeWeaponShare: 0.7,
-  dropChance: 0.03, bossMinRarity: 2 as Rarity, nameBand: 5,
+  dropChance: 0.03, bossMinRarity: 2 as Rarity,
   weaponAtk: 3, jobAtkMul: { samurai: 1.2, ninja: 1, jirai: 1.2, otaku: 0.7, pachipro: 1, miko: 0.7, bancho: 1.1, gyaru: 0.8, sukeban: 1.2, farmer: 1, maid: 0.9, jiangshi: 1.1, vagabond: 0.8, rikishi: 1.1, sister: 0.7, tono: 0.6, gariben: 0.7 } as Record<JobId, number>,
   armorHp: 15, armorDef: 2, charmExtraAffix: 1,
   lukRarityDiv: 500, pachiLukDrop: 0.0005, lukScalePerIlvl: 0.1,

@@ -39,6 +39,7 @@ export function parseCommand(value: unknown): Command | null {
     case 'sell': return Array.isArray(value.itemIds) && value.itemIds.length <= 200 && value.itemIds.every(isId) ? { c: 'sell', itemIds: value.itemIds as string[] } : null
     case 'sellAll': return isRarity(value.maxRarity) ? { c: 'sellAll', maxRarity: value.maxRarity as Extract<Command, { c: 'sellAll' }>['maxRarity'] } : null
     case 'lock': return isId(value.itemId) && typeof value.locked === 'boolean' ? { c: 'lock', itemId: value.itemId, locked: value.locked } : null
+    case 'markItemSeen': return isId(value.itemId) ? { c: 'markItemSeen', itemId: value.itemId } : null
     case 'markSeen': return { c: 'markSeen' }
     case 'setOptions': {
       const out: Extract<Command, { c: 'setOptions' }> = { c: 'setOptions' }

@@ -188,15 +188,17 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   .settings label { gap: 12px; min-height: 44px; }
 }
 
-.next-choice { display:flex; align-items:center; justify-content:space-between; gap:18px; padding:18px; margin-bottom:16px; border:1px solid #927446; border-left:4px solid #e1b766; background:linear-gradient(110deg,#332c23,#201d29); }
+.next-choice { display:flex; flex-direction:column; align-items:stretch; gap:14px; padding:18px; margin-bottom:16px; border:1px solid #927446; border-left:4px solid #e1b766; background:linear-gradient(110deg,#332c23,#201d29); }
 .next-choice h3 { margin:6px 0 12px; font-size:17px; }
 .next-choice p { margin:10px 0 0; color:var(--muted); font-size:12px; line-height:1.6; }
-.next-choice button { flex-shrink:0; min-height:44px; padding:10px 16px; }
+.next-choice button { min-height:44px; padding:10px 16px; border:1px solid var(--line); border-radius:4px; background:var(--card); color:var(--text); font:inherit; cursor:pointer; }
+.next-choice-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.next-choice-actions > p { flex-basis:100%; }
 .next-choice button.primary { background:var(--gold); color:#211b20; border:1px solid #f1d599; font-weight:700; }
 .next-choice button.primary:hover { background:#edca82; }
 .next-choice button.primary:focus-visible { outline:2px solid #fff0ce; outline-offset:3px; }
-.loot-comparison { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-.loot-comparison > div { padding:10px; border:1px solid var(--line); background:#171620; }
+.loot-comparison { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
+.loot-comparison > div { min-width:0; padding:10px; border:1px solid var(--line); background:#171620; overflow-wrap:anywhere; }
 .loot-comparison small, .loot-comparison strong, .loot-comparison span { display:block; }
 .loot-comparison small { color:var(--muted); margin-bottom:6px; }
 .loot-comparison strong { color:var(--rarity,var(--text)); font-size:14px; }
@@ -250,3 +252,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .abyss-member dt { color:var(--muted); flex:0 0 auto; }
 .abyss-member dd { margin:0; }
 .abyss-milestone { border-top:1px solid var(--line); }
+.reserve-section > summary { cursor:pointer; padding:14px 10px; border:1px solid var(--line); border-radius:8px; font-weight:700; }
+.reserve-section > summary:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+
+.skill-tradeoff { margin:10px 0; padding:10px; border:1px solid var(--line); }
+.skill-tradeoff p { display:flex; flex-direction:column; gap:4px; line-height:1.6; }
+.skill-tradeoff small { color:var(--muted); }

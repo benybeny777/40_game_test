@@ -1,10 +1,15 @@
 import { enemies, type EnemyDef } from '../core/data/enemies.ts'
+import { bossPattern } from '../core/data/bossPatterns.ts'
+import type { Difficulty } from '../core/data/dungeon.ts'
 
 export interface EnemyGuide { role: string; tactic: string }
 /** Player-facing explanations of the actual enemy traits, shared by the codex and tooltips. */
-export function enemyGuide(id: string): EnemyGuide {
+export function enemyGuide(id: string, context?: { floor: number; depthRank: Difficulty }): EnemyGuide {
   const def: EnemyDef | undefined = enemies[id]
   if (!def) return { role: '不明', tactic: '' }
+  const pattern = context ? bossPattern(id, context.floor, context.depthRank) : undefined
+  if (pattern?.late) return { role: pattern.skill.kind === 'rearStrike' ? 'ボス・後衛狙い'
+    : pattern.skill.kind === 'summon' ? 'ボス・召喚' : 'ボス・前列強打', tactic: pattern.description }
   if (def.boss?.skill.kind === 'frontStrike') return { role: 'ボス・前列強打', tactic: '金棒は前の二人を巻き込む。前列の防御と回復を整えよう。' }
   if (def.boss?.skill.kind === 'summon') return { role: 'ボス・召喚', tactic: '手下を呼び出す。範囲攻撃で取り巻きごと倒そう。' }
   if (def.boss?.phantoms) return { role: 'ボス・幻影', tactic: '体力半分で幻影が出現。全体攻撃とパーティの回復を用意しよう。' }

@@ -1,0 +1,5 @@
+.next-boss { padding: 10px 12px; margin: 10px 0; border: 1px solid #654f57; background: #251d25; overflow-wrap: anywhere; }
+.next-boss strong { display: block; margin-top: 3px; font-size: 14px; color: #f2d29c; }
+.next-boss small { color: var(--muted); font-size: 11px; }
+.next-boss p { margin: 5px 0; line-height: 1.6; font-size: 12px; }
+.next-boss summary { cursor: pointer; font-size: 12px; padding: 5px 0; }

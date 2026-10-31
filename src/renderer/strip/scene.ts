@@ -1,6 +1,7 @@
 import { balance, enemies, jobs, partySize, rarities, stageLabel, type JobId, type SimEvent, type Snapshot, type SnapshotUnit } from '../../core/index.ts'
 import type { Frame as SimFrame } from '../../shared/api'
 import { GAME_SPEED, realSeconds } from '../../core/data/timing'
+import { bossSkillById } from '../../core/data/bossPatterns.ts'
 import { drawText, textWidth } from './font'
 import { frameAt, sheets, type Sheet } from './sprites/sheet'
 import { PARTY_SPACING_SCALE, PLAY_DOTS } from '../../shared/art'
@@ -160,8 +161,11 @@ export class Scene {
       case 'skill': {
         if (vis) { vis.anim = 'attack'; vis.animAt = now; vis.windupMs = 0; vis.normalMelee = false }
         const unit = this.unit(event.uid), x = this.posX(event.uid, 1)
-        const name = unit?.side === 'ally' ? jobs[unit.defId as JobId].skill.name : event.skillId === 'phantom' ? '幻影分身' : enemies[unit?.defId ?? '']?.boss?.skill.name
-        if (unit && x !== undefined && name && event.skillId !== 'kakuhen') this.hooks.label(name, x, this.headY(unit) - 6, unit.side === 'ally' ? jobs[unit.defId as JobId].color : '#ff8a6a')
+        const name = unit?.side === 'ally' ? jobs[unit.defId as JobId].skill.name : event.skillId === 'phantom' ? '幻影分身' : bossSkillById(unit?.defId ?? '', event.skillId)?.name
+        if (unit && x !== undefined && name && event.skillId !== 'kakuhen') {
+          if (unit.side === 'enemy') this.hooks.banner(name, 'boss')
+          else this.hooks.label(name, x, this.headY(unit) - 6, jobs[unit.defId as JobId].color)
+        }
         break
       }
       case 'bossTell': {
@@ -176,7 +180,7 @@ export class Scene {
           if (vis) { vis.anim = undefined; vis.windupMs = 0 }
           this.number('BREAK', event.uid, colors.heal, now)
         }
-        this.hooks.banner(`${cue.skill.name} 中断！`, 'good')
+        this.hooks.banner(`${cue.skill.name} 中断！`, 'boss')
         break
       }
       case 'ultimate': {
@@ -432,10 +436,10 @@ export class Scene {
       if (x === undefined) continue
       const left = Math.round(x), head = this.headY(unit) - 10
       if (unit.bossCast) {
-        const boss = enemies[unit.defId]?.boss
-        if (!boss) throw new Error(`Boss cast has no boss definition: ${unit.defId}`)
+        const skill = bossSkillById(unit.defId, unit.bossCast.skillId)
+        if (!skill) throw new Error(`Boss cast has no skill definition: ${unit.defId}/${unit.bossCast.skillId}`)
         const remaining = Math.max(0, (unit.bossCast.resolveTick - renderTick) * balance.tickMs)
-        const progress = Math.max(0, Math.min(1, 1 - remaining / boss.skill.castMs))
+        const progress = Math.max(0, Math.min(1, 1 - remaining / skill.castMs))
         ctx.fillStyle = '#241521'; ctx.fillRect(left - 14, head - 9, 29, 10)
         drawText(ctx, `! ${realSeconds(remaining).toFixed(1)}`, left - 11, head - 7, '#ffc19f')
         ctx.fillStyle = '#4b2833'; ctx.fillRect(left - 13, head - 1, 27, 2)

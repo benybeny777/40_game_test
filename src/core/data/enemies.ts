@@ -3,8 +3,8 @@ import { balance } from './balance.ts'
 
 export type BossSkill = { castMs: number } & (
   | { kind: 'frontStrike'; id: string; name: string; cooldownMs: number; mul: number; targets: number }   // 金棒振り
-  | { kind: 'summon'; id: string; name: string; cooldownMs: number; summon: string; count: number; maxAlive: number }  // 手下を呼ぶ
-  | { kind: 'randomStrike'; id: string; name: string; cooldownMs: number; mul: number; targets: number })  // 狐火
+  | { kind: 'summon'; id: string; name: string; cooldownMs: number; summon: string; count: number; maxAlive: number; roster?: ReadonlyArray<{ id: string; atkMul: number }> }  // 手下を呼ぶ
+  | { kind: 'randomStrike' | 'rearStrike'; id: string; name: string; cooldownMs: number; mul: number; targets: number })  // 狐火
 export interface BossDef {
   skill: BossSkill
   enrageInterval: number
@@ -12,9 +12,9 @@ export interface BossDef {
 }
 export interface Traits {
   double?: boolean                             // 化け猫：0.5倍を2回
-  split?: { child: string; hpRatio: number }   // バグ精霊：初回撃破で2体に分裂
-  backline?: boolean                           // 呪いのフィギュア：最後尾を狙う
-  explode?: { mul: number; targets: number }   // ポップアップ鬼：先頭に触れたら自爆
+  split?: { child: string; hpRatio: number }   // 墨染めの書霊：初回撃破で2体に分裂
+  backline?: boolean                           // 呪いの人形：最後尾を狙う
+  explode?: { mul: number; targets: number }   // 封印破りの鬼：先頭に触れたら自爆
   goldBag?: boolean                            // 招き猫もどき：小判が多い（表示だけ）
 }
 export interface EnemyDef {
@@ -30,7 +30,7 @@ const enemy = (id: string, name: string, desc: string, spec: Spec): EnemyDef => 
   id, name, desc, area: spec.area, speed: spec.speed, exp: spec.exp, koban: spec.koban, armored: spec.armored ?? false,
   traits: spec.traits ?? {}, boss: spec.boss, hidden: spec.hidden, sprite: spec.sprite,
   base: { maxHp: spec.hp, atk: spec.atk, def: spec.def, intervalMs: spec.interval, cri: 0, criMul: balance.criMulBase, eva: spec.eva, luk: 0,
-    rangeDots: spec.range, dmgTakenMul: 1, kobanMul: 1, dropMul: 1, cooldownMul: 1 },
+    rangeDots: spec.range, dmgTakenMul: 1, kobanMul: 1, dropMul: 1, cooldownMul: 1, skillPowerMul: 1, skillDurationMul: 1 },
   attack: { kind: spec.ranged ? 'ranged' : 'melee', mul: 1, projectile: spec.ranged ? spec.projectile ?? 'fireball' : undefined, targeting: 'random' },
 })
 const melee = balance.meleeRange
@@ -47,15 +47,15 @@ export const enemies: Record<string, EnemyDef> = {
   manekimodoki: enemy('manekimodoki', '招き猫もどき', '倒すと小判がざくざく出る。', { area: 2, hp: 120, atk: 4.5, def: 3, interval: 1800, eva: 0, speed: 12, range: melee, exp: 3, koban: 12, traits: { goldBag: true } }),
   manekitaisho: enemy('manekitaisho', '招き猫大将', '朽ちた商街の主。構えてから手下を呼ぶ。力士の押し戻しで召喚を止めるか、範囲攻撃で手下を一掃する。', { area: 2, hp: 1500, atk: 10, def: 8, interval: 1600, eva: 0, speed: 10, range: melee, exp: 45, koban: 80,
     boss: { skill: { kind: 'summon', id: 'shoufuku', name: '千客万来', castMs: 1800, cooldownMs: 12000, summon: 'manekimodoki', count: 2, maxAlive: 4 }, enrageInterval: 0.8 } }),
-  // エリア3 電脳街
-  bugsei: enemy('bugsei', 'バグ精霊', '倒すと小さく分裂する。', { area: 3, hp: 52, atk: 5, def: 1, interval: 1200, eva: 0.1, speed: 18, range: 100, exp: 4, koban: 3, ranged: true, projectile: 'glitch',
+  // エリア3 禁術の書庫
+  bugsei: enemy('bugsei', '書喰いの蟲', '禁書を喰らって育った蟲。倒すと小さく分裂する。', { area: 3, hp: 52, atk: 5, def: 1, interval: 1200, eva: 0.1, speed: 18, range: 100, exp: 4, koban: 3, ranged: true, projectile: 'glitch',
     traits: { split: { child: 'bugsei_child', hpRatio: 0.4 } } }),
-  bugsei_child: enemy('bugsei_child', 'バグ精霊（小）', '分裂した欠片。', { area: 3, hp: 52, atk: 3.3, def: 1, interval: 1200, eva: 0.1, speed: 22, range: 100, exp: 1, koban: 1, ranged: true, projectile: 'glitch', hidden: true, sprite: 'bugsei' }),
-  noroifig: enemy('noroifig', '呪いのフィギュア', 'その場から動かず、後ろの仲間を狙い撃つ。', { area: 3, hp: 75, atk: 7.4, def: 3, interval: 1600, eva: 0, speed: 0, range: 200, exp: 5, koban: 4, ranged: true, projectile: 'curse',
+  bugsei_child: enemy('bugsei_child', '書喰いの幼蟲', '分裂した欠片。', { area: 3, hp: 52, atk: 3.3, def: 1, interval: 1200, eva: 0.1, speed: 22, range: 100, exp: 1, koban: 1, ranged: true, projectile: 'glitch', hidden: true, sprite: 'bugsei' }),
+  noroifig: enemy('noroifig', '呪いの人形', 'その場から動かず、後ろの仲間を狙い撃つ。', { area: 3, hp: 75, atk: 7.4, def: 3, interval: 1600, eva: 0, speed: 0, range: 200, exp: 5, koban: 4, ranged: true, projectile: 'curse',
     traits: { backline: true } }),
-  popuponi: enemy('popuponi', 'ポップアップ鬼', '先頭に飛びついて自爆する。近づく前に倒したい。', { area: 3, hp: 45, atk: 16.5, def: 0, interval: 1000, eva: 0, speed: 30, range: melee, exp: 4, koban: 3,
+  popuponi: enemy('popuponi', '呪いの映し箱', '書庫に封じられた異界の映像。先頭に飛びついて自爆する。近づく前に倒したい。', { area: 3, hp: 45, atk: 16.5, def: 0, interval: 1000, eva: 0, speed: 30, range: melee, exp: 4, koban: 3,
     traits: { explode: { mul: 1, targets: 2 } } }),
-  denno_kyubi: enemy('denno_kyubi', '電脳九尾', '禁術の書庫の主。三人を狙う狐火と、HP半分で生む幻影。結界・回復で支え、幻影は範囲攻撃で倒す。', { area: 3, hp: 1440, atk: 7.7, def: 9, interval: 1400, eva: 0.05, speed: 12, range: melee, exp: 50, koban: 40,
+  denno_kyubi: enemy('denno_kyubi', '禁書の九尾', '禁術の書庫の主。三人を狙う狐火と、HP半分で生む幻影。結界・回復で支え、幻影は範囲攻撃で倒す。', { area: 3, hp: 1440, atk: 7.7, def: 9, interval: 1400, eva: 0.05, speed: 12, range: melee, exp: 50, koban: 40,
     boss: { skill: { kind: 'randomStrike', id: 'kitsunebi', name: '狐火', castMs: 1400, cooldownMs: 10000, mul: 1.2, targets: 3 }, enrageInterval: 0.8,
       phantoms: { id: 'kyubi_phantom', atHp: 0.5, count: 2, hpRatio: 0.15 } } }),
   kyubi_phantom: enemy('kyubi_phantom', '九尾の幻影', '本体の影。', { area: 3, hp: 1800, atk: 11, def: 0, interval: 1400, eva: 0, speed: 14, range: melee, exp: 0, koban: 0, hidden: true, sprite: 'denno_kyubi' }),

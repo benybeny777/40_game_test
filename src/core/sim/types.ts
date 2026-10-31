@@ -1,3 +1,4 @@
+import type { SkillEngraving } from '../data/skillEngravings.ts'
 export type JobId = 'samurai' | 'ninja' | 'jirai' | 'otaku' | 'pachipro' | 'miko' | 'bancho' | 'gyaru' | 'sukeban' | 'farmer' | 'maid' | 'jiangshi' | 'vagabond' | 'rikishi' | 'sister' | 'tono' | 'gariben'
 export type Side = 'ally' | 'enemy'
 export type Phase = 'town' | 'walking' | 'spawning' | 'bossIntro' | 'battle' | 'waveClear' | 'stageClear' | 'wipe'
@@ -5,7 +6,7 @@ export type Targeting = 'front' | 'nearest' | 'lowestHp' | 'random'
 export interface Stats {
   maxHp: number; atk: number; def: number; intervalMs: number
   cri: number; criMul: number; eva: number; luk: number; rangeDots: number
-  dmgTakenMul: number; kobanMul: number; dropMul: number; cooldownMul: number
+  dmgTakenMul: number; kobanMul: number; dropMul: number; cooldownMul: number; skillPowerMul: number; skillDurationMul: number
 }
 export type EffectKind = 'atkPct' | 'dmgTakenPct' | 'evaAdd' | 'intervalPct' | 'invuln' | 'obsession' | 'kobanPct' | 'aggroAdd' | 'nextCrit' | 'deathWard' | 'criAdd'
 export interface Effect { kind: EffectKind; value: number; untilTick: number; sourceUid: number; tag: string }
@@ -28,7 +29,7 @@ export interface World {
 }
 export interface SnapshotUnit {
   uid: number; side: Side; defId: string; slot: number; x: number; hpRatio: number; hp: number; maxHp: number; alive: boolean; lv: number
-  action: Unit['action']['kind']; ult: number; ultOn: boolean; skillReady: number; jonen?: number; effects: string[]
+  action: Unit['action']['kind']; ult: number; ultOn: boolean; skillReady: number; skillRemainingMs: number; jonen?: number; effects: string[]
   bossCast?: { skillId: string; targetUids: number[]; resolveTick: number }
 }
 export interface Snapshot {
@@ -56,4 +57,4 @@ export type SimEvent =
   | { t: 'levelUp'; job: JobId; lv: number }
 export interface AttackDef { kind: 'melee' | 'ranged'; mul: number; projectile?: string; targeting: Targeting }
 /** What an equipped item contributes to stats (full item metadata lives in progress/items.ts). */
-export interface GearStats { atk: number; hp: number; def: number; affixes: Array<{ k: import('../data/items.ts').AffixKey; v: number }> }
+export interface GearStats { engraving?: SkillEngraving; atk: number; hp: number; def: number; affixes: Array<{ k: import('../data/items.ts').AffixKey; v: number }> }

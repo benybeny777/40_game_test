@@ -1,6 +1,7 @@
 import { attributeDefs, attributeKeys, attributeLabels, type Attributes, type AttributeKey } from '../data/attributes.ts'
 import { attributesOf, availablePoints } from './attributes.ts'
 import { balance as b } from '../data/balance.ts'
+import { effectiveSkill } from '../data/skillEngravings.ts'
 import { skillDescription } from '../data/skillDescription.ts'
 import { realTickSeconds } from '../sim/time.ts'
 import { difficulties, dungeonBalance as db, dungeons, floorFeature, floorLimit, type Difficulty, type FloorFeature } from '../data/dungeon.ts'
@@ -20,7 +21,8 @@ export interface ItemView {
   id: string; name: string; slot: SlotId; slotName: string; job?: JobId; jobName?: string; ilvl: number
   rarity: Rarity; rarityName: string; color: string; lines: string[]; sellPrice: number; locked: boolean; isNew: boolean
   requirements: string[]; rollLabel: string; marketEligible: false; equipable: Record<JobId, { ok: true } | { ok: false; reason: string }>
-  owner?: JobId; delta: Partial<Record<JobId, number>>                 // Power change if that job equipped it (null = cannot).
+  skillTradeoff: Partial<Record<JobId, { before?: string; after?: string }>>
+  owner?: JobId; delta: Partial<Record<JobId, number>>                 // Omitted for incompatible items and skill tradeoffs.
   comparison: Partial<Record<JobId, Partial<Record<keyof Stats, { before: number; after: number }>>>>
 }
 export interface MemberView {
@@ -65,7 +67,8 @@ function itemView(profile: Profile, item: Item, compare: ReturnType<typeof creat
     comparison: Object.fromEntries(comparisons.map(({ job, before, after }) => [job,
       Object.fromEntries((Object.keys(before) as Array<keyof Stats>).filter(key => Math.abs(after[key] - before[key]) > .000001)
         .map(key => [key, { before: before[key], after: after[key] }]))])),
-    delta: Object.fromEntries(comparisons.map(({ job, delta }) => [job, round(delta, 1)])) }
+    skillTradeoff: Object.fromEntries(comparisons.filter(entry => entry.skillTradeoff).map(({ job, skillTradeoff }) => [job, skillTradeoff])),
+    delta: Object.fromEntries(comparisons.flatMap(({ job, delta }) => delta === null ? [] : [[job, round(delta, 1)]])) }
 }
 
 export function buildView(profile: Profile, loop: boolean, pending?: World['pending']): ProfileView {
@@ -97,7 +100,7 @@ export function buildView(profile: Profile, loop: boolean, pending?: World['pend
           cri: round(stats.cri * 100, 1), eva: round(stats.eva * 100, 1), luk: round(stats.luk, 1), range: job.attack.kind === 'melee' ? '近接' : '遠隔' },
         skills: [
           { kind: '通常', name: job.attack.name, desc: `攻撃力×${job.attack.mul}`, unlockLv: 1, unlocked: true },
-          { kind: 'スキル', name: job.skill.name, desc: `${skillDescription(job.skill)}（${realTickSeconds((job.skill.cooldownMs ?? 0) * stats.cooldownMul)}秒ごと）`, unlockLv: b.skillLv, unlocked: member.lv >= b.skillLv },
+          { kind: 'スキル', name: job.skill.name, desc: `${skillDescription(effectiveSkill(job.skill, stats))}（${realTickSeconds((job.skill.cooldownMs ?? 0) * stats.cooldownMul)}秒ごと）`, unlockLv: b.skillLv, unlocked: member.lv >= b.skillLv },
           { kind: 'パッシブ', name: job.passive.name, desc: skillDescription(job.passive), unlockLv: b.passiveLv, unlocked: member.lv >= b.passiveLv },
           { kind: '奥義', name: job.ultimate.name, desc: skillDescription(job.ultimate), unlockLv: b.ultLv, unlocked: member.lv >= b.ultLv },
         ],

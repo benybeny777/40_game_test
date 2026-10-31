@@ -8,6 +8,7 @@ import { renderAbyssRecords } from './abyssRecords'
 import { spriteImage } from './portrait'
 import { canTravelTo, DungeonTravelDraft, nearbyLootFloors } from './dungeonTravel'
 import './dungeon.css'
+import { renderNextBoss } from './nextBoss'
 
 registerTranslations({
   '狙う装備で行き先を選ぶ': 'Choose a destination for your next find',
@@ -43,6 +44,7 @@ export function renderDungeon(v: ProfileView, command: (command: Command) => Pro
     h('div', { class: 'difficulty-tabs' }, ...difficulties.map(difficulty => h('button', { class: d.difficulty === difficulty.id ? 'active' : '', disabled: difficulty.id > d.unlockedDifficulty || difficulty.id === d.difficulty || (d.pendingTravel?.difficulty === difficulty.id && d.pendingTravel.depth === 1), onclick: () => void command({ c: 'selectStage', stageNo: 1, depthRank: difficulty.id }) },
       `${difficulty.name}${difficulty.floorLimit === null ? ' ∞' : ' 100階'}${difficulty.id > d.unlockedDifficulty ? '（未解放）' : ''}`))),
     d.pendingTravel ? h('p', { class: 'travel-pending', role: 'status' }, `移動予約：${translatedLabel(difficulties[d.pendingTravel.difficulty].name)} B${d.pendingTravel.depth}`, ' — ', '次のウェーブから移動します。') : null,
+    renderNextBoss(v),
     h('section', { class: 'loot-destinations' }, h('h3', {}, '狙う装備で行き先を選ぶ'),
       ...favoredLootSlots.map((_, index) => {
         const tendency = lootTendency(index * dungeonBalance.themeSpan + 1), destination = destinations[index]

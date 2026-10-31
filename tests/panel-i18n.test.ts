@@ -10,6 +10,7 @@ import { renderDex } from '../src/renderer/panel/dex'
 import { SaveImportController, renderSaveImport, renderSaveImportDialog } from '../src/renderer/panel/saveImport'
 import { renderAbyssRecords } from '../src/renderer/panel/abyssRecords'
 import { recordAbyssClear, abyssView } from '../src/core/progress/abyss'
+import { renderNextChoice } from '../src/renderer/panel/nextChoice'
 
 class TextNode {
   children: Array<TextNode | string> = []
@@ -25,6 +26,61 @@ beforeEach(() => { vi.stubGlobal('document', { createElement: () => new TextNode
 afterEach(() => { setLocale('ja'); vi.unstubAllGlobals() })
 
 describe('English panel component text', () => {
+  it('shows current progression boss skills without the obsolete two-target guide in both languages', () => {
+    const view = buildView(newProfile('test'), false)
+    view.dungeon.depth = 50
+    view.dex.forEach(enemy => { enemy.seen = true })
+    const render = () => text(asNode(renderDex(view, () => new TextNode() as unknown as HTMLCanvasElement)))
+    const english = render()
+    expect(english).toContain('Sweeping Iron Club')
+    expect(english).toContain('front three')
+    expect(english).toContain('rear two')
+    expect(english).toContain('Acrobat Troupe')
+    expect(english).not.toMatch(/[ぁ-んァ-ヶ一-龥]/u)
+    setLocale('ja')
+    const japanese = render()
+    expect(japanese).toContain('現在の進行帯での技')
+    expect(japanese).toContain('前方三人')
+    expect(japanese).not.toContain('金棒は前の二人')
+    view.dungeon.depth = 1
+    expect(render()).toContain('金棒は前の二人')
+    view.dungeon.difficulty = 1
+    view.dungeon.depth = 20
+    expect(render()).toContain('金棒薙ぎ払い')
+    view.dungeon.depth = 100
+    setLocale('en')
+    expect(render()).toContain('Hundred-floor climax: the skill changes at half HP')
+    expect(render()).not.toMatch(/[ぁ-んァ-ヶ一-龥]/u)
+  })
+  it('explains engraving benefit and cooldown cost without a combined upgrade verdict', () => {
+    const profile = newProfile('test')
+    profile.inventory.push({ id: 'i1', name: '苦無', job: 'ninja', slot: 'weapon', ilvl: 1, rarity: 3,
+      engraving: 'duration', locked: false, isNew: true, atk: 20, hp: 0, def: 0, affixes: [] })
+    const view = buildView(profile, false)
+    const english = text(asNode(renderNextChoice(view, vi.fn(), vi.fn())!))
+    expect(english).toContain('Skill properties change')
+    expect(english).toContain('effect duration x1.5; cooldown x1.3')
+    expect(english).toContain('not ranked by a combined score')
+    expect(english).not.toMatch(/[▲▼ぁ-んァ-ヶ一-龥]/u)
+    setLocale('ja')
+    const japanese = text(asNode(renderNextChoice(view, vi.fn(), vi.fn())!))
+    expect(japanese).toContain('技能特性が変わる')
+    expect(japanese).toContain('効果時間1.5倍・待ち時間1.3倍')
+  })
+  it('explains setting one new find aside without selling it in both languages', () => {
+    const profile = newProfile('test')
+    profile.inventory.push({ id: 'i1', name: '苦無', job: 'ninja', slot: 'weapon', ilvl: 1, rarity: 1,
+      locked: false, isNew: true, atk: 20, hp: 0, def: 0, affixes: [] })
+    const view = buildView(profile, false)
+    const english = text(asNode(renderNextChoice(view, vi.fn(), vi.fn())!))
+    expect(english).toContain('Set aside and see next')
+    expect(english).toContain('stay in your inventory')
+    expect(english).not.toMatch(/[ぁ-んァ-ヶ一-龥]/u)
+    setLocale('ja')
+    const japanese = text(asNode(renderNextChoice(view, vi.fn(), vi.fn())!))
+    expect(japanese).toContain('保留して次を見る')
+    expect(japanese).toContain('持ち物に残ります')
+  })
   it('shows the next Abyss goal and the recorded party in English without inventing past records', () => {
     const profile = newProfile('test')
     const portrait = () => h('span')
@@ -63,7 +119,7 @@ describe('English panel component text', () => {
     const result = text(asNode(renderHelp()))
     expect(result).toContain('How to play')
     expect(result).toContain('Saving and recovery')
-    expect(result).toContain('Steam')
+    expect(result).toContain('Previewing and applying appearances')
     expect(result).toContain('Reserves gain no experience')
     expect(result).toContain('previously earned levels are not reduced')
     expect(result).toContain('Changing the party before claiming rewards does not transfer')
@@ -99,7 +155,10 @@ describe('English panel component text', () => {
       market: { available: false, message: 'Steamのマーケット取引は、このブラウザー版では利用できません。' } }
     const result = text(asNode(renderStore(view, { updated: () => {}, toast: () => {} })))
     expect(result).toContain('Cherry blossom ground')
-    expect(result).toContain('Coming soon')
+    expect(result).toContain('Appearance preview')
+    expect(result).not.toContain('Coming soon')
+    expect(result).not.toContain('Price available')
+    expect(result).not.toContain('Steam')
     expect(result).toContain('Preview for 30 seconds')
     expect(result).not.toMatch(/[ぁ-んァ-ヶ一-龥]/u)
   })

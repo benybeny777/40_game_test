@@ -27,22 +27,22 @@ function sample(theme: ThemeDefinition) {
 }
 
 export function renderStore(view: StoreView, hooks: StoreHooks): HTMLElement {
+  const previewOnly = view.mode === 'unavailable'
   const root = element('section', 'store-root')
   const intro = element('div', 'store-intro')
-  intro.append(element('span', 'store-eyebrow', '旅を彩る外観'), element('h2', 'store-title', '外観ストア'),
+  intro.append(element('span', 'store-eyebrow', '旅を彩る外観'), element('h2', 'store-title', previewOnly ? '外観プレビュー' : '外観ストア'),
     element('p', 'store-description', '能力・経験値・ドロップ率を変えず、足元の雰囲気を楽しめます。'))
   const status = element('p', `store-status${view.mode === 'sandbox' ? ' store-status-sandbox' : ''}`,
-    view.mode === 'sandbox' ? '開発テスト・実決済なし。テストで取得した外観は製品版へ移りません。' : view.message)
+    previewOnly ? 'この環境では試着と取得済み外観の適用を利用できます。購入機能はありません。' : view.mode === 'sandbox' ? '開発テスト・実決済なし。テストで取得した外観は製品版へ移りません。' : view.message)
   root.append(intro, status)
   if (view.error) { const error = element('p', 'store-error', view.error); error.setAttribute('role', 'alert'); root.append(error) }
   if (view.pending) root.append(element('p', 'store-pending', '購入記録の確認待ちです。同じ商品を再購入せず、確認をお待ちください。'))
   const toolbar = element('div', 'store-toolbar')
-  toolbar.append(element('span', 'store-preview-help', '未購入の外観も30秒間試着できます。'))
+  toolbar.append(element('span', 'store-preview-help', previewOnly ? '外観を30秒間試着できます。' : '未購入の外観も30秒間試着できます。'))
   const buttons: Array<{ node: HTMLButtonElement; enabled: boolean }> = []
   const updateButtons = () => { for (const button of buttons) button.node.disabled = busy || !button.enabled }
   const unreadableView = (error: unknown): StoreView => {
-    console.error('Store state refresh failed', error)
-    const message = 'ストアの最新状態を確認できません。操作を停止しました。状態を再確認してください。'
+    const message = reportRendererError('ストアの最新状態を確認できません。操作を停止しました。状態を再確認してください。', error)
     hooks.toast(message)
     return { ...view, error: message, products: view.products.map(product => ({ ...product, purchasable: false })) }
   }
@@ -104,10 +104,12 @@ export function renderStore(view: StoreView, hooks: StoreHooks): HTMLElement {
   const grid = element('div', 'store-grid')
   for (const product of view.products) grid.append(productCard(product))
   root.append(grid)
-  const market = element('div', 'store-market')
-  market.append(element('h3', 'store-market-title', 'Steamアイテム取引は準備中'), element('p', 'store-market-description', view.market.message),
-    element('p', 'store-market-note', '本編で集めた装備や小判は、外観ストアとは別に管理されます。'))
-  root.append(market)
+  if (!previewOnly) {
+    const market = element('div', 'store-market')
+    market.append(element('h3', 'store-market-title', 'Steamアイテム取引は準備中'), element('p', 'store-market-description', view.market.message),
+      element('p', 'store-market-note', '本編で集めた装備や小判は、外観ストアとは別に管理されます。'))
+    root.append(market)
+  }
   return root
 
   function productCard(product: StoreProduct): HTMLElement {
@@ -120,8 +122,10 @@ export function renderStore(view: StoreView, hooks: StoreHooks): HTMLElement {
     if (product.equipped) heading.append(element('span', 'store-owned store-equipped', '装備中'))
     else if (product.owned) heading.append(element('span', 'store-owned', '取得済み'))
     card.append(heading, element('p', 'store-product-description', product.description))
-    const price = view.mode === 'sandbox' ? 'テスト取得・課金なし' : product.price?.formatted ?? '価格は販売開始時に表示'
-    card.append(element('p', 'store-price', price))
+    if (!previewOnly) {
+      const price = view.mode === 'sandbox' ? 'テスト取得・課金なし' : product.price?.formatted ?? '価格は販売開始時に表示'
+      card.append(element('p', 'store-price', price))
+    }
     const actions = element('div', 'store-actions')
     actions.append(button(previewActive && previewSku === product.sku ? '試着中（30秒）' : '30秒間試着', !view.error, () => preview(product.sku), '30秒間の試着を開始しました。'))
     if (product.owned) {
@@ -130,7 +134,7 @@ export function renderStore(view: StoreView, hooks: StoreHooks): HTMLElement {
         if (result.ok) { if (previewTimer) clearTimeout(previewTimer); previewSku = null; previewUntil = 0 }
         return result
       }, '外観を変更しました。', true))
-    } else {
+    } else if (!previewOnly) {
       const label = view.mode === 'sandbox' ? 'テスト取得（課金なし）' : view.mode === 'live' && product.price ? `${product.price.formatted}で購入` : '販売準備中'
       actions.append(button(label, product.purchasable && !view.error && (view.mode === 'sandbox' || view.mode === 'live' && product.price !== null),
         () => window.game.purchaseProduct(product.sku), view.mode === 'sandbox' ? '開発テスト用の外観を取得しました。実決済は発生していません。' : '外観を取得しました。', true))

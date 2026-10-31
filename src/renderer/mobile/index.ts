@@ -5,12 +5,14 @@ import { createAudioNotice } from '../audioNotice'
 import { reportRendererError } from '../errors'
 import { initializePlatform } from '../platform'
 import type { JobId } from '../../core/index.ts'
-import type { ShellState } from '../../shared/api'
+import type { Frame, ShellState } from '../../shared/api'
+import { VisibleFrames } from '../strip/visibleFrames'
 import { Scene } from '../strip/scene'
 import { artReady } from '../strip/sprites/sheet'
 import { onLocaleChange, translatedLabel as tr } from '../../shared/i18n'
 import '../../shared/locales/system'
 import { createBattleText } from '../battleText'
+import { createBattleNotice } from '../battleNotice'
 
 async function start() {
   const api = initializePlatform()
@@ -23,12 +25,11 @@ async function start() {
   const storage = document.querySelector<HTMLElement>('#mobile-storage-error')!
   const battleText = createBattleText(screen, banner)
   let state: ShellState = await api.getState()
-  let bannerTimer: ReturnType<typeof setTimeout> | undefined
-  const message = (text: string) => {
-    battleText.banner(text); banner.classList.add('show')
-    if (bannerTimer) clearTimeout(bannerTimer)
-    bannerTimer = setTimeout(() => banner.classList.remove('show'), 2200)
-  }
+  const message = createBattleNotice((text, tone) => {
+    battleText.banner(text); banner.className = `show ${tone}`
+  }, () => banner.classList.remove('show'), 2200)
+  const visibleFrames = new VisibleFrames()
+  visibleFrames.setVisible(!document.hidden)
   const audio = new AudioSession({ desktop: false, onChange: createAudioNotice(), onError: error => { reportRendererError('通知音を再生できませんでした。', error) } })
   audio.configure(state)
   const scene = new Scene({ banner: message, label: text => message(text) })
@@ -65,14 +66,26 @@ async function start() {
   }
   onLocaleChange(translateControls); translateControls()
   await Promise.all([artReady, loadUiFonts()])
-  api.onFrame(frame => runtime.run(() => {
+  function present({ frame, fresh }: { frame: Frame; fresh: boolean }) {
     const resting = frame.snapshot.phase === 'town'
     if (inTown !== resting) { inTown = resting; translateControls() }
     audio.consume(frame)
-    scene.ingest(frame, performance.now())
+    if (fresh) scene.resume(frame.snapshot, performance.now())
+    else scene.ingest(frame, performance.now())
     needsDraw = true
     const allies = frame.snapshot.units.filter(unit => unit.side === 'ally')
     battleText.party(allies.map(unit => unit.defId as JobId))
+  }
+  document.addEventListener('visibilitychange', () => runtime.run(() => {
+    const accepted = visibleFrames.setVisible(!document.hidden)
+    if (document.hidden) message.clear()
+    if (accepted) present(accepted)
+  }))
+  // Loading artwork may cross a visibility change before frame listeners are attached.
+  visibleFrames.setVisible(!document.hidden)
+  api.onFrame(frame => runtime.run(() => {
+    const accepted = visibleFrames.accept(frame)
+    if (accepted) present(accepted)
   }))
   screen.addEventListener('click', event => {
     const rect = screen.getBoundingClientRect(), dpr = window.devicePixelRatio || 1

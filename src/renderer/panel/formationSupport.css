@@ -1,0 +1,12 @@
+.formation-support { padding: 12px; margin: 12px 0; border: 1px solid var(--line); background: #181720; overflow-wrap: anywhere; }
+.formation-support h3 { font-size: 14px; margin: 0 0 8px; }
+.formation-support p { margin: 6px 0; font-size: 12px; line-height: 1.6; }
+.formation-link { border-left: 2px solid var(--gold); padding-left: 9px; }
+.formation-link small { display: block; margin: 4px 0; color: var(--gold); }
+.formation-link.locked { border-color: var(--muted); }
+.formation-support summary { min-height: 32px; font-size: 12px; cursor: pointer; padding-top: 8px; }
+.formation-lost { color: #eacba2; }
+.swap-preview { flex-basis: 100%; }
+.swap-preview .formation-support { margin-bottom: 8px; }
+.swap-preview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.swap-preview-actions button { min-height: 44px; padding: 8px 12px; background: #292637; color: var(--text); border: 1px solid #665b70; font: inherit; font-size: 12px; }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { attributeLabels, buildView, createGame, difficulties, dungeons, jobs, newProfile, partyOrder, roleLabels, runCommand, validateProfile } from '../src/core/index.ts'
 import { affixes, armorNames, charmNames, rarities, slots, uniqueDefs, weaponNames } from '../src/core/data/items.ts'
+import { equipmentMarkStart, equipmentMarkSpan } from '../src/core/data/itemNames.ts'
 import { enemies } from '../src/core/data/enemies.ts'
 import { dojo } from '../src/core/data/progress.ts'
 import { enemyGuide } from '../src/shared/enemyGuide.ts'
@@ -47,13 +48,13 @@ describe('English game-data boundary', () => {
       expect(itemName('weapon', job, rank)).toBe(source)
     }
     for (const [index, tier] of Object.keys(roman).entries()) {
-      const source = itemName('weapon', job, 16 + index * 5)
+      const source = itemName('weapon', job, equipmentMarkStart + index * equipmentMarkSpan)
       expect(source.endsWith(`・改${tier}`)).toBe(true)
       expect(translated(source).endsWith(` Mk ${roman[tier]}`)).toBe(true)
     }
   })
   it('translates generated stat rolls, requirements and multi-requirement failures as complete structured phrases', () => {
-    const lateNames = [51, 56, 61, 100, 200, 1000].map(rank => itemName('weapon', 'samurai', rank))
+    const lateNames = [31, 61, 101, 141, 181, 201, 1000].map(rank => itemName('weapon', 'samurai', rank))
     expect(new Set(lateNames).size).toBe(lateNames.length)
     lateNames.forEach(translated)
     expect(translateGameText('必要能力：筋力100 / 体力20')).toBe('Requirements: STR 100 / VIT 20')

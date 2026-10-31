@@ -1,5 +1,7 @@
+import { engravingCandidates, skillEngravings } from '../data/skillEngravings.ts'
 import { attributeBalance, attributeKeys, emptyAttributes, type Attributes } from '../data/attributes.ts'
 import { spendAuto } from './attributes.ts'
+import { experienceSupportMultiplier } from './experienceSupport.ts'
 import { balance as b } from '../data/balance.ts'
 import { cappedAmount, dungeons, maxFloor, type Difficulty, type DungeonId } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
@@ -59,7 +61,7 @@ export function activeExperienceMultiplier(profile: Profile, job: JobId, recipie
   const member = profile.party.members[job]
   if (!recipientJobs.includes(job) || member.lv >= b.maxLevel) return 1
   const veteranLevel = Math.max(1, ...recipientJobs.map((id) => profile.party.members[id].lv))
-  return Math.min(pb.catchupMaxMultiplier, 1 + Math.max(0, veteranLevel - pb.catchupLevelGap - member.lv) * pb.catchupPerLevel)
+  return experienceSupportMultiplier(member.lv, veteranLevel)
 }
 function catchupExperience(member: Member, exp: number, veteranLevel: number, multiplier: number) {
   const targetLevel = veteranLevel - pb.catchupLevelGap
@@ -216,6 +218,78 @@ export function buyDojo(profile: Profile, key: DojoKey): { ok: true } | { ok: fa
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 const count = (value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER) => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+function optionalBoolean(value: unknown, initial: boolean, field: string): boolean {
+  if (value === undefined) return initial
+  if (typeof value !== 'boolean') throw new Error(`bad ${field}: expected boolean`)
+  return value
+}
+function validateDungeonProgress(raw: unknown, field: string): DungeonProgress {
+  const fail = (detail: string): never => { throw new Error(`bad dungeon progress ${field}: ${detail}`) }
+  if (!isObject(raw)) return fail('expected object')
+  if (!Number.isSafeInteger(raw.currentStage) || !count(raw.currentStage, 1)) return fail('currentStage must be a positive integer')
+  if (!Number.isSafeInteger(raw.unlockedStage) || !count(raw.unlockedStage, 1)) return fail('unlockedStage must be a positive integer')
+  const rank = raw.depthRank === undefined ? 0 : raw.depthRank
+  if (!Number.isInteger(rank) || !count(rank, 0, 2)) return fail('depthRank must be 0, 1 or 2')
+  const difficulty = rank as Difficulty
+  const depths = raw.unlockedDepths === undefined ? [raw.unlockedStage, 0, 0] : raw.unlockedDepths
+  if (!Array.isArray(depths) || depths.length !== 3 || !depths.every((depth, index) => Number.isSafeInteger(depth) && count(depth, index === 0 ? 1 : 0, maxFloor(index as Difficulty)))) return fail('unlockedDepths contains invalid floors')
+  if (depths[difficulty] < 1 || (depths[1] > 0 && depths[0] < maxFloor(0)) || (depths[2] > 0 && depths[1] < maxFloor(1))) return fail('difficulty unlock prerequisites are not met')
+  if (raw.unlockedStage !== depths[difficulty]) return fail('unlockedStage disagrees with the active difficulty')
+  if ((raw.currentStage as number) > depths[difficulty]) return fail('currentStage exceeds unlocked depth')
+  const claims = raw.eventDepths === undefined ? [0, 0, 0] : raw.eventDepths
+  if (!Array.isArray(claims) || claims.length !== 3 || !claims.every((depth, index) => Number.isSafeInteger(depth) && count(depth, 0, depths[index]))) return fail('eventDepths exceeds unlocked depth or has invalid values')
+  return { currentStage: raw.currentStage as number, unlockedStage: raw.unlockedStage as number, depthRank: difficulty,
+    loop: optionalBoolean(raw.loop, false, `${field}.loop`), inTown: optionalBoolean(raw.inTown, false, `${field}.inTown`),
+    unlockedDepths: [...depths] as [number, number, number], eventDepths: [...claims] as [number, number, number] }
+}
+function validateDungeonRecords(raw: unknown): Record<string, DungeonProgress> {
+  if (raw === undefined) return {}
+  if (!isObject(raw)) throw new Error('bad dungeonRecords: expected object')
+  const records: Record<string, DungeonProgress> = {}
+  for (const [id, progress] of Object.entries(raw)) {
+    if (!Object.hasOwn(dungeons, id)) throw new Error(`unsupported dungeon record ${id}: a compatible game version is required`)
+    records[id] = validateDungeonProgress(progress, `dungeonRecords.${id}`)
+  }
+  return records
+}
+function validateDiscovery(raw: unknown, field: 'seenEnemies' | 'seenItems'): string[] {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) throw new Error(`bad ${field}: expected array`)
+  const result: string[] = [], seen = new Set<string>()
+  for (const [index, entry] of raw.entries()) {
+    if (typeof entry !== 'string' || !entry.length || seen.has(entry)) throw new Error(`bad ${field}[${index}]: expected unique nonempty string`)
+    if (field === 'seenEnemies') {
+      if (!Object.hasOwn(enemies, entry)) throw new Error(`unsupported seenEnemies[${index}] ${entry}: a compatible game version is required`)
+    } else {
+      const first = entry.indexOf(':'), second = entry.indexOf(':', first + 1)
+      const slot = entry.slice(0, first), job = entry.slice(first + 1, second), name = entry.slice(second + 1)
+      if (first < 1 || second < 0 || !Object.hasOwn(slots, slot) || !name.trim()
+        || (job !== '' && !Object.hasOwn(jobs, job)) || (slot === 'weapon' && job === '')) throw new Error(`bad seenItems[${index}]: expected supported slot:job:item name`)
+    }
+    seen.add(entry); result.push(entry)
+  }
+  return result
+}
+function validateOptions(raw: unknown, defaults: Profile['options']): Profile['options'] {
+  if (raw === undefined) return { ...defaults }
+  if (!isObject(raw)) throw new Error('bad options: expected object')
+  const rarity = raw.autoSellMaxRarity
+  if (rarity !== undefined && rarity !== null && (!Number.isInteger(rarity) || !count(rarity, 0, rarities.length - 1))) throw new Error('bad options.autoSellMaxRarity: expected rarity or null')
+  return { autoEquip: optionalBoolean(raw.autoEquip, defaults.autoEquip, 'options.autoEquip'),
+    autoSellMaxRarity: rarity === undefined ? defaults.autoSellMaxRarity : rarity as Rarity | null }
+}
+function validateStatistics(raw: unknown, defaults: Profile['stats']): Profile['stats'] {
+  if (raw === undefined) return { ...defaults }
+  if (!isObject(raw)) throw new Error('bad statistics: expected object')
+  const result = { ...defaults }
+  for (const key of Object.keys(defaults) as Array<keyof Profile['stats']>) {
+    const value = raw[key]
+    if (value === undefined) continue // Explicit migration for historical counters that did not exist yet.
+    if (!count(value) || (key !== 'totalKoban' && !Number.isSafeInteger(value))) throw new Error(`bad statistics.${key}: expected nonnegative ${key === 'totalKoban' ? 'amount' : 'integer'}`)
+    result[key] = value as number
+  }
+  return result
+}
 function validateRates(raw: unknown): Profile['rates'] {
   const gain = (value: unknown): value is Gain => isObject(value) && count(value.koban) && count(value.exp)
   if (!isObject(raw) || !gain(raw.current) || !Array.isArray(raw.minutes) || !raw.minutes.every(gain)) throw new Error('bad earnings')
@@ -236,8 +310,9 @@ export const migrations: Record<number, (old: Record<string, unknown>) => Record
   1: (old) => {
     const party = isObject(old.party) ? old.party : {}
     const members = isObject(party.members) ? party.members : {}
-    return { ...old, version: 2, rng: 1, inventory: [], nextItemId: 1, seenItems: [], options: { autoSellMaxRarity: null, autoEquip: true },
-      stats: { ...(isObject(old.stats) ? old.stats : {}), drops: 0 },
+    const defaults = newProfile('')
+    return { ...old, version: 2, rng: 1, inventory: [], nextItemId: 1, seenItems: validateDiscovery(old.seenItems, 'seenItems'), options: validateOptions(old.options, defaults.options),
+      stats: validateStatistics(old.stats, defaults.stats),
       party: { ...party, members: Object.fromEntries(Object.entries(members).map(([id, member]) => [id, { ...(isObject(member) ? member : {}), equip: emptyEquip() }])) } }
   },
   2: (old) => {
@@ -257,9 +332,12 @@ function validateItem(raw: unknown): Item {
     || !raw.affixes.every((affix) => isObject(affix) && typeof affix.k === 'string' && Object.hasOwn(affixes, affix.k) && count(affix.v, -1, 1000))) throw new Error('bad item')
   if (raw.equipmentClass !== undefined && !['heavy', 'light', 'robe', 'unique'].includes(String(raw.equipmentClass))) throw new Error('bad equipment class')
   if (raw.uniqueId !== undefined && (typeof raw.uniqueId !== 'string' || !Object.hasOwn(uniqueDefs, raw.uniqueId))) throw new Error('bad unique item')
+  if (raw.engraving !== undefined && (typeof raw.engraving !== 'string' || !Object.hasOwn(skillEngravings, raw.engraving)
+    || raw.slot !== 'weapon' || ![3, 4].includes(raw.rarity as number) || raw.uniqueId !== undefined || raw.equipmentClass === 'unique'
+    || !engravingCandidates(raw.job as JobId).includes(raw.engraving as keyof typeof skillEngravings))) throw new Error('bad skill engraving')
   if (raw.baseRoll !== undefined && !count(raw.baseRoll, ib.baseRollMin, ib.baseRollMax)) throw new Error('bad item roll')
   if (raw.requirements !== undefined && (!isObject(raw.requirements) || !attributeKeys.every((key) => Number.isSafeInteger((raw.requirements as Record<string, unknown>)[key]) && count((raw.requirements as Record<string, unknown>)[key])))) throw new Error('bad item requirements')
-  const item = { ...(raw as unknown as Item), locked: raw.locked === true, isNew: raw.isNew === true, baseRoll: raw.baseRoll === undefined ? 1 : raw.baseRoll as number, marketEligible: false as const }
+  const item = { ...(raw as unknown as Item), locked: optionalBoolean(raw.locked, false, `item ${raw.id}.locked`), isNew: optionalBoolean(raw.isNew, false, `item ${raw.id}.isNew`), baseRoll: raw.baseRoll === undefined ? 1 : raw.baseRoll as number, marketEligible: false as const }
   item.requirements = requirementsOf(item)
   return item
 }
@@ -274,8 +352,7 @@ export function validateProfile(input: unknown): Profile {
   }
   if (raw.version !== PROFILE_VERSION) throw new Error('unsupported save version')
   const fresh = newProfile(typeof raw.savedAt === 'string' ? raw.savedAt : '')
-  const progress = raw.progress, party = raw.party, dojo = raw.dojo
-  if (!isObject(progress) || !Number.isSafeInteger(progress.unlockedStage) || !count(progress.unlockedStage, 1) || !Number.isSafeInteger(progress.currentStage) || !count(progress.currentStage, 1)) throw new Error('bad progress')
+  const progress = validateDungeonProgress(raw.progress, 'progress'), party = raw.party, dojo = raw.dojo
   if (!isObject(party) || !Array.isArray(party.order) || party.order.length !== partyOrder.length || !partyOrder.every((id) => (party.order as unknown[]).includes(id))) throw new Error('bad party order')
   if (!isObject(party.members)) throw new Error('bad members')
   if (!count(raw.koban)) throw new Error('bad koban')
@@ -301,11 +378,16 @@ export function validateProfile(input: unknown): Profile {
     if (member.allocated !== undefined && !isObject(member.allocated)) throw new Error('bad allocation')
     const allocated = { ...emptyAttributes(), ...(member.allocated as Partial<Attributes> | undefined) } as Attributes
     if (!attributeKeys.every((key) => Number.isSafeInteger(allocated[key]) && count(allocated[key])) || attributeKeys.reduce((sum, key) => sum + allocated[key], 0) > attributeBalance.pointsPerLevel * ((member.lv as number) - 1)) throw new Error('bad allocation')
-    members[id] = { lv: member.lv as number, exp: member.exp as number, allocated, autoStats: member.autoStats !== false, equip }
+    members[id] = { lv: member.lv as number, exp: member.exp as number, allocated, autoStats: optionalBoolean(member.autoStats, true, `member ${id}.autoStats`), equip }
     spendAuto(members[id], id)
   }
-  if (!isObject(dojo) || !Object.keys(dojoDefs).every((key) => count(dojo[key] ?? 0, 0, dojoDefs[key as DojoKey].max ?? Number.MAX_SAFE_INTEGER))) throw new Error('bad dojo')
-  const options = isObject(raw.options) ? raw.options : {}
+  if (!isObject(dojo)) throw new Error('bad dojo: expected object')
+  const dojoLevels = { ...fresh.dojo }
+  for (const key of Object.keys(dojoDefs) as DojoKey[]) {
+    if (dojo[key] === undefined) continue
+    if (!Number.isSafeInteger(dojo[key]) || !count(dojo[key], 0, dojoDefs[key].max ?? Number.MAX_SAFE_INTEGER)) throw new Error(`bad dojo.${key}: expected supported integer level`)
+    dojoLevels[key] = dojo[key] as number
+  }
   const profile = { ...fresh, ...raw } as Profile
   profile.party = { order: [...party.order] as JobId[], members }
   profile.inventory = inventory
@@ -316,37 +398,24 @@ export function validateProfile(input: unknown): Profile {
     if (!Number.isSafeInteger(next) || next >= Number.MAX_SAFE_INTEGER) throw new Error('bad item id sequence')
     profile.nextItemId = Math.max(profile.nextItemId, next)
   }
-  profile.options = { autoEquip: options.autoEquip !== false,
-    autoSellMaxRarity: Number.isInteger(options.autoSellMaxRarity) && count(options.autoSellMaxRarity, 0, rarities.length - 1) ? options.autoSellMaxRarity as Rarity : null }
-  profile.dojo = { ...fresh.dojo, ...(dojo as Profile['dojo']) }
-  if (raw.stats !== undefined && !isObject(raw.stats)) throw new Error('bad statistics')
-  profile.stats = { ...fresh.stats, ...(raw.stats as Partial<Profile['stats']> | undefined) }
+  profile.options = validateOptions(raw.options, fresh.options)
+  profile.dojo = dojoLevels
+  profile.stats = validateStatistics(raw.stats, fresh.stats)
   profile.rates = raw.rates === undefined ? fresh.rates : validateRates(raw.rates)
-  profile.progress = { ...fresh.progress, ...(progress as unknown as Profile['progress']), loop: progress.loop === true }
-  if (progress.depthRank !== undefined && (!Number.isInteger(progress.depthRank) || !count(progress.depthRank, 0, 2))) throw new Error('bad difficulty')
-  if (progress.unlockedDepths !== undefined && (!Array.isArray(progress.unlockedDepths) || progress.unlockedDepths.length !== 3 || !progress.unlockedDepths.every((depth, index) => Number.isSafeInteger(depth) && count(depth, index === 0 ? 1 : 0, maxFloor(index as Difficulty))))) throw new Error('bad dungeon progress')
-  if (progress.eventDepths !== undefined && (!Array.isArray(progress.eventDepths) || progress.eventDepths.length !== 3 || !progress.eventDepths.every((depth, index) => Number.isSafeInteger(depth) && count(depth, 0, maxFloor(index as Difficulty))))) throw new Error('bad floor event progress')
-  const rank = progress.depthRank === undefined ? 0 : progress.depthRank as Difficulty
-  const depths: [number, number, number] = progress.unlockedDepths === undefined
-    ? [Math.min(progress.unlockedStage as number, b.maxStage), 0, 0] : [...progress.unlockedDepths as [number, number, number]]
-  if (depths[rank] < 1 || (depths[1] > 0 && depths[0] < b.maxStage) || (depths[2] > 0 && depths[1] < b.maxStage)) throw new Error('bad dungeon progress')
-  const claims: [number, number, number] = progress.eventDepths === undefined ? [0, 0, 0] : [...progress.eventDepths as [number, number, number]]
-  profile.progress = { ...profile.progress, inTown: progress.inTown === true, depthRank: rank, unlockedDepths: depths, eventDepths: claims,
-    unlockedStage: depths[rank], currentStage: Math.min(profile.progress.currentStage, depths[rank], maxFloor(rank)) }
+  profile.progress = progress
   if (raw.dungeonId !== undefined && (typeof raw.dungeonId !== 'string' || !Object.hasOwn(dungeons, raw.dungeonId))) throw new Error('unsupported dungeon')
   profile.dungeonId = raw.dungeonId === undefined ? 'yomi' : raw.dungeonId as DungeonId
   if (raw.dungeonSeed !== undefined && (!Number.isInteger(raw.dungeonSeed) || !count(raw.dungeonSeed, 0, b.rng.divisor - 1))) throw new Error('bad dungeon seed')
   profile.dungeonSeed = raw.dungeonSeed === undefined ? 1 : raw.dungeonSeed as number
-  profile.dungeonRecords = isObject(raw.dungeonRecords) ? { ...raw.dungeonRecords } as Record<string, DungeonProgress> : {}
+  profile.dungeonRecords = validateDungeonRecords(raw.dungeonRecords)
   profile.dungeonRecords[profile.dungeonId] = profile.progress
   profile.abyssRecords = validateAbyssRecords(raw.abyssRecords)
   profile.lastDefeat = validateDefeatRecord(raw.lastDefeat)
-  profile.seenEnemies = Array.isArray(raw.seenEnemies) ? raw.seenEnemies.filter((id): id is string => typeof id === 'string' && id in enemies) : []
-  profile.seenItems = Array.isArray(raw.seenItems) ? raw.seenItems.filter((id): id is string => typeof id === 'string') : []
+  profile.seenEnemies = validateDiscovery(raw.seenEnemies, 'seenEnemies')
+  profile.seenItems = validateDiscovery(raw.seenItems, 'seenItems')
   if (raw.pendingOffline !== undefined && raw.pendingOffline !== null
     && (!isObject(raw.pendingOffline) || !count(raw.pendingOffline.koban) || !count(raw.pendingOffline.exp) || !count(raw.pendingOffline.ms))) throw new Error('bad offline rewards')
   profile.pendingOffline = raw.pendingOffline === undefined || raw.pendingOffline === null ? null : raw.pendingOffline as unknown as OfflineResult
-  if (!Object.values(profile.stats).every((value) => count(value))) throw new Error('bad statistics')
   if (profile.pendingOffline && (profile.pendingOffline.items !== undefined && (!Number.isSafeInteger(profile.pendingOffline.items) || !count(profile.pendingOffline.items)))) throw new Error('bad offline items')
   const recordedJobs = raw.offlineJobs
   if (recordedJobs !== undefined && (!Array.isArray(recordedJobs) || recordedJobs.length !== deployedJobs(profile.party.order).length || new Set(recordedJobs).size !== recordedJobs.length || !recordedJobs.every(job => typeof job === 'string' && Object.hasOwn(jobs, job)))) throw new Error('bad offline recipients')

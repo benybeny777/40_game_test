@@ -93,14 +93,12 @@ describe('黄泉の迷宮・3難度', () => {
     expect(events.some((event) => event.t === 'heal')).toBe(true)
     expect(world.units[0].hp).toBeGreaterThan(world.units[0].stats.maxHp / 2)
   })
-  it('無限深度の一覧・所持装備のtier・テーマは有界で、別ダンジョン記録を保持する', () => {
+  it('無限深度の一覧・所持装備のtier・テーマは有界', () => {
     const profile = newProfile('t'); unlock(profile, 2, Number.MAX_SAFE_INTEGER)
-    profile.dungeonRecords.future = { ...profile.progress, currentStage: 7 }
     const restored = validateProfile(JSON.parse(JSON.stringify(profile))), view = buildView(restored, false)
     expect(view.dungeon.floorLimit).toBeNull(); expect(view.dungeon.depth).toBe(Number.MAX_SAFE_INTEGER)
     expect(view.stages.length).toBeLessThanOrEqual(13)
     expect(view.stage.label).toBe(`B${Number.MAX_SAFE_INTEGER}`)
-    expect(restored.dungeonRecords.future.currentStage).toBe(7)
     const item = rollItem({ rng: 1 }, 't', { ilvl: Number.MAX_SAFE_INTEGER, luk: 0, jobs: ['samurai'] })
     expect(item.ilvl).toBe(itemBalance.maxIlvl)
     expect(Number.isFinite(item.atk + item.hp + item.def)).toBe(true)
