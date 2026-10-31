@@ -6,6 +6,7 @@ import type { SimEvent, Unit } from '../../src/core/sim/types.ts'
 import { bossTrial, formations } from '../../tools/boss-balance.ts'
 import { partyOrder } from '../../src/core/data/jobs.ts'
 import { skills } from '../../src/core/sim/skills.ts'
+import { canReserveBossSkill } from '../../src/core/sim/boss.ts'
 
 function encounter(id: string) {
   const world = createWorld({ seed: 12, level: 1 })
@@ -24,6 +25,20 @@ function encounter(id: string) {
 }
 
 describe('boss telegraphs and composition choices', () => {
+  it('reserves interrupts only for target-eligible bosses whose action and cooldown finish within the window', () => {
+    const { world, boss } = encounter('ooni')
+    boss.action = { kind: 'windup', untilTick: world.tick + 5, targetUid: world.units[0].uid }
+    boss.skillReadyTick = world.tick + 8
+    expect(canReserveBossSkill(world, boss, 10)).toBe(true)
+    boss.action.untilTick = world.tick + 11
+    expect(canReserveBossSkill(world, boss, 10)).toBe(false)
+    boss.action = { kind: 'move', untilTick: Number.MAX_SAFE_INTEGER }
+    expect(canReserveBossSkill(world, boss, 10)).toBe(false)
+    boss.action.untilTick = world.tick + 2; boss.skillReadyTick = world.tick + 11
+    expect(canReserveBossSkill(world, boss, 10)).toBe(false)
+    boss.skillReadyTick = world.tick; boss.x = 200
+    expect(canReserveBossSkill(world, boss, 10)).toBe(false)
+  })
   it('張り手は近い護衛より射程内で詠唱中のボスを押す', () => {
     const { world, boss } = encounter('ooni')
     const rikishi = world.reserves.find((u) => u.defId === 'rikishi')!

@@ -4,6 +4,7 @@ export const balance = {
   bossIntroMs: 900, spawnMs: 100, windupMs: 100, projectileDotsPerSecond: 360,
   bossInterruptDots: 18,
   allyAttackIntervalMul: 0.5,
+  allyAdvanceDotsPerSecond: 60,
   // spawnX was 160 in the first draft; ranged allies (220) then killed everything before melee contact.
   formationGap: 18, spawnX: 40, enemyStop: 14, enemyGap: 10,
   meleeRange: 16, rangedRange: 220, waves: 10, maxStage: dungeons.yomi.floorCount, maxLevel: 60,

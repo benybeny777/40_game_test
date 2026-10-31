@@ -12,6 +12,7 @@ import { onLocaleChange, setLocale, translatedLabel as tr } from '../../shared/i
 import '../../shared/locales/system'
 import { createBattleText } from '../battleText'
 import { createBattleNotice } from '../battleNotice'
+import { createCombatLabelGate } from '../combatLabelGate'
 import { reportRendererError } from '../errors'
 import { realSeconds } from '../../core/data/timing'
 
@@ -36,9 +37,18 @@ const message = createBattleNotice((text, tone) => {
   battleText.banner(text); banner.className = `show ${tone}`
 }, () => { banner.className = '' })
 
+const labelGate = createCombatLabelGate()
 const scene = new Scene({
   banner: message,
-  label(text, dotX, dotY, color) {
+  pan(dots) {
+    const pixels = dots * layout.dotPx / dpr()
+    for (const element of Array.from(labels.children)) {
+      const label = element as HTMLElement
+      label.style.left = `${parseFloat(label.style.left) - pixels}px`
+    }
+  },
+  label(text, dotX, dotY, color, kind) {
+    if (!labelGate.take(text, performance.now(), kind)) return
     const element = document.createElement('div')
     const forgetLabel = battleText.label(element, text)
     element.className = 'label'; element.style.color = color
@@ -158,6 +168,8 @@ function ingest(frame: Frame) {
   if (accepted) present(accepted)
 }
 function present({ frame, fresh }: { frame: Frame; fresh: boolean }) {
+  message.advance(frame.snapshot)
+  if (fresh) labelGate.clear()
   audio.consume(frame)
   if (fresh) scene.resume(frame.snapshot, performance.now())
   else scene.ingest(frame, performance.now())

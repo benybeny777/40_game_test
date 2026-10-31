@@ -4,7 +4,7 @@ import { enemies } from '../data/enemies.ts'
 import { effectiveSkill } from '../data/skillEngravings.ts'
 import { jobs } from '../data/jobs.ts'
 import { addEffect, aoe, healUnit, passiveOn, pushEnemy, strike } from './actions.ts'
-import { canStartBossSkill } from './boss.ts'
+import { canReserveBossSkill } from './boss.ts'
 import { friends, hasActiveTag, living, opponents } from './combat.ts'
 import { random } from './rng.ts'
 import { sumEffects, withEffects } from './stats.ts'
@@ -82,7 +82,7 @@ export const skills: Record<string, { canUse(ctx: SkillContext): boolean; use(ct
       if (!reachable.length) return false
       if (reachable.some((target) => target.action.kind === 'cast')) return true
       // Hold briefly for an imminent charge instead of spending the interrupt on an escort.
-      return !reachable.some((target) => canStartBossSkill(world, target) && target.skillReadyTick <= world.tick + ticks(q.bossReserveMs))
+      return !reachable.some((target) => canReserveBossSkill(world, target, ticks(q.bossReserveMs)))
     },
     use: ({ world, self, events }) => {
       const q = p('rikishi', 'skill', self), target = opponents(world, self).filter((enemy) => enemy.x >= self.x && enemy.x - self.x <= q.range)

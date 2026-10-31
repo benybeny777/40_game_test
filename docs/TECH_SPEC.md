@@ -1,8 +1,14 @@
 # はぐれものダンジョン：技術仕様
 
-更新：2026-10-30。現行コードと設定を基準にする。プレイヤー向けのルールは [ゲーム仕様](GAME_SPEC.md)、最新の検証結果・未確認事項は [HANDOFF](../HANDOFF.md) を参照。以下の実装説明を、実機受入やSteam本番接続の完了と読み替えない。
+更新：2026-11-01。現行コードと設定を基準にする。プレイヤー向けのルールは [ゲーム仕様](GAME_SPEC.md)、最新の検証結果・未確認事項は [HANDOFF](../HANDOFF.md) を参照。以下の実装説明を、実機受入やSteam本番接続の完了と読み替えない。
 
 ## 構成と責務
+
+v0.7.4の接敵は`world.moveAllies`が実座標を移動する。最寄りの敵が自ら接近中なら迎撃し、停止敵に近接が届かない場合のみ`balance.allyAdvanceDotsPerSecond`で隊列全体を同量進める。slot間隔と死者を含む隊列のオフセットを保持し、ウェーブ開始時に戻す。通常攻撃の解決前に標的が死亡した場合は、共有標的選択で射程内の別標的へ1回だけ実行する。
+
+`strip/battleCamera.ts`は実隊列の前進量を補間し、描画・弾・照準・hitTestと既存エフェクトの座標を揃える。ウェーブ座標初期化を逆スクロールにしない。`impactPresentation.ts`は実360msの敵撃破残像（最大8）、実180msの局所会心（最大4）の寿命と形を管理。`scene.ts`が旧スナップショットの死亡を残してから不要visualを破棄し、同フレームの報酬も旧戦場に表示する。シミュレーションへのhit-stopやダメージ変更はない。
+
+`combatLabelGate.ts`は日本語の正規技能名で通常技能と情報表示を制限（同名8秒、全体3.2秒、8秒経過した履歴は破棄）。通知は`battleNotice.ts`が情報/連携/成果/装備/ボス/失敗の順に優先する。通常情報は1秒で消し、古い警告後に再生しない。戦闘境界では旧警告を消し、獲得成果・装備は寿命を保持する。保存復元のtick巻戻りや非表示では全消去する。レア装備は踏破通知にも割り込まれず、ボス予兆が優先された場合は後で表示する。
 
 | 層 | 正本・入口 | 責務 |
 |---|---|---|
@@ -72,7 +78,7 @@ Profileは`dungeonId`、`dungeonSeed`、`dungeonRecords`を持つ。各記録は
 
 通常攻撃の予告表示はSnapshotの`action=windup`とattackイベントの対象IDに同期する。ボス特殊技はコアの`cast`として対象ID・開始位置・解決tickを保持し、`bossTell`と`SnapshotUnit.bossCast`を描画へ渡す。予告中は敵の通常移動を止め、解決時に生存・対象・近接射程を確認する。開始位置から18ドット以上押し戻された場合は`bossInterrupt`を発行し、効果を出さない。再使用待ちは予告開始時に消費する。全滅・街帰還・ウェーブ切替ではactionを消去し、保存からWorldを復元するときに途中の詠唱を再生しない。
 
-力士の張り手は`skills.harite`が前方48ドット内の候補を選び、`cast`中の敵を距離順より優先する。射程内ボスが実際に発動可能で、スキル準備がゲーム内2秒（標準速度では実時間1秒）以内なら張り手を温存する。`core/sim/boss.ts`の`canStartBossSkill`・`bossSkillCandidates`・`summonCapacity`をボス発動と温存判断が共有し、行動中・近接対象の射程外・召喚上限到達では温存しない。待機時間の正本は`jobs.rikishi.skill.params.bossReserveMs`。`actions.pushEnemy`が中断閾値を越えた押し出し元をactionへ記録し、`bossInterrupt.sourceUid/interruptSkillId`で張り手と奥義を区別する。射程・再使用待ち・他の行動中という制約は維持し、描画側から中断を成立させない。
+力士の張り手は`skills.harite`が前方48ドット内の候補を選び、`cast`中の敵を距離順より優先する。射程内ボスが実際に発動可能で、スキル準備がゲーム内2秒（標準速度では実時間1秒）以内なら張り手を温存する。`core/sim/boss.ts`の`canStartBossSkill`・`canReserveBossSkill`が対象/射程/召喚上限の共通条件を利用する。短い移動・通常攻撃準備は終了予定と技能CDの両方が予約時間内なら温存対象にする。長い移動・射程外・召喚上限では温存しない。待機時間の正本は`jobs.rikishi.skill.params.bossReserveMs`。`actions.pushEnemy`が中断閾値を越えた押し出し元をactionへ記録し、`bossInterrupt.sourceUid/interruptSkillId`で張り手と奥義を区別する。射程・再使用待ち・他の行動中という制約は維持し、描画側から中断を成立させない。
 
 ## 探索先・敗北記録の表示
 

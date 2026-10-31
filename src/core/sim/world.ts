@@ -106,6 +106,7 @@ function resetWave(world: World, events: SimEvent[], fullHeal = false) {
     refreshStats(world, unit)
   }
   applyPending(world)
+  for (const unit of world.units) unit.x = 0 - unit.slot * b.formationGap
   phase(world, 'walking', b.walkMs / (1 + world.moveBonus), events)
 }
 function pickWeighted(world: World, entries: ReadonlyArray<{ id: string; weight: number }>) {
@@ -201,6 +202,27 @@ function phaseStep(world: World, events: SimEvent[]) {
     if (world.spawnIndex === world.spawnQueue.length) { phase(world, 'battle', 0, events); onBattleStart(world, events) }
   }
 }
+/** Advance the formation in world space; rear members retain their protected distance. */
+function moveAllies(world: World) {
+  const allies = world.units.filter(unit => unit.side === 'ally' && living(unit)).sort((a, z) => a.slot - z.slot)
+  for (const unit of allies) if (unit.action.kind === 'move') unit.action = { kind: 'none', untilTick: 0 }
+  const front = allies[0], melee = allies.filter(unit => attackDef(unit).kind === 'melee')
+  if (!front || !melee.length || front.action.kind === 'windup' || front.action.kind === 'cast') return
+  const foes = opponents(world, front)
+  if (!foes.length) return
+  const nearest = foes.reduce((a, z) => a.x < z.x ? a : z)
+  // Meet an approaching foe at the existing defensive line. Stationary
+  // ranged/casting foes still require a real advance instead of an endless wait.
+  if (enemies[nearest.defId].speed > 0 && nearest.action.kind === 'move') return
+  // Close enough for the shortest-reach melee member, without crossing an enemy.
+  const gap = nearest.x - front.x - Math.min(...melee.map(unit => unit.stats.rangeDots))
+  if (gap <= 0) return
+  const distance = Math.min(gap, b.allyAdvanceDotsPerSecond * b.tickMs / 1000)
+  for (const unit of world.units.filter(unit => unit.side === 'ally')) {
+    unit.x += distance
+    if (living(unit) && unit.action.kind === 'none') unit.action = { kind: 'move', untilTick: 0 }
+  }
+}
 function moveEnemies(world: World, events: SimEvent[]) {
   const front = world.units.find((unit) => unit.side === 'ally' && living(unit))
   if (!front) return
@@ -210,7 +232,9 @@ function moveEnemies(world: World, events: SimEvent[]) {
     if (unit.action.kind === 'windup' || unit.action.kind === 'cast') { explodeIfArrived(world, unit, stopX, events); continue }
     if (unit.x > stopX) {
       unit.x = Math.max(stopX, unit.x - enemies[unit.defId].speed * b.tickMs / 1000)
-      unit.action = { kind: unit.x > stopX ? 'move' : 'none', untilTick: 0 }
+      unit.action = unit.x > stopX
+        ? { kind: 'move', untilTick: world.tick + (enemies[unit.defId].speed > 0 ? ticks((unit.x - stopX) / enemies[unit.defId].speed * 1000) : Number.MAX_SAFE_INTEGER) }
+        : { kind: 'none', untilTick: 0 }
     } else if (unit.action.kind === 'move') unit.action = { kind: 'none', untilTick: 0 }
     explodeIfArrived(world, unit, stopX, events)
   }
@@ -287,7 +311,10 @@ function finishActions(world: World, events: SimEvent[]) {
       else ultimates[action.skillId!]({ world, self: unit, events }, action.roll)
       continue
     }
+    // A slain windup target must not consume an entire attack cycle. Retarget only
+    // within normal reach; no movement, extra strike, or pursuit occurs here.
     const target = world.units.find((candidate) => candidate.uid === action.targetUid && living(candidate))
+      ?? chooseTarget(world, unit)
     if (!target) continue
     const attack = attackDef(unit)
     const iai = unit.effects.find((effect) => effect.kind === 'nextCrit')
@@ -397,9 +424,10 @@ function resolveBossSkill(world: World, self: Unit, action: Unit['action'], even
   for (const target of targets) strike(world, self, target, { mul: skill.mul, tags: [skill.id] }, events)
 }
 function battleStep(world: World, events: SimEvent[]) {
+  moveAllies(world)
   moveEnemies(world, events)
   resolveProjectilesAndMines(world, events)
-  for (const unit of world.units) if (living(unit) && unit.action.kind === 'none') decide(world, unit, events)
+  for (const unit of world.units) if (living(unit) && (unit.action.kind === 'none' || (unit.side === 'ally' && unit.action.kind === 'move'))) decide(world, unit, events)
   finishActions(world, events)
   settle(world, events)
 }

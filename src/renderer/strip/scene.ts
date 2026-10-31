@@ -10,6 +10,10 @@ import { damageText, enemyMotion, enemyRank, enemyScale } from './enemyPresentat
 import { drawDungeonBackground } from './background'
 import { actionPose, actionTiming, hitFeedbackDue, hitRecoil, meleeDashDistance, normalWindupMs } from './actionPresentation'
 import { battleSurfaceWidth } from './battleBounds'
+import type { BattleTone } from '../battleNotice'
+import type { CombatLabelKind } from '../combatLabelGate'
+import { BattleCamera, formationAdvance, panPoints } from './battleCamera'
+import { DefeatEchoes, criticalRays, impactPresentation, syncMeleeImpact } from './impactPresentation'
 import { gaitTiming, walkPose } from './gait'
 import { bossCue, lootPresentation, placeCombatLabel, SynergyFeedback } from './feedbackPresentation'
 
@@ -34,10 +38,10 @@ interface Visual { uid: number; defId: string; side: SnapshotUnit['side']; sheet
   windupMs?: number; ranged?: boolean; hitAt?: number; hitX?: number; critical?: boolean
   normalMelee?: boolean; dashTargetX?: number; drawX?: number; drawY?: number }
 interface Floater { uid: number; text: string; x: number; y: number; width: number; height: number; color: string; start: number; dur: number; scale: number }
-interface Fx { kind: 'smoke' | 'boom' | 'slash' | 'flash' | 'sparkle' | 'impact'; x: number; y: number; start: number; dur: number; radius: number; color: string }
+interface Fx { kind: 'smoke' | 'boom' | 'slash' | 'critical' | 'sparkle' | 'impact'; x: number; y: number; start: number; dur: number; radius: number; color: string }
 interface Coin { x: number; y: number; vx: number; vy: number; start: number }
 export type HitTarget = { kind: 'unit'; unit: SnapshotUnit } | { kind: 'hud' }
-export interface SceneHooks { banner(text: string, tone: 'info' | 'boss' | 'good' | 'bad'): void; label(text: string, dotX: number, dotY: number, color: string): void }
+export interface SceneHooks { banner(text: string, tone: BattleTone): void; label(text: string, dotX: number, dotY: number, color: string, kind?: CombatLabelKind): void; pan?(dots: number): void }
 
 export class Scene {
   W = 0; H = 0
@@ -55,6 +59,9 @@ export class Scene {
   private loot: Array<{ x: number; y: number; start: number; color: string; rarity: number }> = []
   private rims = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>()
   private synergy = new SynergyFeedback()
+  private defeats = new DefeatEchoes<{ sheet: Sheet; scale: number }>()
+  private camera = new BattleCamera()
+  private cameraOffset = 0
   private ground = 0
   private lastDraw = 0
   private hud = { x: 0, y: 0, w: 0, h: 0 }
@@ -64,12 +71,14 @@ export class Scene {
   get footY() { return this.H - PLAY + FOOT_FROM_TOP }
   get baseX() { return Math.floor(this.W * 0.12) + (partySize - 1) * balance.formationGap * PARTY_SPACING_SCALE }
   // Enemies are drawn a few dots further right so melee contact (14 dots in the sim) does not overlap sprites.
-  private screenX(x: number, enemy = false) { return this.baseX + x * PARTY_SPACING_SCALE + (enemy ? ENEMY_DRAW_OFFSET : 0) }
+  private screenX(x: number, enemy = false) { return this.baseX + (x - this.cameraOffset) * PARTY_SPACING_SCALE + (enemy ? ENEMY_DRAW_OFFSET : 0) }
 
   private clearPresentation(now: number) {
     this.prev = undefined; this.cur = undefined; this.visuals.clear()
     this.numbers = []; this.fx = []; this.coins = []; this.loot = []
     this.synergy.clear()
+    this.defeats.clear()
+    this.camera.clear(); this.cameraOffset = 0
     this.ground = 0; this.lastDraw = now
   }
   /** Resume from the current world, without interpolating a hidden interval or replaying loot. */
@@ -88,8 +97,18 @@ export class Scene {
     }
     const first = !this.cur
     this.prev = this.cur ?? frame.snapshot
+    const eventPrevious = this.prev
     if (this.cur) this.gap = Math.min(300, Math.max(50, now - this.curAt))
     this.cur = frame.snapshot; this.curAt = now
+    const cameraReset = this.camera.ingest(frame.snapshot)
+    if (cameraReset) {
+      // Resetting world coordinates at a wave boundary is not backwards travel.
+      this.prev = frame.snapshot; this.cameraOffset = this.camera.at(1)
+      for (const visual of this.visuals.values()) {
+        visual.normalMelee = false; visual.anim = undefined; visual.hitAt = undefined
+        visual.dashTargetX = undefined
+      }
+    }
     for (const unit of frame.snapshot.units) if (!this.visuals.has(unit.uid)) {
       const sheet = sheetOf(unit.defId)
       if (!sheet) throw new Error(`Sprite sheet is not loaded: ${unit.defId}`)
@@ -98,8 +117,8 @@ export class Scene {
     }
     const alive = new Set(frame.snapshot.units.map((unit) => unit.uid))
     this.synergy.retain(alive)
+    for (const event of frame.events) this.event(event, now, eventPrevious, cameraReset)
     for (const uid of this.visuals.keys()) if (!alive.has(uid)) this.visuals.delete(uid)
-    for (const event of frame.events) this.event(event, now)
   }
 
   private unit(uid: number) { return this.cur?.units.find((unit) => unit.uid === uid) }
@@ -124,7 +143,9 @@ export class Scene {
     this.numbers.push({ uid, text, ...box, y: box.y + 6, height, color, start: now, dur: (big ? 760 : 580) * GAME_SPEED, scale })
   }
 
-  private event(event: SimEvent, now: number) {
+  private event(event: SimEvent, now: number, previous: Snapshot, cameraReset: boolean) {
+    // Rewards/explosions can belong to the old battlefield in a batched wave-reset frame.
+    const eventX = (x: number) => this.baseX + (x - (cameraReset ? formationAdvance(previous) : this.cameraOffset)) * PARTY_SPACING_SCALE + ENEMY_DRAW_OFFSET
     const vis = 'uid' in event ? this.visuals.get(event.uid) : undefined
     switch (event.t) {
       case 'attack':
@@ -135,15 +156,17 @@ export class Scene {
         if (vis && event.amount > 0) {
           const repeat = vis.hitAt === now
           const impactX = this.posX(event.uid, 1)
-          if (hitFeedbackDue(vis.hitAt, now)) {
+          const due = hitFeedbackDue(vis.hitAt, now)
+          if (due) {
             vis.flashUntil = now + actionTiming.flashMs; vis.knockUntil = now + actionTiming.knockMs
             vis.hitAt = now; vis.hitX = impactX; vis.critical = event.crit
           }
           const unit = this.unit(event.uid)
+          if (due && event.crit && unit && impactX !== undefined && this.fx.filter(fx => fx.kind === 'critical' && now - fx.start < fx.dur).length < impactPresentation.maxCriticals) this.fx.push({ kind: 'critical', x: impactX, y: this.chestY(unit), start: now, dur: impactPresentation.criticalMs, radius: 0, color: colors.crit })
           if (!repeat && unit && impactX !== undefined && this.fx.filter(fx => fx.kind === 'impact').length < 12) this.fx.push({ kind: 'impact', x: impactX, y: this.chestY(unit), start: now, dur: actionTiming.sparkMs, radius: event.crit ? 7 : 4, color: event.crit ? '#ffe27a' : '#fff0d9' })
           const source = this.visuals.get(event.sourceUid)
           // A melee hit is authoritative; ranged impact must not replay the earlier throwing motion.
-          if (source?.anim === 'attack' && !source.ranged && source.windupMs && Math.abs(now - source.animAt - source.windupMs) <= balance.tickMs * 2) source.animAt = now - source.windupMs
+          if (source) syncMeleeImpact(source, event.uid, impactX, event.tags, now)
         }
         const big = event.crit || Boolean(event.tags?.length)
         this.number(damageText(event.amount), event.uid, event.crit ? colors.crit : colors.dmg, now, big)
@@ -151,7 +174,7 @@ export class Scene {
           const source = this.unit(event.sourceUid), x = this.posX(event.sourceUid, 1)
           if (source?.side === 'ally' && x !== undefined) {
             const cue = this.synergy.take(event.sourceUid, event.tags, now)
-            if (cue) this.hooks.label(cue.text, x, this.headY(source) - 14, cue.color)
+            if (cue) this.hooks.label(cue.text, x, this.headY(source) - 14, cue.color, 'combo')
           }
         }
         break
@@ -191,11 +214,18 @@ export class Scene {
           this.hooks.banner(event.skillId === 'oatari' ? `${job.ultimate.name} ${event.roll ?? '?'}${event.roll === 7 ? '！！' : ''}` : job.ultimate.name, event.roll === 7 ? 'good' : 'info')
           const x = this.posX(event.uid, 1)
           if (x !== undefined) this.fx.push({ kind: 'sparkle', x, y: this.chestY(unit), start: now, dur: balance.ultCastMs, radius: 12, color: job.color })
-          if (event.skillId === 'issen') this.fx.push({ kind: 'flash', x: 0, y: 0, start: now + balance.ultCastMs, dur: 90, radius: 0, color: '#ffffff' })
+          if (event.skillId === 'issen' && x !== undefined) this.fx.push({ kind: 'slash', x: Math.min(this.W - 20, x + 34), y: this.chestY(unit), start: now + balance.ultCastMs, dur: impactPresentation.criticalMs, radius: 18, color: '#ffe8a8' })
         }
         break
       }
-      case 'death': if (vis) vis.deadAt = now; break
+      case 'death': {
+        const unit = this.unit(event.uid) ?? previous.units.find(unit => unit.uid === event.uid)
+        if (vis) {
+          vis.deadAt = now
+          if (unit?.side === 'enemy') this.defeats.add(event.uid, now, this.posX(event.uid, 1) ?? vis.drawX ?? this.baseX + (unit.x - formationAdvance(previous)) * PARTY_SPACING_SCALE + ENEMY_DRAW_OFFSET, this.footY, { sheet: vis.sheet, scale: enemyScale(unit.defId) })
+        }
+        break
+      }
       case 'revive': if (vis) vis.deadAt = undefined; break
       case 'spawn': {
         if (vis) vis.spawnAt = now
@@ -215,29 +245,29 @@ export class Scene {
       case 'floorEvent': this.hooks.banner(event.kind === 'treasure' ? '宝箱を発見！' : '祭壇の祝福', 'good'); break
       case 'kakuhen': {
         const unit = this.unit(event.uid), x = this.posX(event.uid, 1)
-        if (unit && x !== undefined) this.hooks.label(event.hit ? '確変突入！' : 'ハズレ', x, this.headY(unit) - 6, event.hit ? '#ffe27a' : '#8d8ea6')
+        if (unit && x !== undefined) this.hooks.label(event.hit ? '確変突入！' : 'ハズレ', x, this.headY(unit) - 6, event.hit ? '#ffe27a' : '#8d8ea6', event.hit ? 'combo' : 'info')
         if (event.hit && x !== undefined && unit) this.fx.push({ kind: 'sparkle', x, y: this.chestY(unit), start: now, dur: 900, radius: 14, color: '#ffe27a' })
         break
       }
       case 'reward': {
         const count = Math.min(4, 1 + Math.floor(event.koban / 8))
-        for (let i = 0; i < count; i++) this.coins.push({ x: this.screenX(event.x, true), y: this.footY - 10, vx: (i - count / 2) * 9 + 6, vy: -28 - i * 4, start: now })
+        for (let i = 0; i < count; i++) this.coins.push({ x: eventX(event.x), y: this.footY - 10, vx: (i - count / 2) * 9 + 6, vy: -28 - i * 4, start: now })
         break
       }
-      case 'explode': this.fx.push({ kind: 'boom', x: this.screenX(event.x, true), y: this.footY - 6, start: now, dur: 380, radius: Math.min(16, event.radius), color: '#ffe27a' }); break
+      case 'explode': this.fx.push({ kind: 'boom', x: eventX(event.x), y: this.footY - 6, start: now, dur: 380, radius: Math.min(16, event.radius), color: '#ffe27a' }); break
       case 'drop': {
         lootPresentation(event.rarity) // Reject invalid events instead of substituting another rarity.
         const rarity = rarities[event.rarity]
         if (event.sale) {
           const reason = event.sale.reason === 'capacity' ? '満杯で売却' : '自動売却'
-          this.hooks.label(`${reason}：${event.sale.name}（小判 +${Math.floor(event.sale.koban)}）`, this.screenX(event.x, true), this.footY - 18, colors.gold)
+          this.hooks.label(`${reason}：${event.sale.name}（小判 +${Math.floor(event.sale.koban)}）`, eventX(event.x), this.footY - 18, colors.gold, 'info')
         }
         // A sold drop never entered the bag; do not celebrate an item the player cannot equip.
         if (event.sold) break
         if (this.loot.length >= 24) this.loot.shift()
-        this.loot.push({ x: this.screenX(event.x, true), y: this.footY - 10, start: now, color: rarity.color, rarity: event.rarity })
-        if (event.rarity >= 2) this.hooks.label(`${rarity.name}「${event.name}」`, this.screenX(event.x, true), this.footY - 26, rarity.color)
-        if (event.rarity >= 3) this.hooks.banner(`${rarity.name}の装備！ ${event.name}`, 'good')
+        this.loot.push({ x: eventX(event.x), y: this.footY - 10, start: now, color: rarity.color, rarity: event.rarity })
+        if (event.rarity === 2) this.hooks.label(`${rarity.name}「${event.name}」`, eventX(event.x), this.footY - 26, rarity.color, 'loot')
+        if (event.rarity >= 3) this.hooks.banner(`${rarity.name}の装備！ ${event.name}`, 'loot')
         if (event.equippedBy) {
           const ally = this.cur?.units.find((unit) => unit.side === 'ally' && unit.defId === event.equippedBy)
           if (ally) this.number('EQUIP', ally.uid, rarity.color, now)
@@ -260,6 +290,19 @@ export class Scene {
     const snap = this.cur
     if (!snap) return
     const alpha = Math.min(1, Math.max(0, (now - this.curAt) / this.gap))
+    const cameraOffset = this.camera.at(alpha), pan = (cameraOffset - this.cameraOffset) * PARTY_SPACING_SCALE
+    this.cameraOffset = cameraOffset
+    if (pan !== 0) {
+      for (const points of [this.numbers, this.fx, this.coins, this.loot]) panPoints(points, pan)
+      this.defeats.pan(pan)
+      this.hooks.pan?.(pan)
+      for (const visual of this.visuals.values()) {
+        if (visual.hitX !== undefined) visual.hitX -= pan
+        if (visual.dashTargetX !== undefined) visual.dashTargetX -= pan
+        if (visual.drawX !== undefined) visual.drawX -= pan
+      }
+      this.ground = (this.ground + Math.max(0, pan)) % (gaitTiming.strideDots * 128)
+    }
     const renderTick = (this.prev?.tick ?? snap.tick) + alpha * (snap.tick - (this.prev?.tick ?? snap.tick))
     if (!this.paused && snap.phase === 'walking') this.ground = (this.ground + dt * gaitTiming.dotsPerSecond / 1000) % (gaitTiming.strideDots * 128)
     if (this.groundBand) {
@@ -273,6 +316,14 @@ export class Scene {
     }
     const order = [...snap.units].sort((a, z) => (a.side === z.side ? z.slot - a.slot : a.side === 'enemy' ? -1 : 1))
     for (const unit of order) this.drawUnit(ctx, unit, now, alpha, snap)
+    for (const echo of this.defeats.sample(now)) {
+      const { pose, payload } = echo
+      ctx.save(); ctx.globalAlpha = pose.alpha
+      ctx.translate(Math.round(Math.max(12, Math.min(this.W - 12, echo.x + pose.dx))), echo.footY + pose.dy - 10)
+      ctx.rotate(pose.tilt)
+      this.sprite(ctx, payload.sheet, 'idle', 0, 0, 10, false, pose.flash ? 'flash' : 'normal', payload.scale)
+      ctx.restore()
+    }
     for (const unit of order) if (unit.alive) this.drawBars(ctx, unit, alpha, now, snap)
     for (const projectile of snap.projectiles) {
       const from = this.posX(projectile.fromUid, alpha), to = this.posX(projectile.toUid, alpha)
@@ -339,12 +390,7 @@ export class Scene {
     const flip = false
     const scale = unit.side === 'enemy' ? enemyScale(unit.defId) : 1
     if (!unit.alive || vis.deadAt !== undefined) {
-      const since = now - (vis.deadAt ?? now)
       if (unit.side === 'enemy') {
-        if (since > 500) return
-        ctx.globalAlpha = 1 - since / 500
-        this.sprite(ctx, vis.sheet, 'idle', 0, x, this.footY + Math.floor(since / 120), flip, since < 120 ? 'flash' : 'normal', scale)
-        ctx.globalAlpha = 1
         return
       }
       // Fallen ally lies on the ground, greyed out, until revived.
@@ -513,7 +559,14 @@ export class Scene {
         if (t < 0.45) { ctx.fillRect(x - 2, y, 5, 1); ctx.fillRect(x, y - 2, 1, 5) }
         continue
       }
-      if (fx.kind === 'flash') { ctx.fillStyle = `rgba(255,255,255,${0.45 * (1 - t)})`; ctx.fillRect(0, this.H - PLAY, this.W, PLAY); continue }
+      if (fx.kind === 'critical') {
+        ctx.save(); ctx.strokeStyle = fx.color; ctx.lineWidth = 1
+        for (const ray of criticalRays(now - fx.start)) {
+          ctx.globalAlpha = ray.alpha; ctx.beginPath(); ctx.moveTo(Math.round(fx.x) + ray.x1, Math.round(fx.y) + ray.y1)
+          ctx.lineTo(Math.round(fx.x) + ray.x2, Math.round(fx.y) + ray.y2); ctx.stroke()
+        }
+        ctx.restore(); continue
+      }
       if (fx.kind === 'slash') {
         ctx.fillStyle = fx.color
         for (let a = -60; a <= 60; a += 12) {
@@ -636,5 +689,5 @@ export class Scene {
     const vis = this.visuals.get(target.unit.uid)
     return { x: vis?.drawX ?? this.screenX(target.unit.x, target.unit.side === 'enemy'), y: this.headY(target.unit) - 5 + (vis?.drawY ?? 0) }
   }
-  busy(now: number) { return this.fx.length > 0 || this.numbers.length > 0 || this.coins.length > 0 || this.loot.length > 0 || now * GAME_SPEED - this.curAt < 1000 }
+  busy(now: number) { return this.defeats.active || this.fx.length > 0 || this.numbers.length > 0 || this.coins.length > 0 || this.loot.length > 0 || now * GAME_SPEED - this.curAt < 1000 }
 }

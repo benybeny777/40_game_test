@@ -13,6 +13,7 @@ import { onLocaleChange, translatedLabel as tr } from '../../shared/i18n'
 import '../../shared/locales/system'
 import { createBattleText } from '../battleText'
 import { createBattleNotice } from '../battleNotice'
+import { createCombatLabelGate } from '../combatLabelGate'
 
 async function start() {
   const api = initializePlatform()
@@ -32,7 +33,10 @@ async function start() {
   visibleFrames.setVisible(!document.hidden)
   const audio = new AudioSession({ desktop: false, onChange: createAudioNotice(), onError: error => { reportRendererError('通知音を再生できませんでした。', error) } })
   audio.configure(state)
-  const scene = new Scene({ banner: message, label: text => message(text) })
+  const labels = createCombatLabelGate()
+  const scene = new Scene({ banner: message, label: (text, _x, _y, _color, kind) => {
+    if (labels.take(text, performance.now(), kind)) message(text, kind === 'loot' ? 'loot' : kind === 'combo' ? 'combo' : labels.routine(text, kind) ? 'info' : 'good')
+  } })
   const logical = document.createElement('canvas'), ctx = screen.getContext('2d')!, off = logical.getContext('2d')!
   let dotPx = 1, needsDraw = true
   function resize() {
@@ -67,6 +71,8 @@ async function start() {
   onLocaleChange(translateControls); translateControls()
   await Promise.all([artReady, loadUiFonts()])
   function present({ frame, fresh }: { frame: Frame; fresh: boolean }) {
+    message.advance(frame.snapshot)
+    if (fresh) labels.clear()
     const resting = frame.snapshot.phase === 'town'
     if (inTown !== resting) { inTown = resting; translateControls() }
     audio.consume(frame)

@@ -183,6 +183,9 @@ describe('エリア2・3の敵（05 §2・§3）', () => {
     const world = battleAt(11)
     const fig = world.units.find((unit) => unit.side === 'enemy')!
     fig.defId = 'noroifig'; fig.base.rangeDots = fig.stats.rangeDots = 200
+    // battleAt already ran one combat tick. Discard the original enemy's
+    // pending target/cooldown so this checks the doll's own target selection.
+    fig.action = { kind: 'none', untilTick: 0 }; fig.attackReadyTick = world.tick
     const x = fig.x
     const events = Array.from({ length: 30 }, () => step(world)).flat()
     const last = world.units.filter((unit) => unit.side === 'ally').at(-1)!

@@ -2,6 +2,68 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createBattleNotice } from '../src/renderer/battleNotice'
 
 afterEach(() => vi.useRealTimers())
+it('keeps the rare find ahead of floor-clear chatter and preserves it through boss outcomes', () => {
+  vi.useFakeTimers()
+  const show = vi.fn(), notice = createBattleNotice(show, vi.fn())
+  notice('rare weapon', 'loot')
+  vi.advanceTimersByTime(150); notice('floor clear', 'good')
+  expect(show).toHaveBeenCalledTimes(1)
+  vi.advanceTimersByTime(1650)
+  expect(show).toHaveBeenLastCalledWith('floor clear', 'good')
+  notice('incoming', 'boss'); notice('mythic armor', 'loot'); notice('interrupted', 'boss')
+  vi.advanceTimersByTime(1800)
+  expect(show).toHaveBeenLastCalledWith('mythic armor', 'loot')
+})
+it('does not replay routine skill text after the boss warning ends', () => {
+  vi.useFakeTimers()
+  const show = vi.fn(), hide = vi.fn(), notice = createBattleNotice(show, hide)
+  notice('incoming', 'boss'); notice('normal skill', 'info')
+  vi.advanceTimersByTime(1800)
+  expect(show.mock.calls).toEqual([['incoming', 'boss']])
+  expect(hide).toHaveBeenCalledOnce()
+})
+it('clears obsolete warnings at a wave boundary but delivers earned loot', () => {
+  vi.useFakeTimers()
+  const show = vi.fn(), hide = vi.fn(), notice = createBattleNotice(show, hide)
+  const snapshot = { tick: 200, depthRank: 0 as const, stageNo: 10, wave: 10, phase: 'battle' as const }
+  notice.advance(snapshot)
+  notice('incoming', 'boss'); notice('old loot', 'good')
+  notice.advance(snapshot)
+  expect(hide).not.toHaveBeenCalled()
+  notice.advance({ ...snapshot, phase: 'stageClear' })
+  vi.advanceTimersByTime(4000)
+  expect(show.mock.calls).toEqual([['incoming', 'boss'], ['old loot', 'good']])
+})
+it('keeps earned loot readable through a short wave-clear and walking transition', () => {
+  vi.useFakeTimers()
+  const show = vi.fn(), hide = vi.fn(), notice = createBattleNotice(show, hide)
+  const snapshot = { tick: 500, depthRank: 0 as const, stageNo: 1, wave: 1, phase: 'waveClear' as const }
+  notice.advance(snapshot); notice('mythic equipment', 'good')
+  vi.advanceTimersByTime(150)
+  notice.advance({ ...snapshot, tick: 506, wave: 2, phase: 'walking' })
+  notice('next wave', 'info')
+  expect(hide).not.toHaveBeenCalled()
+  vi.advanceTimersByTime(1650)
+  expect(show).toHaveBeenCalledOnce()
+  expect(hide).toHaveBeenCalledOnce()
+})
+it('clears a previous run warning when restoring the same floor and phase', () => {
+  vi.useFakeTimers()
+  const show = vi.fn(), hide = vi.fn(), notice = createBattleNotice(show, hide)
+  const snapshot = { tick: 500, depthRank: 0 as const, stageNo: 1, wave: 1, phase: 'battle' as const }
+  notice.advance(snapshot); notice('old boss', 'boss'); notice('old loot', 'good')
+  notice.advance({ ...snapshot, tick: 0 })
+  vi.advanceTimersByTime(4000)
+  expect(show).toHaveBeenCalledTimes(1)
+  expect(hide).toHaveBeenCalledOnce()
+})
+it('gives routine messages a shorter hold so the battle becomes visible again', () => {
+  vi.useFakeTimers()
+  const hide = vi.fn(), notice = createBattleNotice(vi.fn(), hide, 2200)
+  notice('normal skill', 'info')
+  vi.advanceTimersByTime(1000)
+  expect(hide).toHaveBeenCalledOnce()
+})
 it('drops both the visible warning and queued loot when the surface is hidden', () => {
   vi.useFakeTimers()
   const show = vi.fn(), hide = vi.fn()
