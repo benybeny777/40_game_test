@@ -35,7 +35,7 @@ describe('装備（03 §3）', () => {
     expect(equipItem(profile, 'ninja', 'weapon', katana.id).ok).toBe(false)
     const before = statsOf(profile, 'samurai').atk
     expect(equipItem(profile, 'samurai', 'weapon', katana.id)).toEqual({ ok: true })
-    expect(statsOf(profile, 'samurai').atk).toBeCloseTo(before + 10)
+    expect(statsOf(profile, 'samurai').atk).toBeCloseTo(before + 30)
     expect(scoreDelta(profile, 'ninja', katana)).toBeNull()
   })
   it('自動装備は強い装備だけを付け替え、売却は装備中・ロック中を拒否する', () => {
@@ -128,7 +128,8 @@ describe('装備（03 §3）', () => {
       koban: 50, dojo: { atk: 1, hp: 0, walk: 0 }, stats: { kills: 3 }, rates: { current: { koban: 0, exp: 0 }, minutes: [] }, seenEnemies: [], pendingOffline: null }
     const profile = validateProfile(v1)
     expect(profile.version).toBe(3); expect(profile.inventory).toEqual([]); expect(profile.party.members.ninja.equip.weapon).toBeNull()
-    expect(profile.koban).toBe(50); expect(profile.dojo.drop).toBe(0)
+    expect(profile.koban).toBe(150); expect(profile.dojo.drop).toBe(0)
+    expect(profile.dojoRefund).toMatchObject({ atkLevels: 1, creditedAmount: '100', pendingAmount: '0' })
     const broken = JSON.parse(JSON.stringify(newProfile('t')))
     broken.party.members.samurai.equip.weapon = 'i999'
     expect(() => validateProfile(broken)).toThrow('bad equip')

@@ -2,7 +2,8 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { advance, createGame, dojoCost, newProfile, runCommand, partyOrder, type JobId } from '../src/core/index.ts'
-import { dojo, type DojoKey } from '../src/core/data/progress.ts'
+import { dojo } from '../src/core/data/progress.ts'
+import { availableDojoKeys } from '../src/core/progress/dojoRefund.ts'
 import { REAL_TICK_MS } from '../src/core/data/timing.ts'
 import { reviewGear } from './reserve-growth.ts'
 
@@ -77,7 +78,7 @@ export function partyTrial(name: string, party: JobId[], seed: number, minutes =
         if (!result.ok) throw new Error(result.reason)
       }
       reviewGear(game, activeParty)
-      const purchase = (Object.keys(dojo) as DojoKey[]).filter(key => dojo[key].max === null || profile.dojo[key] < dojo[key].max!)
+      const purchase = availableDojoKeys.filter(key => dojo[key].max === null || profile.dojo[key] < dojo[key].max!)
         .map(key => ({ key, cost: dojoCost(key, profile.dojo[key]) })).filter(entry => entry.cost <= profile.koban).sort((a, b) => a.cost - b.cost)[0]
       if (purchase) {
         const result = runCommand(game, { c: 'buyDojo', key: purchase.key })

@@ -8,5 +8,5 @@ export function isFirstClear(floor: number, rank: Difficulty, unlocked: readonly
 }
 
 export function bossClearReward(floor: number): Rarity | null {
-  return isBossFloor(floor) ? floor % 100 === 0 ? 4 : 3 : null
+  return isBossFloor(floor) ? floor % 100 === 0 ? 3 : 2 : null
 }

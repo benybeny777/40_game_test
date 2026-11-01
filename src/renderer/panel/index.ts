@@ -7,6 +7,7 @@ import { attributeKeys, attributeLabels } from '../../core/data/attributes.ts'
 import { renderDungeon } from './dungeon'
 import { DungeonTravelDraft } from './dungeonTravel'
 import { renderDefeatReview } from './defeatReview'
+import { renderDojoRefund } from './dojoRefund'
 import type { StoreView } from '../../shared/commerce'
 import { renderStore } from './store'
 import { renderHelp } from './help'
@@ -28,6 +29,7 @@ import { reportRendererError } from '../errors'
 import { previewReplacement } from '../../core/progress/formationSupport.ts'
 import { formationOption, renderFormationSupport } from './formationSupport'
 import { renderNextBoss } from './nextBoss'
+import { renderMemberLevel, renderMemberGrowth } from './memberGrowth'
 import { equipmentTrainingTarget, equipmentTrainingItem, equipmentTrainingEnd, renderEquipmentTraining, focusEquipmentTraining, type EquipmentTrainingTarget } from './equipmentTraining'
 
 const runtime = runtimeFailure(initializePlatform())
@@ -113,13 +115,9 @@ function memberCard(member: MemberView, index: number, order: JobId[]) {
       spriteImage(member.job, 2),
       h('div', {},
         h('div', { class: 'slot' }, member.active && !member.fighting ? '出撃予約・次のウェーブから' : !member.active && member.fighting ? '交代待ち・現在の出撃メンバー' : member.active ? index === 0 ? '出撃・前衛（先頭）' : `出撃・${index + 1}番手` : '控え・経験値なし（育成と装備を保持）'),
-        h('h3', {}, member.name, h('span', { class: 'lv' }, `Lv ${member.lv}`)),
+        h('h3', {}, member.name, renderMemberLevel(member)),
         h('span', { class: `role-badge role-${member.roleId}` }, member.role),
-        member.availablePoints > 0 ? h('small', { class: 'unspent-points' }, `未使用 ${member.availablePoints} pt`) : null,
-        member.fighting && member.experienceMultiplier > 1 ? h('small', { class: 'unspent-points' }, `出撃中の育成支援：経験値 最大${member.experienceMultiplier}倍`) : null,
-        h('div', { class: 'exp' }, h('i', { style: `width:${Math.min(100, member.exp / member.expNext * 100)}%` })),
-        h('small', {}, member.fighting ? '戦闘参加で経験値' : member.active ? '反映後の戦闘から経験値を獲得します' : '控えでは経験値を獲得しません'),
-        h('small', {}, `次のLvまで ${fmt(member.expNext - member.exp)}`))),
+        renderMemberGrowth(member))),
     h('details', { class: 'member-details' },
     h('summary', { 'data-focus-key': `training-${member.job}` }, member.active ? '育成・スキルを開く' : '能力・スキルを見る'),
     h('dl', { class: 'stats' },
@@ -251,7 +249,8 @@ function gearTab(v: ProfileView) {
 }
 function dojoTab(v: ProfileView) {
   return h('section', {},
-    h('p', { class: 'hint' }, '小判で全員を永続的に強化します。'),
+    h('p', { class: 'hint' }, '道場は移動・装備探索・放置報酬を支えます。'),
+    renderDojoRefund(v.dojoRefund, v.koban, () => void command({ c: 'claimDojoRefund' })),
     h('div', { class: 'rows' }, ...v.dojo.map((entry) => h('div', { class: 'row' },
       h('div', {}, h('b', {}, entry.name), h('span', { class: 'lv' }, `段階 ${entry.level}${entry.max === null ? '' : ` / ${entry.max}`}`), h('p', {}, entry.desc)),
       h('button', { 'data-focus-key': `dojo-${entry.key}`, class: 'buy', disabled: !entry.affordable, onclick: () => void command({ c: 'buyDojo', key: entry.key }) },

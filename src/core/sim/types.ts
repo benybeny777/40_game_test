@@ -1,3 +1,4 @@
+import type { currentRollVersion } from '../data/items.ts'
 import type { SkillEngraving } from '../data/skillEngravings.ts'
 export type JobId = 'samurai' | 'ninja' | 'jirai' | 'otaku' | 'pachipro' | 'miko' | 'bancho' | 'gyaru' | 'sukeban' | 'farmer' | 'maid' | 'jiangshi' | 'vagabond' | 'rikishi' | 'sister' | 'tono' | 'gariben'
 export type Side = 'ally' | 'enemy'
@@ -57,4 +58,4 @@ export type SimEvent =
   | { t: 'levelUp'; job: JobId; lv: number }
 export interface AttackDef { kind: 'melee' | 'ranged'; mul: number; projectile?: string; targeting: Targeting }
 /** What an equipped item contributes to stats (full item metadata lives in progress/items.ts). */
-export interface GearStats { engraving?: SkillEngraving; atk: number; hp: number; def: number; affixes: Array<{ k: import('../data/items.ts').AffixKey; v: number }> }
+export interface GearStats { rollVersion?: typeof currentRollVersion; rarity?: import('../data/items.ts').Rarity; engraving?: SkillEngraving; atk: number; hp: number; def: number; affixes: Array<{ k: import('../data/items.ts').AffixKey; v: number }> }

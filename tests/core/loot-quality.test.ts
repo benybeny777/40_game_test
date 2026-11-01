@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { advance, applyRewards, createGame, equipCheck, newProfile, partyOrder, validateProfile, type SimEvent } from '../../src/core/index.ts'
 import { lootRank, rollItem, receiveItem, equipItem, sellPrice, type Item } from '../../src/core/progress/items.ts'
 import { dropItem } from '../../src/core/progress/profile.ts'
+import { REAL_TICK_MS } from '../../src/core/data/timing.ts'
 
 const clear = (floor: number, rank: 0 | 1 | 2 = 0): SimEvent => ({ t: 'phase', phase: 'stageClear', stageNo: floor, depthRank: rank, wave: 10 })
 const katana = (id: string, atk: number, affixes: Item['affixes'] = []): Item => ({ id, slot: 'weapon', job: 'samurai', ilvl: 1, rarity: 3,
@@ -14,10 +15,10 @@ describe('拾う・比較する・選ぶための装備報酬', () => {
     expect([1, 30, 60, 100].map((ilvl) => sellPrice({ ...item, ilvl }))).toEqual([5, 22, 40, 64])
     expect(Number.isFinite(sellPrice({ ...item, ilvl: Number.MAX_SAFE_INTEGER }))).toBe(true)
   })
-  it('終盤の新防具はHPと防御を同じ指数で膨らませず、保存済み性能は変更しない', () => {
+  it('新防具は区間に応じたHP成長と緩やかな防御成長を区別し、保存済み性能は変更しない', () => {
     const armor = (rank: number) => rollItem({ rng: 9 }, `armor${rank}`, { ilvl: rank, luk: 0, jobs: partyOrder, slot: 'armor', minRarity: 2, maxRarity: 2 })
     const early = armor(1), late = armor(100), deep = armor(1200)
-    expect(late.hp / early.hp).toBeLessThan(20)
+    expect(late.hp / early.hp).toBeCloseTo(36.28, 1)
     expect(late.def / early.def).toBeLessThan(6)
     expect(deep.hp).toBeGreaterThan(late.hp)
     expect(deep.def).toBeGreaterThan(late.def)
@@ -28,19 +29,20 @@ describe('拾う・比較する・選ぶための装備報酬', () => {
     const restored = validateProfile(JSON.parse(JSON.stringify(old)))
     expect(restored.inventory[0]).toEqual(legacy)
   })
-  it('新規20seedの実コア進行で5分以内に使える未装着武器を比較できる', () => {
+  it('通常B1の新規20seedは90秒以内・全滅なしで使える未装着武器を比較できる', () => {
     for (let seed = 1; seed <= 20; seed++) {
       const profile = newProfile('t', seed), game = createGame(profile, seed)
       let offered = false
-      for (let tick = 0; tick < 3000 && !offered; tick++) {
+      for (let tick = 0; tick < 90000 / REAL_TICK_MS && !offered; tick++) {
         advance(game)
         offered = profile.inventory.some(item => item.slot === 'weapon' && item.isNew && profile.party.order.slice(0, 3).includes(item.job!)
           && equipCheck(profile, item.job!, item).ok && profile.party.members[item.job!].equip.weapon !== item.id)
       }
       expect(offered, `seed ${seed}`).toBe(true)
+      expect(profile.stats.wipes, `seed ${seed}`).toBe(0)
     }
   })
-  it('最初の1階クリアは出撃者が今すぐ使える武器を手動比較用に残し、再クリアでは増えない', () => {
+  it('最初の1階は使える武器を手動比較用に残し、再クリアは通常補給へ切り替わる', () => {
     for (let seed = 1; seed <= 20; seed++) {
       const profile = newProfile('t', seed)
       const result = applyRewards(profile, [clear(1)])
@@ -51,20 +53,26 @@ describe('拾う・比較する・選ぶための装備報酬', () => {
       expect(profile.party.members[item.job!].equip.weapon).toBeNull()
       expect(equipItem(profile, item.job!, 'weapon', item.id).ok).toBe(true)
       const reloaded = validateProfile(JSON.parse(JSON.stringify(profile)))
-      expect(applyRewards(reloaded, [clear(1)]).events.filter(event => event.t === 'drop')).toHaveLength(0)
+      const previous = reloaded.inventory.map(item => item.id)
+      expect(applyRewards(reloaded, [clear(1)]).events.filter(event => event.t === 'drop')).toHaveLength(1)
+      const supply = reloaded.inventory.filter(item => !previous.includes(item.id))
+      expect(supply).toHaveLength(1)
+      expect(supply[0].rarity).toBeLessThanOrEqual(1)
+      expect(['weapon', 'armor']).toContain(supply[0].slot)
+      expect(reloaded.inventory.find(candidate => candidate.id === item.id)).toEqual(item)
     }
   })
-  it('初回10階ごとに極以上、100階は伝説以上を残し、難度開放後の再戦で保証を重ねない', () => {
+  it('初回10階ごとに特上以上、100階は極以上を残し、難度開放後の再戦で保証を重ねない', () => {
     for (const rank of [0, 1] as const) {
       const profile = newProfile('t')
       profile.progress.unlockedDepths[rank] = 10
       applyRewards(profile, [clear(10, rank)])
-      expect(profile.inventory[0].rarity).toBeGreaterThanOrEqual(3)
+      expect(profile.inventory[0].rarity).toBeGreaterThanOrEqual(2)
       expect(profile.inventory[0].isNew).toBe(true)
       expect(applyRewards(profile, [clear(10, rank)]).events).toEqual([])
       profile.progress.unlockedDepths[rank] = 100
       applyRewards(profile, [clear(100, rank)])
-      expect(profile.inventory[1].rarity).toBeGreaterThanOrEqual(4)
+      expect(profile.inventory[1].rarity).toBeGreaterThanOrEqual(3)
       expect(applyRewards(profile, [clear(100, rank)]).events).toEqual([])
     }
   })

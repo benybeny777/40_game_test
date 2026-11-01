@@ -2,7 +2,7 @@ import { cappedAmount, depthScale, progressionDepth, type Difficulty } from '../
 import { balance as b } from '../data/balance.ts'
 import { attributeDefs, attributeKeys, attributeLabels, requirementsBalance as rb, emptyAttributes, type Attributes } from '../data/attributes.ts'
 import { attributesOf } from './attributes.ts'
-import { uniqueDefs, affixes, armorClassNames, charmNames, gearWeights, itemBalance as ib, rarities, slots, weaponNames, type AffixKey, type Rarity, type SlotId } from '../data/items.ts'
+import { affixRarityMultipliers, currentRollVersion, uniqueDefs, affixes, armorClassNames, charmNames, gearWeights, itemBalance as ib, rarities, slots, weaponNames, type AffixKey, type Rarity, type SlotId } from '../data/items.ts'
 import { equipmentNameRanks, equipmentMarkStart, equipmentMarkSpan, type ArmorClass } from '../data/itemNames.ts'
 import { deployedJobs, jobs, partyOrder } from '../data/jobs.ts'
 import { dojo as dojoDefs } from '../data/progress.ts'
@@ -10,6 +10,7 @@ import { random } from '../sim/rng.ts'
 import { engravingBalance, engravingCandidates, skillEngravings } from '../data/skillEngravings.ts'
 import { lootTendency } from '../data/loot.ts'
 import { computeStats } from '../sim/stats.ts'
+import { gearContribution } from '../sim/gearContribution.ts'
 import type { GearStats, JobId, Stats } from '../sim/types.ts'
 import type { Profile } from './profile.ts'
 
@@ -40,7 +41,7 @@ const deepRanks = (rank: number) => Math.log2(1 + Math.max(0, rank - ib.softIlvl
 const scaledRank = (rank: number) => Math.min(rank, ib.softIlvl) + deepRanks(rank) * 5
 
 // Absent floor is an area-neutral roll for callers without an expedition context.
-export interface RollOptions { ilvl: number; floor?: number; luk: number; jobs: readonly JobId[]; activeJobs?: readonly JobId[]; slot?: SlotId; minRarity?: Rarity; maxRarity?: Rarity }
+export interface RollOptions { ilvl: number; floor?: number; luk: number; jobs: readonly JobId[]; activeJobs?: readonly JobId[]; slot?: SlotId; armorClass?: ArmorClass; minRarity?: Rarity; maxRarity?: Rarity }
 /** Rarity weights r≥1 grow with party LUK (03 §3.1). Uses the profile's own RNG stream, separate from the battle. */
 export function rollItem(state: { rng: number }, id: string, options: RollOptions): Item {
   const tendency = options.floor === undefined ? undefined : lootTendency(options.floor)
@@ -58,7 +59,7 @@ export function rollItem(state: { rng: number }, id: string, options: RollOption
   const weaponPool = slot === 'weapon' && active.length && reserves.length
     ? (random(state) < ib.activeWeaponShare ? active : reserves) : availableJobs
   const job = slot === 'weapon' ? weaponPool[Math.floor(random(state) * weaponPool.length)] : undefined
-  const equipmentClass = unique ? 'unique' : slot === 'armor' ? pick(state, ['heavy', 'light', 'robe'] as const, () => 1) : undefined
+  const equipmentClass = unique ? 'unique' : slot === 'armor' ? options.armorClass ?? pick(state, ['heavy', 'light', 'robe'] as const, () => 1) : undefined
   const baseRoll = round3(ib.baseRollMin + random(state) * (ib.baseRollMax - ib.baseRollMin))
   // Weapon output tracks enemy HP; protection tracks enemy attack/defense separately.
   // Stored items retain their rolled numbers; only newly generated equipment uses this curve.
@@ -68,10 +69,10 @@ export function rollItem(state: { rng: number }, id: string, options: RollOption
   const pool = affixKeys.filter((key) => !rolled.some((affix) => affix.k === key))
   for (let index = rolled.length; index < count && pool.length; index++) {
     const key = pool.splice(Math.floor(random(state) * pool.length), 1)[0], def = affixes[key]
-    const value = (def.min + (def.max - def.min) * random(state)) * rarities[rarity].mul * (def.scale ? 1 + scaledRank(options.ilvl) * ib.lukScalePerIlvl : 1)
+    const value = (def.min + (def.max - def.min) * random(state)) * affixRarityMultipliers[rarity] * (def.scale ? 1 + scaledRank(options.ilvl) * ib.lukScalePerIlvl : 1)
     rolled.push({ k: key, v: def.percent ? round3(value) : Math.round(value * 10) / 10 })
   }
-  const item: Item = { id, slot, job, ilvl: options.ilvl, rarity, name: unique?.name ?? itemName(slot, job, options.ilvl, equipmentClass === 'unique' ? undefined : equipmentClass), locked: false, isNew: true, baseRoll, equipmentClass, uniqueId: uniqueEntry?.[0], marketEligible: false,
+  const item: Item = { id, slot, job, ilvl: options.ilvl, rarity, rollVersion: currentRollVersion, name: unique?.name ?? itemName(slot, job, options.ilvl, equipmentClass === 'unique' ? undefined : equipmentClass), locked: false, isNew: true, baseRoll, equipmentClass, uniqueId: uniqueEntry?.[0], marketEligible: false,
     atk: slot === 'weapon' ? round3(ib.weaponAtk * ib.jobAtkMul[job!] * growth.hp * rarityMul * baseRoll * (unique?.atkMul ?? 1)) : 0,
     hp: slot === 'armor' ? round3(ib.armorHp * growth.atk * rarityMul * baseRoll * (unique?.hpMul ?? 1)) : 0, def: slot === 'armor' ? round3(ib.armorDef * growth.def * rarityMul * baseRoll * (unique?.defMul ?? 1)) : 0, affixes: rolled }
   if (slot === 'weapon' && job && !unique && (rarity === 3 || rarity === 4) && random(state) < engravingBalance.chance) {
@@ -123,9 +124,10 @@ export function describe(item: Item): string[] {
   if (item.equipmentClass === 'robe') lines.push('法衣：知力主ジョブ専用')
   const req = requirementsOf(item)
   lines.push('必要能力：' + (attributeKeys.filter((key) => req[key] > 0).map((key) => attributeLabels[key] + req[key]).join(' / ') || 'なし'))
-  if (item.atk) lines.push(`攻撃 +${Math.round(item.atk * 10) / 10}`)
-  if (item.hp) lines.push(`最大HP +${Math.round(item.hp)}`)
-  if (item.def) lines.push(`防御 +${Math.round(item.def * 10) / 10}`)
+  const effective = gearContribution(item)
+  if (effective.atk) lines.push(`攻撃 +${Math.round(effective.atk * 10) / 10}`)
+  if (effective.hp) lines.push(`最大HP +${Math.round(effective.hp)}`)
+  if (effective.def) lines.push(`防御 +${Math.round(effective.def * 10) / 10}`)
   for (const affix of item.affixes) {
     const def = affixes[affix.k]
     lines.push(`${def.name} ${affix.v > 0 ? '+' : ''}${def.percent ? `${Math.round(affix.v * 1000) / 10}%` : affix.v}`)

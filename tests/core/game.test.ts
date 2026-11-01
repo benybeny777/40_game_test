@@ -85,10 +85,10 @@ describe('育成と進行（M4の一部）', () => {
   })
   it('道場：値段は1.5倍ずつ、小判が足りなければ買えない', () => {
     const profile = newProfile('t')
-    expect(dojoCost('atk', 0)).toBe(100); expect(dojoCost('atk', 2)).toBe(225)
-    expect(buyDojo(profile, 'atk').ok).toBe(false)
-    profile.koban = 100
-    expect(buyDojo(profile, 'atk')).toEqual({ ok: true }); expect(profile.koban).toBe(0); expect(profile.dojo.atk).toBe(1)
+    expect(dojoCost('walk', 0)).toBe(300); expect(dojoCost('walk', 2)).toBe(675)
+    expect(buyDojo(profile, 'walk').ok).toBe(false)
+    profile.koban = 300
+    expect(buyDojo(profile, 'walk')).toEqual({ ok: true }); expect(profile.koban).toBe(0); expect(profile.dojo.walk).toBe(1)
   })
   it('オフライン報酬：直近の平均×0.5、上限8時間、受け取りは1回だけ', () => {
     const profile = newProfile('t')

@@ -10,6 +10,8 @@ The current dungeon cycles through three regions, twelve enemy types and three m
 
 Version 0.7.5 connects equipment requirements to a training goal and back to the same comparison. Party swaps show changes in healing and protection, bosses preview their first-clear reward, and recovery farming shows progress with a manual retry option. [Changes and validation (Japanese)](docs/reviews/2026-11-01-quality-loop-resolution.md).
 
+Growth and equipment changes are under validation for the next release candidate; its version is not yet assigned. The guide below describes current source code, not changes already shipped in v0.7.5. The level cap rises to 100 while retaining existing level-60 progress. Early experience requirements stay unchanged and later growth takes longer. Attack and HP dojo upgrades are retired with refunds for existing purchases. Previously rolled equipment stats remain intact.
+
 ![Party management in the running game](docs/images/play-panel-en.png)
 
 ![Battle above the Windows taskbar](docs/images/play-strip.png)
@@ -26,11 +28,11 @@ These are captures of the game's own windows. Current character and enemy artwor
 
 - Only the three companions actually fighting gain experience. Reserves retain their existing levels and equipment, but gain no experience. Party changes take effect at the next wave. Previously earned levels are preserved.
 - Combine attackers, tanks, healers, buffers, and debuffers. The roster includes Samurai, Ninja, Jirai Girl, Otaku, Pachinko Pro, Shrine Maiden, Bancho, Gyaru, Sukeban, Farmer, Maid, Jiangshi, Vagabond, Sumo Wrestler, Sister, Goofy Lord, and Bookworm.
-- Allocate STR, DEX, VIT, and INT manually or automatically. Reset allocations for free. Equipment requires suitable jobs and attributes, with no character-level requirement.
+- Allocate STR, DEX, VIT, and INT manually or automatically, primarily to meet equipment requirements; direct stat benefits have diminishing returns. Reset allocations for free. Equipment requires suitable jobs and attributes, with no character-level requirement.
 - Find weapons, armor, and charms with random base values and modifiers, including Mythic equipment for specialized builds.
-- Extreme and Legendary weapons may carry an engraving that improves skill power or duration at the cost of a longer cooldown. Comparisons explain both sides, and useful upgrades appear first.
+- Epic and Legendary weapons may carry an engraving that improves skill power or duration at the cost of a longer cooldown. Comparisons explain both sides, and useful upgrades appear first.
 - Preview roles, combinations, and deployed catch-up experience before changing your party. Later bosses cycle attack patterns; at each hundred-floor milestone, their skill changes below half HP.
-- Your first floor clear awards a usable weapon for an active companion. First clears of every tenth floor award Epic or better gear; floor 100 awards Legendary or better gear. Compare actual stat changes before equipping. Gear strength continues across difficulty boundaries.
+- Your first floor clear awards a usable weapon for an active companion. First clears of every tenth floor award Rare or better gear; every hundredth floor awards Epic or better gear. Other non-boss clears supply Common or Uncommon gear for deployed companions, prioritizing empty slots, then weapons or armor with weaker base stats relative to the current floor, including repeat clears. Supplies are not guaranteed upgrades, so compare them. Good affixes, engravings and unique effects are intended to keep useful gear relevant longer.
 - Read boss warnings and targets, then adjust your party. Sumo Wrestler can interrupt casts; Maid follows marked targets, Sukeban punishes slowed enemies, and Bancho counters harder while warded.
 - Fight ten waves per floor. Every tenth floor ends with a boss; other final waves contain elites. Find treasure and altars, return to town, revisit unlocked floors, or farm a floor repeatedly.
 - Compare, equip, lock, and sell gear, configure automatic equipment and selling, train at the dojo, and read the 12-enemy codex and in-game help.

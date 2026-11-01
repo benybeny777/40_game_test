@@ -28,6 +28,7 @@ export function parseCommand(value: unknown): Command | null {
     }
     case 'buyDojo': return typeof value.key === 'string' && dojoKeys.includes(value.key) ? { c: 'buyDojo', key: value.key as Extract<Command, { c: 'buyDojo' }>['key'] } : null
     case 'claimOffline': return { c: 'claimOffline' }
+    case 'claimDojoRefund': return { c: 'claimDojoRefund' }
     case 'allocateStats': return jobs.includes(value.job as string) && attributeKeys.includes(value.key as typeof attributeKeys[number]) && Number.isSafeInteger(value.points) && (value.points as number) > 0
       ? { c: 'allocateStats', job: value.job as Extract<Command, { c: 'allocateStats' }>['job'], key: value.key as typeof attributeKeys[number], points: value.points as number } : null
     case 'setAutoStats': return jobs.includes(value.job as string) && typeof value.enabled === 'boolean'

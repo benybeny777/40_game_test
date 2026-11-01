@@ -5,16 +5,21 @@ export type SlotId = 'weapon' | 'armor' | 'charm'
 export type Rarity = 0 | 1 | 2 | 3 | 4 | 5
 export type AffixKey = 'atkPct' | 'hpPct' | 'defPct' | 'intervalPct' | 'cri' | 'criMul' | 'eva' | 'luk' | 'kobanPct' | 'cooldownPct' | 'dropPct' | 'dmgTakenPct'
 
+export const currentRollVersion = 2 as const
+export const legacyRarityMultipliers = [1, 1.1, 1.25, 1.45, 1.7, 2] as const
+/** Affix magnitudes have their own budget; large base-stat jackpots must not cap every modifier. */
+export const affixRarityMultipliers = [1, 1.1, 1.25, 1.45, 1.7, 2] as const
+
 export const slots: Record<SlotId, { name: string; weight: number }> = {
   weapon: { name: '武器', weight: 40 }, armor: { name: '防具', weight: 35 }, charm: { name: 'お守り', weight: 25 },
 }
 export const rarities: Array<{ name: string; color: string; weight: number; mul: number; affixes: number; sell: number }> = [
   { name: '並', color: '#b9c0d0', weight: 70, mul: 1, affixes: 0, sell: 1 },
-  { name: '上', color: '#7fd65a', weight: 22, mul: 1.1, affixes: 1, sell: 3 },
-  { name: '特上', color: '#6fa8ff', weight: 6, mul: 1.25, affixes: 2, sell: 10 },
-  { name: '極', color: '#c58cff', weight: 1.8, mul: 1.45, affixes: 3, sell: 40 },
-  { name: '伝説', color: '#ffd54a', weight: 0.2, mul: 1.7, affixes: 3, sell: 200 },
-  { name: '神話', color: '#ff9966', weight: 0.03, mul: 2, affixes: 4, sell: 500 },
+  { name: '上', color: '#7fd65a', weight: 22, mul: 1.2, affixes: 1, sell: 3 },
+  { name: '特上', color: '#6fa8ff', weight: 6, mul: 1.8, affixes: 2, sell: 10 },
+  { name: '極', color: '#c58cff', weight: 1.8, mul: 2.8, affixes: 3, sell: 40 },
+  { name: '伝説', color: '#ffd54a', weight: 0.2, mul: 4.5, affixes: 4, sell: 200 },
+  { name: '神話', color: '#ff9966', weight: 0.03, mul: 4, affixes: 4, sell: 500 },
 ]
 /** Affix value ranges at 並. `scale` affixes also grow with item level. */
 export const affixes: Record<AffixKey, { name: string; min: number; max: number; percent: boolean; scale?: boolean }> = {

@@ -135,10 +135,11 @@ export function stageMul(stageNo: number, perArea: readonly number[]) {
 }
 function enemyStats(world: World, id: string): Stats {
   const def = enemies[id], scaling = depthScale(world.stageNo, world.depthRank)
+  const introductory = world.depthRank === 0 && world.stageNo === 1
   const waveMul = def.boss ? 1 : 1 + b.waveGrowth * (world.wave - 1)
   const elite = !def.boss && world.wave === b.waves && !isBossFloor(world.stageNo)
-  return { ...def.base, maxHp: def.base.maxHp * scaling.hp * waveMul * (elite ? db.eliteHp : 1),
-    atk: def.base.atk * scaling.atk * waveMul * (elite ? db.eliteAtk : 1), def: def.base.def * scaling.def }
+  return { ...def.base, maxHp: def.base.maxHp * scaling.hp * waveMul * (def.boss ? db.bossHp : elite ? db.eliteHp : 1) * (introductory ? db.introHp : 1),
+    atk: def.base.atk * scaling.atk * waveMul * (def.boss ? db.bossAtk : elite ? db.eliteAtk : 1) * (introductory ? db.introAtk : 1), def: def.base.def * scaling.def }
 }
 /** Mid-battle spawns (split, summons, phantoms) join at the given x, after everyone already on the field. */
 function spawnEnemy(world: World, id: string, x: number, events: SimEvent[], stats = enemyStats(world, id)) {

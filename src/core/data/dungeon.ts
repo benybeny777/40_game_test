@@ -15,6 +15,10 @@ export const dungeonBalance = {
   defLinear: 0.045, rewardLinear: 0.12,
   softDepth: dungeons.yomi.floorCount, deepLogGrowth: 20, deepLogSpan: 20,
   eliteHp: 1.8, eliteAtk: 1.15,
+  bossHp: 2, bossAtk: 5,
+  introHp: 0.35, introAtk: 0.35, // Normal B1 teaches the first equipment comparison before equipment becomes essential.
+  equipmentInterval: 10, hpPerInterval: 1.5, atkPerInterval: 1.4, defPerInterval: 1.1,
+  exponentialDepth: 200, deepEquipmentGrowth: 0.25,
   treasureChance: 0.12, altarChance: 0.1, treasureKoban: 20, treasureExp: 10, altarHeal: 0.5,
   featureHash: 2654435761, seedHash: 2246822519, hashDivisor: 4294967296,
   stageWindow: 5,
@@ -24,14 +28,19 @@ export const maxFloor = (difficulty: Difficulty) => floorLimit(difficulty) ?? du
 export const isBossFloor = (depth: number) => depth % dungeonBalance.bossEvery === 0
 /** Displayed floors restart at B1; enemy strength and loot quality continue through difficulty tiers. */
 export const progressionDepth = (depth: number, difficulty: Difficulty) => Math.min(dungeonBalance.maxDepth, depth + difficulty * dungeons.yomi.floorCount)
-/** Polynomial through B100, then logarithmic: finite even at the last safe integer. */
+/** Introductory polynomial, equipment intervals through B200, then softened growth. */
 export function depthScale(depth: number, difficulty: Difficulty = 0) {
   const b = dungeonBalance, progress = progressionDepth(depth, difficulty), n = Math.min(progress, b.softDepth) - 1
     + Math.log2(1 + Math.max(0, progress - b.softDepth) / b.deepLogSpan) * b.deepLogGrowth
   const d = difficulties[difficulty]
-  return { hp: (1 + b.hpLinear * n + b.hpQuadratic * n * n) * d.hp,
-    atk: (1 + b.atkLinear * n + b.atkQuadratic * n * n) * d.atk,
-    def: 1 + b.defLinear * n, reward: (1 + b.rewardLinear * n) * d.reward }
+  const early = Math.min(progress, b.equipmentInterval) - 1
+  // Regular equipment steps through both finite difficulties; logarithmic beyond,
+  // so an unbounded displayed floor never overflows combat or saved item values.
+  const intervals = Math.max(0, Math.min(progress, b.exponentialDepth) - b.equipmentInterval) / b.equipmentInterval
+    + Math.log2(1 + Math.max(0, progress - b.exponentialDepth) / b.deepLogSpan) * b.deepEquipmentGrowth
+  return { hp: (1 + b.hpLinear * early + b.hpQuadratic * early * early) * b.hpPerInterval ** intervals * d.hp,
+    atk: (1 + b.atkLinear * early + b.atkQuadratic * early * early) * b.atkPerInterval ** intervals * d.atk,
+    def: (1 + b.defLinear * early) * b.defPerInterval ** intervals, reward: (1 + b.rewardLinear * n) * d.reward }
 }
 export function floorFeature(depth: number, seed: number, difficulty: Difficulty = 0): FloorFeature {
   const b = dungeonBalance

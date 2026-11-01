@@ -16,6 +16,7 @@ import { createEquipmentComparison, describe, ownerOf, requirementsOf, sellPrice
 import { activeExperienceMultiplier, dojoCost, expToNext, perMinute, type OfflineResult, type Profile } from './profile.ts'
 import { abyssView, type AbyssView } from './abyss.ts'
 import { lastDefeatResolved, type DefeatRecord } from './defeat.ts'
+import { availableDojoKeys, type DojoRefund } from './dojoRefund.ts'
 
 export interface ItemView {
   id: string; name: string; slot: SlotId; slotName: string; job?: JobId; jobName?: string; ilvl: number
@@ -50,6 +51,7 @@ export interface ProfileView {
   options: Profile['options']
   rarityNames: string[]
   dojo: Array<{ key: DojoKey; name: string; desc: string; level: number; max: number | null; cost: number; affordable: boolean }>
+  dojoRefund: DojoRefund
   stages: Array<{ no: number; label: string; areaName: string; unlocked: boolean; current: boolean }>
   rates: { kobanPerMin: number; expPerMin: number }
   stats: Profile['stats']
@@ -112,7 +114,8 @@ export function buildView(profile: Profile, loop: boolean, pending?: World['pend
     inventory: [...views.values()].filter((item) => !item.owner).sort((a, z) => z.rarity - a.rarity || z.ilvl - a.ilvl),
     reserveEquipment: [...views.values()].filter(item => item.owner && !deployedJobs(profile.party.order).includes(item.owner)),
     inventoryMax: itemBalance.inventoryMax, inventoryCount: profile.inventory.length, options: { ...profile.options }, rarityNames: rarities.map((rarity) => rarity.name),
-    dojo: (Object.keys(dojoDefs) as DojoKey[]).map((key) => {
+    dojoRefund: { ...profile.dojoRefund },
+    dojo: availableDojoKeys.map((key) => {
       const def = dojoDefs[key], level = profile.dojo[key], cost = dojoCost(key, level)
       const maxed = def.max !== null && level >= def.max
       return { key, name: def.name, desc: def.desc, level, max: def.max, cost, affordable: !maxed && profile.koban >= cost }

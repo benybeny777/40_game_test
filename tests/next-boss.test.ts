@@ -3,7 +3,9 @@ import { nextBoss } from '../src/shared/nextBoss'
 import { areaOf } from '../src/core/data/stages'
 import { buildView, newProfile } from '../src/core/index'
 import { renderNextBoss } from '../src/renderer/panel/nextBoss'
-import { setLocale } from '../src/shared/i18n'
+import { setLocale, translatedLabel as tr } from '../src/shared/i18n'
+import { bossClearReward } from '../src/core/progress/clearRewards'
+import { rarities } from '../src/core/data/items'
 import { bossPattern } from '../src/core/data/bossPatterns'
 
 afterEach(() => { vi.unstubAllGlobals(); setLocale('ja') })
@@ -54,6 +56,17 @@ describe('upcoming boss preparation', () => {
     expect(text).toContain('area attacks')
     expect(text).toContain('First-clear reward')
     expect(text).not.toMatch(/[ぁ-んァ-ヶ一-龠]/)
+    for (const locale of ['ja', 'en'] as const) {
+      setLocale(locale)
+      for (const floor of [10, 100]) {
+        view.dungeon.pendingTravel = { depth: floor, difficulty: 0 }
+        const rewardName = tr(rarities[bossClearReward(floor)!].name)
+        const preview = (renderNextBoss(view) as unknown as Node).text()
+        expect(preview).toContain(locale === 'ja' ? `${rewardName}以上の装備 ×1` : `1 piece of ${rewardName}-or-better equipment`)
+        if (locale === 'en') expect(preview).not.toMatch(/[ぁ-んァ-ヶ一-龠]/)
+      }
+    }
+    setLocale('en')
     view.dungeon.pendingTravel = { depth: 100, difficulty: 0 }
     const climax = (renderNextBoss(view) as unknown as Node).text()
     expect(climax).toContain('Hundred-floor climax: the skill changes at half HP')

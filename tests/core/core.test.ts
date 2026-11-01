@@ -51,7 +51,7 @@ describe('固定ティックと状態', () => {
     expect(state.rng).toBeLessThan(b.rng.divisor)
   })
   it('Snapshotの配列を書き換えてもWorldを変更しない', () => {
-    expect(() => createWorld({ level: 61 })).toThrow('Lv must be')
+    expect(() => createWorld({ level: b.maxLevel + 1 })).toThrow('Lv must be')
     const world = createWorld(); const copy = snapshot(world, 42)
     copy.units[0].effects.push('fake'); copy.units[0].x = 999
     expect(world.units[0].effects).toEqual([]); expect(world.units[0].x).toBe(0)

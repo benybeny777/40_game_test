@@ -79,9 +79,11 @@ describe('4能力・自由なビルド', () => {
   it('知力主職はスキルと回復に使うATKが増し、体力・敏捷も異なる長所を持つ', () => {
     const base = computeStats(jobs.miko, 40)
     const intelligence = computeStats(jobs.miko, 40, {}, [], { str: 0, dex: 0, vit: 0, int: 100 })
-    expect(intelligence.atk).toBeCloseTo(base.atk * 2.5)
+    expect(intelligence.atk).toBeGreaterThan(base.atk)
+    expect(intelligence.atk).toBeLessThan(base.atk * 1.15)
     const vitality = computeStats(jobs.miko, 40, {}, [], { str: 0, dex: 0, vit: 100, int: 0 })
-    expect(vitality.maxHp).toBeCloseTo(base.maxHp + 600)
+    expect(vitality.maxHp).toBeGreaterThan(base.maxHp)
+    expect(vitality.maxHp).toBeLessThan(base.maxHp + 40)
     const dexterity = computeStats(jobs.miko, 40, {}, [], { str: 0, dex: 100, vit: 0, int: 0 })
     expect(dexterity.intervalMs).toBeLessThan(base.intervalMs); expect(dexterity.cri).toBeGreaterThan(base.cri)
   })

@@ -3,6 +3,7 @@ import { availablePoints, resetAllocation, spendAuto } from './progress/attribut
 import { REAL_TICK_MS } from './data/timing.ts'
 import { recordAbyssClear } from './progress/abyss.ts'
 import { DefeatTracker } from './progress/defeat.ts'
+import { withdrawDojoRefund } from './progress/dojoRefund.ts'
 import { cappedAmount, difficulties, maxFloor, type Difficulty } from './data/dungeon.ts'
 import { rarities, type Rarity, type SlotId } from './data/items.ts'
 import { partyOrder } from './data/jobs.ts'
@@ -29,6 +30,7 @@ export type Command =
   | { c: 'reorderParty'; order: JobId[] }
   | { c: 'buyDojo'; key: DojoKey }
   | { c: 'claimOffline' }
+  | { c: 'claimDojoRefund' }
   | { c: 'equip'; job: JobId; slot: SlotId; itemId: string | null }
   | { c: 'sell'; itemIds: string[] }
   | { c: 'sellAll'; maxRarity: Rarity }
@@ -112,6 +114,12 @@ export function accountElapsed(game: Game, elapsedMs: number): void {
 export function runCommand(game: Game, command: Command): CommandResult & { events?: SimEvent[] } {
   const { world, profile } = game
   switch (command.c) {
+    case 'claimDojoRefund': {
+      const refund = withdrawDojoRefund(profile.dojoRefund, profile.koban)
+      if (!refund.amount) return { ok: false, reason: '返金残額がないか、所持小判に空きがありません。' }
+      profile.koban = refund.koban; profile.dojoRefund = refund.record
+      return { ok: true }
+    }
     case 'setLoop':
       if (game.autoFarmState && world.pending.stageNo !== undefined) {
         // This pending retreat belongs to recovery; a user-selected destination already resets that state.

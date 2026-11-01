@@ -18,7 +18,13 @@ describe('黄泉の迷宮・3難度', () => {
       expect(after.atk / before.atk).toBeLessThan(1.5)
     }
     expect(depthScale(1, 0)).toEqual({ hp: 1, atk: 1, def: 1, reward: 1 })
-    expect(depthScale(100, 0).hp).toBeCloseTo(1 + 0.22 * 99 + 0.012 * 99 * 99)
+    // Each ten-floor equipment band keeps a predictable combat step.
+    for (let depth = 10; depth < 100; depth += 10) {
+      const before = depthScale(depth), after = depthScale(depth + 10)
+      expect(after.hp / before.hp).toBeCloseTo(1.5)
+      expect(after.atk / before.atk).toBeCloseTo(1.4)
+      expect(after.def / before.def).toBeCloseTo(1.1)
+    }
   })
   it('通常/修羅は100階、深淵だけ101階以降も安定した値で潜れる', () => {
     expect(() => createWorld({ stageNo: 101 })).toThrow()

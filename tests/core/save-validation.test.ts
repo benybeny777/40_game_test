@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { dropItem, newProfile, validateProfile } from '../../src/core/index.ts'
 import { rollItem } from '../../src/core/progress/items.ts'
+import { partyOrder } from '../../src/core/data/jobs.ts'
+import type { Rarity } from '../../src/core/data/items.ts'
 
 const saved = () => JSON.parse(JSON.stringify(newProfile(new Date().toISOString())))
 
@@ -19,6 +21,32 @@ const historicalV1 = () => {
 }
 
 describe('invalid optional save data is not silently discarded', () => {
+  it('refuses duplicate or impossible negative affixes instead of producing zero/negative HP', () => {
+    for (const affixes of [[{ k: 'hpPct', v: -1 }], [{ k: 'hpPct', v: -0.5 }], [{ k: 'defPct', v: -1 }],
+      [{ k: 'atkPct', v: -0.5 }], [{ k: 'hpPct', v: 0.1 }, { k: 'hpPct', v: 0.2 }]]) {
+      const raw = saved()
+      const item = rollItem(raw, 'i1', { ilvl: 1, jobs: ['samurai'], luk: 0, slot: 'weapon', minRarity: 0, maxRarity: 0 })
+      raw.inventory = [{ ...item, affixes }]; raw.nextItemId = 2
+      raw.party.members.samurai.equip.weapon = 'i1'
+      const original = structuredClone(raw)
+      expect(() => validateProfile(raw)).toThrow('affix')
+      expect(raw).toEqual(original)
+    }
+  })
+  it('accepts actual generated effects for every job and rarity, including old marker-less tradeoffs', () => {
+    const raw = saved()
+    let id = 1
+    const generatedUniques = new Set<string>()
+    for (const job of partyOrder) for (let rarity = 0; rarity < 6; rarity++) for (let sample = 0; sample < 8; sample++) {
+      const item = rollItem(raw, `i${id++}`, { ilvl: sample % 2 ? Number.MAX_SAFE_INTEGER : 40, jobs: [job], luk: 0, minRarity: rarity as Rarity, maxRarity: rarity as Rarity })
+      if (item.uniqueId) generatedUniques.add(item.uniqueId)
+      raw.inventory = [item]; raw.nextItemId = id
+      expect(validateProfile(raw).inventory[0].affixes).toEqual(item.affixes)
+      delete item.rollVersion
+      expect(validateProfile(raw).inventory[0].affixes).toEqual(item.affixes)
+    }
+    expect([...generatedUniques].sort()).toEqual(['bastion', 'gale', 'oracle', 'titan'])
+  })
   it('migrates the actual v1 schema, which predates discovered equipment', () => {
     const raw = historicalV1(), original = structuredClone(raw)
     const restored = validateProfile(raw)

@@ -60,7 +60,10 @@ describe('boss telegraphs and composition choices', () => {
     let interruptedWithEscorts = 0, interrupted = 0
     for (let seed = 1; seed <= 20; seed++) {
       let seedInterrupted = false, seedEscorts = false
-      const world = createWorld({ seed, stageNo: 20, level: 15, order: [...party, ...partyOrder.filter((j) => !party.includes(j))] })
+      // Isolate interrupt targeting with the durable defensive equipment budget independent of
+      // offensive balance; naked B20 survival is no longer expected.
+      const gear = Object.fromEntries(party.map(id => [id, [{ atk: 0, hp: 100, def: 8, affixes: [] }]]))
+      const world = createWorld({ seed, stageNo: 20, level: 15, gear, order: [...party, ...partyOrder.filter((j) => !party.includes(j))] })
       world.wave = 10
       for (let tick = 0; tick < 1800; tick++) {
         const events = step(world)

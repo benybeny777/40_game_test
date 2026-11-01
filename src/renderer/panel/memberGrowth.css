@@ -1,0 +1,3 @@
+.member-growth small { display: block; line-height: 1.5; }
+.member-growth .growth-reward { color: #e0c28b; }
+.member-growth .growth-cap { max-width: 32em; margin-top: 4px; overflow-wrap: anywhere; }

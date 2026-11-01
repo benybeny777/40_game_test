@@ -2,7 +2,8 @@ import { REAL_TICK_MS } from '../src/core/data/timing.ts'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { advance, createGame, dojoCost, enemies, newProfile, runCommand } from '../src/core/index.ts'
-import { dojo, type DojoKey } from '../src/core/data/progress.ts'
+import { dojo } from '../src/core/data/progress.ts'
+import { availableDojoKeys } from '../src/core/progress/dojoRefund.ts'
 import { reviewGear } from './reserve-growth.ts'
 
 const TICKS_PER_MINUTE = 60000 / REAL_TICK_MS
@@ -54,7 +55,7 @@ export function progressionTrial(seed: number, choices: boolean, minutes = 720, 
     }
     if (choices && tick % TICKS_PER_MINUTE === 0) {
       reviewGear(game, game.profile.offlineJobs)
-      const cheapest = (Object.keys(dojo) as DojoKey[]).filter((key) => dojo[key].max === null || game.profile.dojo[key] < dojo[key].max!)
+      const cheapest = availableDojoKeys.filter((key) => dojo[key].max === null || game.profile.dojo[key] < dojo[key].max!)
         .map((key) => ({ key, cost: dojoCost(key, game.profile.dojo[key]) })).filter((d) => d.cost <= game.profile.koban).sort((a, z) => a.cost - z.cost)[0]
       if (cheapest) runCommand(game, { c: 'buyDojo', key: cheapest.key })
     }

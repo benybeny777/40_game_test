@@ -5,7 +5,7 @@ import { experienceSupportMultiplier } from './experienceSupport.ts'
 import { balance as b } from '../data/balance.ts'
 import { cappedAmount, dungeons, maxFloor, type Difficulty, type DungeonId } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
-import { affixes, itemBalance as ib, rarities, slots, uniqueDefs, type Rarity, type SlotId } from '../data/items.ts'
+import { currentRollVersion, affixes, itemBalance as ib, rarities, slots, uniqueDefs, type Rarity, type SlotId } from '../data/items.ts'
 import { defaultFormation, deployedJobs, jobs, partyOrder } from '../data/jobs.ts'
 import { dojo as dojoDefs, progressBalance as pb, type DojoKey } from '../data/progress.ts'
 import type { JobId, SimEvent } from '../sim/types.ts'
@@ -14,6 +14,10 @@ import { random } from '../sim/rng.ts'
 import { validateAbyssRecords, type AbyssRecord } from './abyss.ts'
 import { validateDefeatRecord, type DefeatRecord } from './defeat.ts'
 import { isFirstClear, bossClearReward } from './clearRewards.ts'
+import { experienceMultiplier } from '../data/growth.ts'
+import { nextSupplyTarget, supplyArmorClass } from './supply.ts'
+import type { ArmorClass } from '../data/itemNames.ts'
+import { boundedDojoCost, migrateDojoRefund, noDojoRefund, type DojoRefund } from './dojoRefund.ts'
 
 export const PROFILE_VERSION = 3
 export interface Gain { koban: number; exp: number }
@@ -33,6 +37,7 @@ export interface Profile {
   party: { order: JobId[]; members: Record<JobId, Member> }
   koban: number
   dojo: Record<DojoKey, number>
+  dojoRefund: DojoRefund
   inventory: Item[]                                 // Equipped items included.
   nextItemId: number
   options: { autoSellMaxRarity: Rarity | null; autoEquip: boolean }
@@ -49,12 +54,12 @@ export function newProfile(savedAt: string, seed = 1): Profile {
   return { version: PROFILE_VERSION, savedAt, rng: seed >>> 0,
     progress, dungeonId: 'yomi', dungeonSeed: seed >>> 0, dungeonRecords: { yomi: progress }, abyssRecords: {}, lastDefeat: null,
     party: { order: [...defaultFormation], members: Object.fromEntries(partyOrder.map((id) => [id, { lv: 1, exp: 0, allocated: emptyAttributes(), autoStats: true, equip: emptyEquip() }])) as Profile['party']['members'] },
-    koban: 0, dojo: { atk: 0, hp: 0, walk: 0, drop: 0, offline: 0 }, inventory: [], nextItemId: 1,
+    koban: 0, dojo: { atk: 0, hp: 0, walk: 0, drop: 0, offline: 0 }, dojoRefund: noDojoRefund(), inventory: [], nextItemId: 1,
     options: { autoSellMaxRarity: null, autoEquip: true },
     stats: { kills: 0, wipes: 0, bossKills: 0, stageClears: 0, playMs: 0, totalKoban: 0, drops: 0 },
     rates: { current: { koban: 0, exp: 0 }, minutes: [], elapsedMs: 0, legacyUnmeasuredGain: null }, seenEnemies: [], seenItems: [], offlineJobs: deployedJobs(defaultFormation), pendingOffline: null }
 }
-export const expToNext = (lv: number) => Math.floor(b.expBase * lv ** b.expPow)
+export const expToNext = (lv: number) => Math.floor(b.expBase * lv ** b.expPow * experienceMultiplier(lv))
 export const levels = (profile: Profile) => Object.fromEntries(partyOrder.map((id) => [id, profile.party.members[id].lv])) as Record<JobId, number>
 
 /** Active mentorship only: the bonus closes a gap, never overtakes the participating veteran. */
@@ -90,10 +95,10 @@ function grantExp(profile: Profile, exp: number, out: SimEvent[], recipientJobs:
 export function addKoban(profile: Profile, koban: number) { profile.koban = cappedAmount(profile.koban + koban); profile.stats.totalKoban = cappedAmount(profile.stats.totalKoban + koban) }
 
 /** Rolls and stores one item; emits a 'drop' event for the strip. */
-export function dropItem(profile: Profile, floor: number, x: number, out: SimEvent[], range: { min?: Rarity; max?: Rarity; slot?: SlotId; job?: JobId; holdForReview?: boolean; difficulty?: Difficulty } = {}, activeJobs = deployedJobs(profile.party.order)) {
+export function dropItem(profile: Profile, floor: number, x: number, out: SimEvent[], range: { min?: Rarity; max?: Rarity; slot?: SlotId; job?: JobId; armorClass?: ArmorClass; holdForReview?: boolean; difficulty?: Difficulty } = {}, activeJobs = deployedJobs(profile.party.order)) {
   if (!Number.isSafeInteger(profile.nextItemId) || profile.nextItemId >= Number.MAX_SAFE_INTEGER - 1) throw new RangeError('item id sequence exhausted')
   const item = rollItem(profile, `i${profile.nextItemId++}`, { floor, ilvl: lootRank(floor, range.difficulty ?? profile.progress.depthRank), luk: partyLuk(profile, activeJobs), jobs: range.job ? [range.job] : partyOrder,
-    activeJobs, slot: range.slot, minRarity: range.min, maxRarity: range.max })
+    activeJobs, slot: range.slot, armorClass: range.armorClass, minRarity: range.min, maxRarity: range.max })
   const kind = `${item.slot}:${item.job ?? ''}:${item.name}`
   if (!profile.seenItems.includes(kind)) profile.seenItems.push(kind)
   profile.stats.drops++
@@ -142,6 +147,13 @@ export function applyRewards(profile: Profile, events: readonly SimEvent[], acti
         } else if (firstClear && reward !== null) {
           const result = dropItem(profile, event.stageNo, 0, out, { min: reward, holdForReview: true, difficulty: rank }, activeJobs)
           gearChanged ||= Boolean(result.equippedBy)
+        } else if (reward === null) {
+          const supply = nextSupplyTarget(profile, activeJobs)
+          if (supply) {
+            const result = dropItem(profile, event.stageNo, 0, out, { min: 0, max: 1, ...supply,
+              armorClass: supply.slot === 'armor' ? supplyArmorClass(supply.job) : undefined, difficulty: rank }, activeJobs)
+            gearChanged ||= Boolean(result.equippedBy)
+          }
         }
         profile.stats.stageClears++; stageCleared = true
         profile.progress.unlockedDepths[rank] = Math.min(maxFloor(rank), Math.max(profile.progress.unlockedDepths[rank], event.stageNo + 1))
@@ -205,10 +217,11 @@ export function claimOffline(profile: Profile): SimEvent[] {
   profile.pendingOffline = null
   return out
 }
-export const dojoCost = (key: DojoKey, level: number) => Math.floor(cappedAmount(dojoDefs[key].cost * pb.dojoCostGrowth ** Math.min(level, b.maxStage)))
+export const dojoCost = (key: DojoKey, level: number) => boundedDojoCost(dojoDefs[key].cost, pb.dojoCostGrowth, level)
 export function buyDojo(profile: Profile, key: DojoKey): { ok: true } | { ok: false; reason: string } {
   const def = dojoDefs[key]
   if (!def) return { ok: false, reason: '不明な強化です' }
+  if (def.retired) return { ok: false, reason: '攻撃・HPの道場強化は終了しました。装備とステータスで強化できます。' }
   const level = profile.dojo[key]
   if (def.max !== null && level >= def.max) return { ok: false, reason: 'これ以上は強化できません' }
   const cost = dojoCost(key, level)
@@ -331,12 +344,23 @@ function validateItem(raw: unknown): Item {
     || !Number.isInteger(raw.ilvl) || !count(raw.ilvl, 1, ib.maxIlvl) || typeof raw.name !== 'string' || !count(raw.atk) || !count(raw.hp) || !count(raw.def)
     || (raw.job !== undefined && (typeof raw.job !== 'string' || !Object.hasOwn(jobs, raw.job))) || (raw.slot === 'weapon' && raw.job === undefined) || !Array.isArray(raw.affixes)
     || !raw.affixes.every((affix) => isObject(affix) && typeof affix.k === 'string' && Object.hasOwn(affixes, affix.k) && count(affix.v, -1, 1000))) throw new Error('bad item')
+  const seenAffixes = new Set<string>()
+  for (const entry of raw.affixes as Item['affixes']) {
+    if (seenAffixes.has(entry.k)) throw new Error(`bad item ${raw.id}: duplicate affix ${entry.k}`)
+    seenAffixes.add(entry.k)
+    // Positive-only random effects never generate negative values. Preserve the
+    // explicit negative tradeoffs of uniques (e.g. Bastion ATK -15%) from their source.
+    const minimum = affixes[entry.k].min < 0 ? -1
+      : Math.min(0, ...Object.values(uniqueDefs).flatMap(def => def.affixes.filter(affix => affix.k === entry.k).map(affix => affix.v)))
+    if (entry.v < minimum) throw new Error(`bad item ${raw.id}: affix ${entry.k} is below its supported minimum`)
+  }
   if (raw.equipmentClass !== undefined && !['heavy', 'light', 'robe', 'unique'].includes(String(raw.equipmentClass))) throw new Error('bad equipment class')
   if (raw.uniqueId !== undefined && (typeof raw.uniqueId !== 'string' || !Object.hasOwn(uniqueDefs, raw.uniqueId))) throw new Error('bad unique item')
   if (raw.engraving !== undefined && (typeof raw.engraving !== 'string' || !Object.hasOwn(skillEngravings, raw.engraving)
     || raw.slot !== 'weapon' || ![3, 4].includes(raw.rarity as number) || raw.uniqueId !== undefined || raw.equipmentClass === 'unique'
     || !engravingCandidates(raw.job as JobId).includes(raw.engraving as keyof typeof skillEngravings))) throw new Error('bad skill engraving')
   if (raw.baseRoll !== undefined && !count(raw.baseRoll, ib.baseRollMin, ib.baseRollMax)) throw new Error('bad item roll')
+  if (raw.rollVersion !== undefined && raw.rollVersion !== currentRollVersion) throw new Error('unsupported item roll version')
   if (raw.requirements !== undefined && (!isObject(raw.requirements) || !attributeKeys.every((key) => Number.isSafeInteger((raw.requirements as Record<string, unknown>)[key]) && count((raw.requirements as Record<string, unknown>)[key])))) throw new Error('bad item requirements')
   const item = { ...(raw as unknown as Item), locked: optionalBoolean(raw.locked, false, `item ${raw.id}.locked`), isNew: optionalBoolean(raw.isNew, false, `item ${raw.id}.isNew`), baseRoll: raw.baseRoll === undefined ? 1 : raw.baseRoll as number, marketEligible: false as const }
   item.requirements = requirementsOf(item)
@@ -424,5 +448,7 @@ export function validateProfile(input: unknown): Profile {
   if (profile.pendingOffline?.expByJob !== undefined && (!isObject(profile.pendingOffline.expByJob) || !Object.entries(profile.pendingOffline.expByJob).every(([job, exp]) => Object.hasOwn(jobs, job) && count(exp)))) throw new Error('bad offline experience')
   freezePendingOffline(profile)
   reconcileEquipment(profile)
+  const refund = migrateDojoRefund(raw.dojoRefund, profile.dojo, profile.koban)
+  profile.dojo = refund.dojo; profile.koban = refund.koban; profile.dojoRefund = refund.record
   return profile
 }

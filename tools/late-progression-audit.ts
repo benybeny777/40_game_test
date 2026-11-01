@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import { advance, createGame, dojoCost, newProfile, partyOrder, runCommand, validateProfile, type Game, type JobId, type Profile } from '../src/core/index.ts'
-import { dojo, type DojoKey } from '../src/core/data/progress.ts'
+import { dojo } from '../src/core/data/progress.ts'
+import { availableDojoKeys } from '../src/core/progress/dojoRefund.ts'
 import { REAL_TICK_MS } from '../src/core/data/timing.ts'
 import { reviewGear } from './reserve-growth.ts'
 
@@ -8,7 +9,7 @@ const tpm = 60000 / REAL_TICK_MS
 const round = (n: number) => Math.round(n * 100) / 100
 function maintain(game: Game) {
   reviewGear(game, game.profile.offlineJobs)
-  const candidate = (Object.keys(dojo) as DojoKey[]).filter(key => dojo[key].max === null || game.profile.dojo[key] < dojo[key].max!)
+  const candidate = availableDojoKeys.filter(key => dojo[key].max === null || game.profile.dojo[key] < dojo[key].max!)
     .map(key => ({ key, cost: dojoCost(key, game.profile.dojo[key]) })).filter(entry => entry.cost <= game.profile.koban).sort((a, b) => a.cost - b.cost)[0]
   if (candidate) {
     const result = runCommand(game, { c: 'buyDojo', key: candidate.key })

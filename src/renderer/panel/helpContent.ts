@@ -1,4 +1,5 @@
 import { attributeBalance, attributeKeys, attributeLabels, type AttributeKey } from '../../core/data/attributes.ts'
+import { balance } from '../../core/data/balance.ts'
 import { difficulties, dungeonBalance } from '../../core/data/dungeon.ts'
 import { itemBalance, rarities } from '../../core/data/items.ts'
 import { defaultFormation, jobs, partyOrder, partySize, roleLabels, type JobRole } from '../../core/data/jobs.ts'
@@ -45,18 +46,22 @@ export function getHelpContent() {
       ]),
     ] },
     { id: 'attributes', title: text('育成ポイントと、極振りの考え方', 'Attribute points and focused builds'), blocks: [
-      paragraph(text(`レベルが上がると${attributeBalance.pointsPerLevel}ポイントを使えます。「パーティ」の主属性と装備条件を見て、手動または自動で振り分けます。`, `Each level grants ${attributeBalance.pointsPerLevel} points. Assign them manually or automatically in Party. Check the job’s main attribute and equipment requirements.`)),
+      paragraph(text(`レベル上限は${balance.maxLevel}。レベルが上がると${attributeBalance.pointsPerLevel}ポイントを使えます。「パーティ」の主属性と装備条件を見て、手動または自動で振り分けます。`, `The level cap is ${balance.maxLevel}. Each level grants ${attributeBalance.pointsPerLevel} points. Assign them manually or automatically in Party. Check the job’s main attribute and equipment requirements.`)),
+      paragraph(text('配分の主な目的は、使いたい装備の条件を満たすことです。属性による攻撃・耐久などの直接効果は、振るほど伸びが緩やかになります。上限に達しても、装備探しと無料の振り直しで組み方を変えられます。', 'Allocate attributes primarily to qualify for the equipment you want. Direct benefits such as attack and durability have diminishing returns. At the level cap, keep finding gear and use free resets to change your build.')),
+      paragraph(text('道場では移動・装備探し・不在時の報酬を支援します。攻撃力や最大HPを道場で積み上げる仕組みはありません。戦闘力は装備と配分、編成を見直して伸ばしましょう。', 'The dojo supports travel, finding gear and offline rewards. It does not stack attack or maximum HP upgrades. Improve combat strength through equipment, allocation and party choices.')),
       { kind: 'attributes', rows: attributeKeys.map(key => ({ term: `${key.toUpperCase()} · ${tr(attributeLabels[key])}`, description: attributeDescriptions[key] })) },
       list([
         text('迷ったら自動振りをON。手動で振るときは、自動振りをOFFにします。', 'Turn auto allocation on for a balanced start, or off to assign points yourself.'),
-        text('「全振り」は未使用ポイントを一つの属性へまとめて使います。火力を伸ばせる一方、耐久や他の装備条件を犠牲にすることもあります。', 'Use all spends every unspent point on one attribute. Focused builds can gain power while sacrificing survival or other equipment options.'),
+        text('「全振り」は未使用ポイントを一つの属性へまとめて使います。高い属性値を要求する強い装備を使える一方、耐久や他の装備条件を犠牲にすることもあります。', 'Use all spends every unspent point on one attribute. This can unlock powerful gear with high attribute requirements, at the cost of survival or other equipment options.'),
         text('無料で振り直せます。全ポイントが戻り、自動振りはOFFになります。条件を満たさなくなった装備は持ち物へ戻ります。', 'Reset points is free. It refunds all points and turns auto allocation off. Gear whose requirements are no longer met returns to the bag.'),
       ]),
     ] },
     { id: 'equipment', title: text('装備選びと、装備できないとき', 'Equipment and requirements'), blocks: [
       paragraph(text('装備条件はジョブと属性値だけ。キャラのレベル制限はありません。「装備ランク」は品の等級で、装着に必要なキャラLvではありません。', 'Equipment requires the correct job and attribute values. There is no character level requirement. Item rank describes quality, not a required character level.')),
+      paragraph(text('弱い序盤装備のままでは節目のボスで行き詰まります。ただし、ランクだけで毎回買い替える必要はありません。追加効果・技能刻印・固有効果が編成に合う良いレア装備は、長く使えます。', 'Weak starting gear will hold you back at milestone bosses. You do not need to replace every item just because a higher rank drops. Good rare gear can last when its affixes, skill engravings or unique effects suit your party.')),
       list([
         text('地下1階の初回突破武器は自動装備せず、比較して選べます。持ち物が満杯なら整理売却の対象になるため、空きを用意しましょう。', 'The weapon awarded for your first clear of B1 is held for comparison rather than auto-equipped. Make room in your bag: full-inventory sales can include this reward.'),
+        text(`それ以外のボスでない階の突破では、出撃者の空き枠を優先し、次に現在階の基準に比べ基礎性能が低い武器・防具へ向けて、${tr(rarities[0].name)}か${tr(rarities[1].name)}の装備を1個補給します。同じ階の再周回でも受け取れます。必ず今より強い品や装備可能な品になるとは限らないので、条件と性能を比べましょう。`, `Other non-boss floor clears supply one ${tr(rarities[0].name)} or ${tr(rarities[1].name)} item for deployed companions, prioritizing empty slots, then weapons or armor with weaker base stats relative to the current floor. Repeating the same floor also grants supplies. A supply is not guaranteed to be stronger or equippable; compare its requirements and stats.`),
         text('装備できない品は、表示されたジョブ・種類・属性の条件を確認します。同じジョブでも配分によって扱える品が変わります。', 'If an item cannot be equipped, read its job, type and attribute requirements. Builds of the same job may qualify for different items.'),
         text('属性だけが足りない品は「この装備に向けて育成」から対象キャラへ移れます。不足値を見て配分し、「比較へ戻る」で装備を選びます。目標はいつでも外せます。', 'When only attributes are missing, use Train for this equipment to open that companion. Allocate points, then return to comparison to choose the item. You can remove the goal anytime.'),
         text(`基礎性能には${Math.round(itemBalance.baseRollMin * 100)}〜${Math.round(itemBalance.baseRollMax * 100)}%の幅があり、追加効果も変わります。色や評価値だけでなく、各能力と自分の組み方を比べます。`, `Base stats vary from ${Math.round(itemBalance.baseRollMin * 100)}% to ${Math.round(itemBalance.baseRollMax * 100)}%, with different extra effects. Compare individual stats with your build, not just color or the overall score.`),

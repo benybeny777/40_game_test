@@ -284,13 +284,13 @@ describe('ブラウザー保存・復帰・操作', () => {
     profile.koban = 300; seed(storage, profile)
     const api = initializePlatform(), before = storage.getItem(storageKey), notices: ShellState[] = []
     api.onState(state => notices.push(state)); storage.failWrites = true
-    const result = await api.command({ c: 'buyDojo', key: 'atk' })
+    const result = await api.command({ c: 'buyDojo', key: 'walk' })
     expect(result.ok).toBe(false)
     expect((await api.getState()).paused).toBe(true)
     expect(notices.some(state => state.paused && state.storageError)).toBe(true)
     expect(storage.getItem(storageKey)).toBe(before)
     const view = await api.getView()
-    expect((await api.command({ c: 'buyDojo', key: 'hp' })).ok).toBe(false)
+    expect((await api.command({ c: 'buyDojo', key: 'walk' })).ok).toBe(false)
     await vi.advanceTimersByTimeAsync(10000)
     expect((await api.getView()).stats.playMs).toBe(view.stats.playMs)
   })

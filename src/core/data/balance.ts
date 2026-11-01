@@ -7,7 +7,7 @@ export const balance = {
   allyAdvanceDotsPerSecond: 60,
   // spawnX was 160 in the first draft; ranged allies (220) then killed everything before melee contact.
   formationGap: 18, spawnX: 40, enemyStop: 14, enemyGap: 10,
-  meleeRange: 16, rangedRange: 220, waves: 10, maxStage: dungeons.yomi.floorCount, maxLevel: 60,
+  meleeRange: 16, rangedRange: 220, waves: 10, maxStage: dungeons.yomi.floorCount, maxLevel: 100,
   // Recovery budget is independent of presentation tempo; dojo still reduces its duration.
   walkRecoveryMs: 1200, walkHealPerSecond: 0.065, clearHeal: 0.3, frontTargetChance: 0.7, wipeLoopThreshold: 3,
   criMulBase: 1.5, defBase: 100, defK: 2, variance: 0.1,

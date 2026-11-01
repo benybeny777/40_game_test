@@ -14,8 +14,8 @@ it('distinguishes reaching a boss from clearing it and keeps difficulty rewards 
 
 it('uses the settled guarantee for ordinary bosses and hundred-floor milestones', () => {
   expect(bossClearReward(9)).toBeNull()
-  expect(bossClearReward(10)).toBe(3)
-  expect(bossClearReward(100)).toBe(4)
-  expect(bossClearReward(110)).toBe(3)
-  expect(bossClearReward(1000)).toBe(4)
+  expect(bossClearReward(10)).toBe(2)
+  expect(bossClearReward(100)).toBe(3)
+  expect(bossClearReward(110)).toBe(2)
+  expect(bossClearReward(1000)).toBe(3)
 })

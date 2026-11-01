@@ -140,6 +140,11 @@ describe('English panel component text', () => {
     expect(englishText).toContain('do not lower stats')
     expect(englishText).toContain('This is not automatic sync')
     expect(englishText).toContain('Sound is off by default')
+    expect(englishText).toContain('diminishing returns')
+    expect(englishText).toContain('Repeating the same floor also grants supplies')
+    expect(englishText).toContain('not guaranteed to be stronger or equippable')
+    expect(englishText).toContain('Good rare gear can last')
+    expect(englishText).toContain('does not stack attack or maximum HP')
     setLocale('ja')
     const japanese = asNode(renderHelp()), japaneseText = text(japanese)
     expect(structure(japanese)).toEqual(structure(english))
@@ -147,6 +152,11 @@ describe('English panel component text', () => {
     expect(japaneseText).toContain('能力が下がらない')
     expect(japaneseText).toContain('自動同期ではありません')
     expect(japaneseText).toContain('通知音は最初はOFF')
+    expect(japaneseText).toContain('振るほど伸びが緩やか')
+    expect(japaneseText).toContain('同じ階の再周回でも受け取れます')
+    expect(japaneseText).toContain('必ず今より強い品や装備可能な品になるとは限らない')
+    expect(japaneseText).toContain('良いレア装備は、長く使えます')
+    expect(japaneseText).toContain('攻撃力や最大HPを道場で積み上げる仕組みはありません')
   })
   it('renders unavailable store products, warnings and controls in English', () => {
     const view: StoreView = { mode: 'unavailable', message: '外観を試着できます。ブラウザー版では購入・Steam取引は利用できません。',
