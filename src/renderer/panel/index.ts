@@ -27,9 +27,10 @@ import { renderNextChoice } from './nextChoice'
 import { compareEquipmentChoices, renderEquipmentComparison } from './equipmentComparison'
 import { reportRendererError } from '../errors'
 import { previewReplacement } from '../../core/progress/formationSupport.ts'
-import { formationOption, renderFormationSupport } from './formationSupport'
+import { renderFormationSupport } from './formationSupport'
 import { renderNextBoss } from './nextBoss'
 import { renderMemberLevel, renderMemberGrowth } from './memberGrowth'
+import { renderCharacterPicker } from './characterPicker'
 import { equipmentTrainingTarget, equipmentTrainingItem, equipmentTrainingEnd, renderEquipmentTraining, focusEquipmentTraining, type EquipmentTrainingTarget } from './equipmentTraining'
 
 const runtime = runtimeFailure(initializePlatform())
@@ -83,6 +84,9 @@ function setToast(text: string) {
 function showToast(text: string) { setToast(text); render() }
 function finishTraining(message: string) { trainingTarget = undefined; trainingFocus = false; trainingNotice = message }
 
+let swapPicker: JobId | undefined
+let pendingChoiceFocus: string | undefined
+let pendingGearFocus = false
 let swapDraft: { from: JobId; to: JobId } | undefined
 function swapPreview(member: MemberView) {
   if (!swapDraft || swapDraft.from !== member.job || !view) return null
@@ -90,14 +94,17 @@ function swapPreview(member: MemberView) {
   if (!target || target.active === member.active) return null
   const next = previewReplacement(view.party, member.job, target.job)
   return h('div', { class: 'swap-preview' },
+    h('div', { class: 'swap-portraits' },
+      h('div', {}, spriteImage(member.job, 2), h('b', {}, member.name)), h('span', { 'aria-hidden': 'true' }, '⇄'),
+      h('div', {}, spriteImage(target.job, 2), h('b', {}, target.name))),
     renderFormationSupport(next.members, true, view.party.filter(candidate => candidate.active)),
     h('p', { class: 'hint' }, '次のウェーブから反映されます。'),
     h('div', { class: 'swap-preview-actions' },
       h('button', { disabled: commandPending, 'data-focus-key': `confirm-swap-${member.job}`, onclick: async () => {
         const result = await command({ c: 'reorderParty', order: next.order })
-        if (result?.ok) { swapDraft = undefined; render(true) }
+        if (result?.ok) { swapDraft = undefined; pendingChoiceFocus = `recruit-${member.active ? target.job : member.job}`; render(true) }
       } }, '交換を確定'),
-      h('button', { disabled: commandPending, onclick: () => { swapDraft = undefined; render(true) } }, '交換を取り消す')))
+      h('button', { disabled: commandPending, onclick: () => { swapDraft = undefined; pendingChoiceFocus = `recruit-${member.job}`; render(true) } }, '交換を取り消す')))
 }
 function memberCard(member: MemberView, index: number, order: JobId[]) {
   const size = view!.partySize
@@ -144,14 +151,15 @@ function memberCard(member: MemberView, index: number, order: JobId[]) {
     member.active ? h('div', { class: 'order' },
       h('button', { onclick: () => move(-1), disabled: index === 0, title: '前へ' }, '◀ 前へ'),
       h('button', { onclick: () => move(1), disabled: index === size - 1, title: '後ろへ' }, '後ろへ ▶')) : null,
-    h('label', { class: 'swap-label' }, member.active ? 'メンバーを入れ替える' : '出撃メンバーと交代',
-      h('select', { class: 'party-swap', 'data-current': member.job, onchange: (event: Event) => {
-        const selected = (event.target as HTMLSelectElement).value as JobId
-        const other = order.indexOf(selected)
-        if (other < 0 || other === index) return
-        swapDraft = { from: member.job, to: selected }; render(true)
-      } }, h('option', { value: member.job, selected: swapDraft?.from !== member.job }, member.active ? '控えから選択…' : '交代する相手を選択…'),
-      ...view!.party.filter((candidate) => candidate.active !== member.active).map((candidate) => h('option', { value: candidate.job, selected: swapDraft?.from === member.job && swapDraft.to === candidate.job }, formationOption(candidate))))),
+    h('button', { class: 'recruit-open', 'data-focus-key': `recruit-${member.job}`, 'aria-expanded': String(swapPicker === member.job), onclick: () => {
+      swapPicker = swapPicker === member.job ? undefined : member.job; swapDraft = undefined; render(true)
+    } }, swapPicker === member.job ? '仲間一覧を閉じる' : member.active ? '仲間を交代' : 'この仲間を出撃させる'),
+    swapPicker === member.job ? h('section', { class: 'recruit-panel' },
+      h('h4', {}, member.active ? '代わりに出撃する仲間' : '交代する出撃メンバー'),
+      renderCharacterPicker(view!.party.filter(candidate => candidate.active !== member.active), swapDraft?.to ?? null, selected => {
+        swapDraft = { from: member.job, to: selected }; swapPicker = undefined
+        pendingChoiceFocus = `confirm-swap-${member.job}`; render(true)
+      }, `swap-${member.job}`)) : null,
     swapPreview(member))
 }
 
@@ -220,23 +228,25 @@ function gearTab(v: ProfileView) {
   return h('section', { class: 'gear' },
     h('details', { class: 'gear-management' }, h('summary', { 'data-focus-key': 'gear-management' }, '自動整理・まとめ売り'), h('div', { class: 'gear-options' },
       h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: v.options.autoEquip, onchange: (event: Event) => void command({ c: 'setOptions', autoEquip: (event.target as HTMLInputElement).checked }) }), h('span', {}, '能力が下がらない装備を出撃者へ自動装備')),
-      h('label', {}, h('span', {}, '拾ったら自動で売る：'), h('select', { onchange: (event: Event) => { const value = (event.target as HTMLSelectElement).value; void command({ c: 'setOptions', autoSellMaxRarity: value === '' ? null : Number(value) as 0 }) } },
-        ...sellOptions.map((rarity) => h('option', { value: rarity === null ? '' : String(rarity), selected: v.options.autoSellMaxRarity === rarity }, rarity === null ? '売らない' : `${v.rarityNames[rarity]}以下`)))),
+      h('div', { class: 'auto-sell-choices', role: 'group', 'aria-label': '拾ったら自動で売る：' }, h('span', {}, '拾ったら自動で売る：'),
+        ...sellOptions.map(rarity => h('button', { 'aria-pressed': String(v.options.autoSellMaxRarity === rarity),
+          class: v.options.autoSellMaxRarity === rarity ? 'active' : '', 'data-focus-key': `auto-sell-${rarity ?? 'off'}`,
+          onclick: () => void command({ c: 'setOptions', autoSellMaxRarity: rarity }) }, rarity === null ? '売らない' : `${v.rarityNames[rarity]}以下`))),
       h('button', { disabled: sellableCount === 0, onclick: () => void command({ c: 'sellAll', maxRarity: 0 }) }, `${v.rarityNames[0]}をまとめて売る（${sellableCount}個）`),
       h('button', { disabled: !v.inventory.some(item => item.isNew), onclick: () => void command({ c: 'markSeen' }) }, '新着を確認済みにする'),
       h('span', { class: 'count' }, `所持 ${owned} / ${v.inventoryMax}`)),
     h('p', { class: 'hint' }, '固有・ロック装備は自動で変更しません。追加効果や能力の交換条件がある装備は、自分で比較して選びます。')),
     h('div', { class: 'jobs' }, ...v.party.filter(entry => entry.active).map((entry) => h('button', { 'data-focus-key': `gear-job-${entry.job}`, class: entry.job === job ? 'active' : '', style: `--job:${entry.color}`, onclick: () => { gearJob = entry.job; render() } },
       spriteImage(entry.job, 1), h('span', {}, entry.name), h('small', {}, `Lv${entry.lv}`)))),
-    h('label', { class: 'reserve-gear' }, '控えの装備を見る', h('select', { 'data-focus-key': 'reserve-gear', onchange: (event: Event) => { gearJob = (event.target as HTMLSelectElement).value as JobId; render(true) } },
-      h('option', { value: '', disabled: true, selected: member.active }, '控えから選択…'),
-      ...v.party.filter(entry => !entry.active).map(entry => h('option', { value: entry.job, selected: entry.job === job }, `${translatedLabel(entry.name)} · Lv${entry.lv}`)))),
+    h('details', { class: 'reserve-picker' },
+      h('summary', { 'data-focus-key': 'reserve-gear' }, '待機中の仲間の装備', !member.active ? h('b', { class: 'reserve-selected' }, member.name) : null),
+      renderCharacterPicker(v.party.filter(entry => !entry.active), job, selected => { gearJob = selected; compareItem = undefined; pendingGearFocus = true; render(true) }, 'gear-reserve')),
     highlighted ? h('section', { class: 'selected-comparison' }, h('h3', {}, '比べている装備'),
       h('p', { class: 'hint' }, `${translatedLabel(member.name)} · ${translatedLabel(member.equip[highlighted.slot]?.name ?? '装備なし')} → ${translatedLabel(highlighted.name)}`),
       itemCard(highlighted, job, false)) : null,
     h('div', { class: 'gear-body' },
       h('div', { class: 'worn' },
-        h('h3', {}, `${member.name}の装備`),
+        h('h3', { tabindex: '-1', 'data-focus-key': 'gear-heading' }, `${member.name}の装備`),
         h('dl', { class: 'stats' }, ...([['HP', fmt(member.stats.hp)], ['攻撃', member.stats.atk], ['防御', member.stats.def], ['間隔', `${member.stats.interval}秒`], ['会心', `${member.stats.cri}%`], ['回避', `${member.stats.eva}%`], ['運', member.stats.luk]] as const)
           .map(([k, value]) => h('div', {}, h('dt', {}, k), h('dd', {}, String(value))))),
         ...(Object.keys(slotNames) as SlotId[]).map((slot) => member.equip[slot] ? itemCard(member.equip[slot]!, job, true)
@@ -310,7 +320,7 @@ const panelPositions = new PanelPositions()
 const dungeonTravelDraft = new DungeonTravelDraft()
 function profileReplaced() {
   if (trainingTarget || compareItem) finishTraining('セーブを復元したため、装備目標と比較選択を解除しました。')
-  compareItem = undefined; gearJob = undefined; gearFilter = 'all'; swapDraft = undefined; focusJob = undefined; trainingFocus = false
+  compareItem = undefined; gearJob = undefined; gearFilter = 'all'; swapDraft = undefined; swapPicker = undefined; pendingChoiceFocus = undefined; pendingGearFocus = false; focusJob = undefined; trainingFocus = false
   render(true)
 }
 const saveImport = new SaveImportController(window.game, () => render(true), false, profileReplaced)
@@ -349,6 +359,19 @@ function render(force = false) {
     toast ? h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' }, toast) : '')
   assignFocusKeys(root, tab)
   restorePanelPosition(root, position)
+  if (tab === 'gear' && pendingGearFocus) {
+    const picker = root.querySelector<HTMLDetailsElement>('.reserve-picker')
+    if (picker) picker.open = false
+    const heading = root.querySelector<HTMLElement>('[data-focus-key="gear-heading"]')
+    heading?.focus({ preventScroll: true }); heading?.scrollIntoView({ block: 'nearest' }); pendingGearFocus = false
+  }
+  if (pendingChoiceFocus) {
+    const requested = pendingChoiceFocus
+    pendingChoiceFocus = undefined
+    const candidate = tab === 'party' ? root.querySelector<HTMLElement>(`[data-focus-key="${requested}"]`) : null
+    const target = candidate?.matches(':disabled') ? candidate.closest('.card')?.querySelector<HTMLElement>('.recruit-open') : candidate
+    if (target) { target.focus({ preventScroll: true }); target.scrollIntoView({ block: 'nearest' }) }
+  }
   if (focusJob) {
     const card = root.querySelector('.card.focus'), details = card?.querySelector('details')
     if (details) details.open = true

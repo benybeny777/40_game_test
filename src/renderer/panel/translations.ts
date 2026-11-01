@@ -1,6 +1,12 @@
 import { registerTranslations, registerTranslationTemplates } from '../../shared/i18n'
 
 registerTranslations({
+  '仲間一覧を閉じる': 'Close companions',
+  '仲間を交代': 'Change companion',
+  'この仲間を出撃させる': 'Deploy this companion',
+  '代わりに出撃する仲間': 'Choose your next companion',
+  '交代する出撃メンバー': 'Choose who returns to camp',
+  '待機中の仲間の装備': 'Camp companions and equipment',
   '装備の発見数': 'Equipment found',
   '発見した装備にも自動装備・自動売却・所持上限の設定が適用されます。': 'Auto equip, auto sell and inventory limits also apply to the equipment found.',
   '保存日時からの放置報酬も再計算します。現在の所持金・経験値・装備に追加するのではなく、ファイルの進行へ戻してから受け取ります。': 'Offline rewards since the save date are recalculated. Your current koban, experience and gear are replaced by the file before you collect those rewards.',

@@ -263,3 +263,7 @@ pnpm release:check
 `tools/release-check.mjs`はアプリ本体のPE/x64、NSIS起動部のWindows PE、asarの必須ファイルと版、koffiのWindows x64依存、禁止データ混入、既知の秘密情報パターンを検査し、配布物のSHA-256一覧を`release-manifest.json`へ出す。NSIS起動部はx86でも内部の本体はx64であるため、二つのmachine値を別々に記録する。未知の秘密情報を完全検出する保証や、署名検証・実行試験の代替にはしない。
 
 本書の更新だけを理由にテストやビルドを実行しない。**最終検証は [HANDOFF](../HANDOFF.md) 参照。** 型・単体・ビルド・ファイル検査の成功と、Windows実exe、クリーンPC、長時間放置、全画面、DPI、スマホSafari／Chrome、実決済・Steam受入の成功を分けて記録する。性能の目標は10Hz進行を阻害せず、深い階でも無制限な配列や追従処理を増やさないこと。実測していないCPU・メモリー・電池・端末互換性の数値は保証しない。
+
+### キャラ選択UI
+
+`panel/characterPicker.ts/css`はportrait正本のspriteImageとMemberViewの表示項目だけでネイティブbuttonカードを描画。編成と装備で共用し、選択/command/保存は呼出側が所有する。固定focusPrefix+JobIdで再描画後の位置を保持。出撃状態はactive/fightingを区別し日英表示する。編成swapPickerとswapDraftは一時状態で復元時に破棄。pendingChoiceFocusは描画ガード通過時に一度だけ消費し、見つからない対象を後の描画まで持ち越さない。pendingGearFocusは装備一覧を閉じ見出しへ移動する。設定以外のselectと旧CSSを削除。
