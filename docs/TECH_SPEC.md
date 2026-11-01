@@ -4,6 +4,14 @@
 
 ## 構成と責務
 
+v0.7.5では`progress/clearRewards.ts`に初回突破判定とボス確定報酬の希少度を集約し、精算と`panel/nextBoss.ts`の予告から使用する。DTOへ各難度の到達値のコピーと所持総数を渡し、既得・最終階・予約先・満杯表示を区別する。
+
+`formationSupport.ts`は解放レベルと実技能IDから回復・守り・自己復活の特徴を生成する。`equipCheck`の構造化された不足属性を`equipmentTraining.ts`が表示し、判定文を解析しない。育成目標はパネル内の一時状態で保存データに追加しない。
+
+`DefeatTracker`はbattle開始を観測した場合だけtick差×REAL_TICK_MSで戦闘時間を計算し、wipe時の生存敵のHPを集計する。`combatMs`と`remainingEnemies`の旧欠落は明示的にnullへ移行し、存在する不正値は拒否する。
+
+`Game.autoFarmState`は同じ壁への再挑戦回数に応じて育成周回を2→4→8へ延長するセッション状態。`recoveryStatus`を両hostの共通view生成へ渡し、画面が独自に周回数を推測しない。手動操作が優先し、保存済みの手動loopとは区別する。再起動時はセッション状態を持ち越さず、通常の3全滅判定から始める。
+
 v0.7.4の接敵は`world.moveAllies`が実座標を移動する。最寄りの敵が自ら接近中なら迎撃し、停止敵に近接が届かない場合のみ`balance.allyAdvanceDotsPerSecond`で隊列全体を同量進める。slot間隔と死者を含む隊列のオフセットを保持し、ウェーブ開始時に戻す。通常攻撃の解決前に標的が死亡した場合は、共有標的選択で射程内の別標的へ1回だけ実行する。
 
 `strip/battleCamera.ts`は実隊列の前進量を補間し、描画・弾・照準・hitTestと既存エフェクトの座標を揃える。ウェーブ座標初期化を逆スクロールにしない。`impactPresentation.ts`は実360msの敵撃破残像（最大8）、実180msの局所会心（最大4）の寿命と形を管理。`scene.ts`が旧スナップショットの死亡を残してから不要visualを破棄し、同フレームの報酬も旧戦場に表示する。シミュレーションへのhit-stopやダメージ変更はない。

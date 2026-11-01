@@ -52,11 +52,20 @@ describe('upcoming boss preparation', () => {
     expect(text).toContain('Boss after queued travel:')
     expect(text).toContain('B30')
     expect(text).toContain('area attacks')
+    expect(text).toContain('First-clear reward')
     expect(text).not.toMatch(/[ぁ-んァ-ヶ一-龠]/)
     view.dungeon.pendingTravel = { depth: 100, difficulty: 0 }
     const climax = (renderNextBoss(view) as unknown as Node).text()
     expect(climax).toContain('Hundred-floor climax: the skill changes at half HP')
     expect(climax).toContain('Acrobat Troupe')
+    expect(climax).toContain('Clear to unlock')
     expect(climax).not.toMatch(/[ぁ-んァ-ヶ一-龠]/)
+    expect(climax).not.toContain('Inventory full')
+    view.inventoryCount = view.inventoryMax
+    expect((renderNextBoss(view) as unknown as Node).text()).toContain('including the new reward')
+    view.dungeon.unlockedDepths = [100, 1, 0]
+    const replay = (renderNextBoss(view) as unknown as Node).text()
+    expect(replay).toContain('First-clear reward already earned')
+    expect(replay).not.toContain('Clear to unlock')
   })
 })

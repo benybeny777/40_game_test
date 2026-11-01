@@ -23,8 +23,13 @@ registerTranslations({
   '記録なし': 'Not recorded',
   '編成を見直す': 'Adjust formation',
   '防具を比較': 'Compare armor',
+  '武器を比較': 'Compare weapons',
+  '戦闘時間': 'Battle time',
+  '残敵': 'Enemies remaining',
+  '残敵HP': 'Remaining enemies’ HP',
+  '戦闘時間は停止時間を除きます。残敵HPは、生き残った敵だけの合計最大HPに対する割合です。': 'Battle time excludes pauses. Remaining HP is measured against the combined maximum HP of surviving enemies only.',
   'この階へ再挑戦': 'Retry this floor',
-  '前列の耐久・回復役・敵の狙う位置を見直し、装備の比較と組み合わせて再挑戦できます。': 'Review front-line durability, healing and enemy targeting, then compare equipment before retrying.',
+  '倒れた順と残敵を見て、攻撃・守り・回復の組み合わせや武器・防具を見直せます。': 'Use the casualty order and surviving enemies to review offense, protection, healing, weapons and armor.',
 })
 registerTranslationTemplates([
   { ja: '倒れた順 {n}', en: 'Fall order: {n}' },
@@ -34,7 +39,7 @@ registerTranslationTemplates([
 type Defeat = NonNullable<ProfileView['lastDefeat']>
 export interface DefeatActions {
   formation: () => void
-  equipment: (job: JobId) => void
+  equipment: (job: JobId, slot: 'weapon' | 'armor') => void
   retry: (record: Defeat) => void
 }
 
@@ -47,6 +52,8 @@ export function renderDefeatReview(record: Defeat | null, actions: DefeatActions
     h('div', { class: 'defeat-heading' }, h('strong', {}, '直近の敗北を振り返る'),
       h('span', {}, `${tr(difficulties[record.depthRank].name)} · B${record.floor} · Wave ${record.wave}`)),
     h('details', {}, h('summary', { 'data-focus-key': 'defeat-details' }, '倒れた順と被ダメージを見る'),
+      h('p', {}, `${tr('戦闘時間')}: ${record.combatMs == null ? tr('記録なし') : `${formatNumber(record.combatMs / 1000, { maximumFractionDigits: 1 })}s`} · ${tr('残敵')}: ${record.remainingEnemies == null ? tr('記録なし') : formatNumber(record.remainingEnemies.count)}${record.remainingEnemies == null ? '' : ` · ${tr('残敵HP')}: ${formatNumber(record.remainingEnemies.hpRatio * 100, { maximumFractionDigits: 1 })}%`}`),
+      h('p', { class: 'hint' }, '戦闘時間は停止時間を除きます。残敵HPは、生き残った敵だけの合計最大HPに対する割合です。'),
       h('div', { class: 'defeat-party' }, ...record.party.map(member => {
         const source = member.fatalSource
         const enemy = source ? enemies[source.enemyId] : null
@@ -58,10 +65,11 @@ export function renderDefeatReview(record: Defeat | null, actions: DefeatActions
           h('p', {}, member.fallOrder === null ? tr('記録なし') : `倒れた順 ${member.fallOrder}`),
           h('p', {}, `被ダメージ ${formatNumber(member.damageTaken, { maximumFractionDigits: 1 })}`),
           h('p', {}, `${tr('致命打')}: ${enemy ? `${tr(enemy.name)} / ${tr(attack)}` : tr('記録なし')}`),
-          h('button', { 'data-focus-key': `defeat-gear-${member.job}`, onclick: () => actions.equipment(member.job) }, '防具を比較'))
+          h('button', { 'data-focus-key': `defeat-weapon-${member.job}`, onclick: () => actions.equipment(member.job, 'weapon') }, '武器を比較'),
+          h('button', { 'data-focus-key': `defeat-gear-${member.job}`, onclick: () => actions.equipment(member.job, 'armor') }, '防具を比較'))
       })),
       h('p', { class: 'hint' }, '敗北したウェーブの記録です。同時に倒れた仲間は同順位。回復や蘇生を挟むため、被ダメージは最大HPを超えることがあります。')),
-    h('p', { class: 'hint' }, '前列の耐久・回復役・敵の狙う位置を見直し、装備の比較と組み合わせて再挑戦できます。'),
+    h('p', { class: 'hint' }, '倒れた順と残敵を見て、攻撃・守り・回復の組み合わせや武器・防具を見直せます。'),
     h('div', { class: 'defeat-actions' },
       h('button', { 'data-focus-key': 'defeat-formation', onclick: actions.formation }, '編成を見直す'),
       h('button', { 'data-focus-key': 'defeat-retry', disabled: !canRetry, onclick: () => { if (canRetry) actions.retry(record) } },

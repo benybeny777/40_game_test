@@ -75,7 +75,8 @@ export interface CloudSettingsApi {
 }
 
 /** This component retains only the account name, server metadata and its DOM; never a password value. */
-export function createCloudSettings(api: CloudSettingsApi) {
+export interface CloudSettingsHooks { profileReplaced?(): void; replacing?(active: boolean): void }
+export function createCloudSettings(api: CloudSettingsApi, hooks: CloudSettingsHooks = {}) {
   const root = h('section', { class: 'cloud-settings', 'aria-label': 'クラウドセーブ' })
   let view: CloudView | null = null, busy = false, started = false, reading = false, operationGeneration = 0
   let error = '', message = '', username = '', mode: 'login' | 'register' = 'login'
@@ -167,6 +168,7 @@ export function createCloudSettings(api: CloudSettingsApi) {
     if (busy) return
     operationGeneration++
     busy = true; error = ''; message = ''; confirmRevision = null; paint()
+    if (command.action === 'download') hooks.replacing?.(true)
     try {
       const result = await api.cloudCommand(command)
       view = result.view
@@ -177,10 +179,11 @@ export function createCloudSettings(api: CloudSettingsApi) {
           upload: 'クラウドへ保存しました。', download: 'クラウドの進行を読み込みました。', logout: 'ログアウトしました。',
         }
         message = successes[command.action]
+        if (command.action === 'download') hooks.profileReplaced?.()
       }
     } catch (failure) {
       error = reportRendererError('通信結果を確認できませんでした。送信を繰り返す前に、クラウドの状態を確認してください。', failure, false)
-    } finally { busy = false; paint() }
+    } finally { busy = false; if (command.action === 'download') hooks.replacing?.(false); paint() }
   }
   return () => {
     if (!started) { started = true; void read() }
@@ -190,7 +193,7 @@ export function createCloudSettings(api: CloudSettingsApi) {
 }
 
 let renderSettings: ReturnType<typeof createCloudSettings> | undefined
-export function renderCloudSettings() {
-  renderSettings ??= createCloudSettings(window.game)
+export function renderCloudSettings(hooks: CloudSettingsHooks = {}) {
+  renderSettings ??= createCloudSettings(window.game, hooks)
   return renderSettings()
 }

@@ -18,7 +18,7 @@ export class SaveImportController {
   fileName = ''
   message = ''
   private failure: { context: string; cause: unknown } | undefined
-  constructor(private readonly api: SaveImportApi, private readonly changed: () => void, readonly resetSettings = false) {}
+  constructor(private readonly api: SaveImportApi, private readonly changed: () => void, readonly resetSettings = false, private readonly restored?: () => void) {}
   get error() {
     if (!this.failure) return ''
     const { context, cause } = this.failure
@@ -44,6 +44,7 @@ export class SaveImportController {
     try {
       await this.api.confirmSaveImport(this.preview.token)
       this.preview = undefined; this.message = 'セーブを復元しました。一時停止中です。'
+      this.restored?.()
     } catch (cause) { this.fail('セーブを復元できませんでした。', cause) }
     finally { this.busy = false; this.changed() }
   }

@@ -27,6 +27,24 @@ const tree = (value: HTMLElement) => value as unknown as Element
 const floorInput = (root: Element) => root.all().find(node => node.attrs['data-focus-key'] === 'travel-floor')!
 
 describe('dungeon travel and loot destinations', () => {
+  it('shows recovery progress in English and lets the player deliberately queue the wall', () => {
+    setLocale('en')
+    const recovery = { wallStage: 20, requiredClears: 4, completedClears: 1, retrying: false }
+    const v = buildView(newProfile('test'), true, undefined, recovery)
+    recovery.completedClears = 2
+    expect(v.dungeon.recovery?.completedClears).toBe(1)
+    const command = vi.fn(async () => {}), root = tree(renderDungeon(v, command))
+    expect(root.text()).toContain('Farming runs before retrying B20: 1/4')
+    expect(root.text()).not.toMatch(/[ぁ-んァ-ヶ一-龠]/)
+    root.all().find(node => node.attrs['data-focus-key'] === 'recovery-retry')!.handlers.click({})
+    expect(command).toHaveBeenCalledWith({ c: 'selectStage', stageNo: 20, depthRank: 0 })
+    v.dungeon.recovery!.retrying = true
+    const retry = tree(renderDungeon(v, command))
+    expect(retry.text()).toContain('Returning to retry B20')
+    expect(retry.all().some(node => node.attrs['data-focus-key'] === 'recovery-retry')).toBe(false)
+    v.dungeon.depth = 20
+    expect(tree(renderDungeon(v, command)).text()).toContain('Retrying B20')
+  })
   it('retains a draft across focusout-driven rebuilding and submits the live input value', () => {
     const draft = new DungeonTravelDraft(), command = vi.fn(async () => {}), v = view()
     const before = tree(renderDungeon(v, command, draft)), input = floorInput(before)

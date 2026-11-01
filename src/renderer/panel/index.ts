@@ -28,6 +28,7 @@ import { reportRendererError } from '../errors'
 import { previewReplacement } from '../../core/progress/formationSupport.ts'
 import { formationOption, renderFormationSupport } from './formationSupport'
 import { renderNextBoss } from './nextBoss'
+import { equipmentTrainingTarget, equipmentTrainingItem, equipmentTrainingEnd, renderEquipmentTraining, focusEquipmentTraining, type EquipmentTrainingTarget } from './equipmentTraining'
 
 const runtime = runtimeFailure(initializePlatform())
 
@@ -38,6 +39,10 @@ const tabs: Array<{ id: PanelTab; name: string }> = [
 ]
 let tab: PanelTab = 'party'
 let focusJob: JobId | undefined
+let trainingTarget: EquipmentTrainingTarget | undefined
+let trainingFocus = false
+let trainingNotice: string | undefined
+let profileReplacementPending = false
 let view: ProfileView | undefined
 let state: ShellState | undefined
 let viewEvents = 0, stateEvents = 0
@@ -68,11 +73,13 @@ async function command(...args: Parameters<typeof window.game.command>) {
   } catch (error) { showToast(reportRendererError('操作を完了できませんでした。少し待って再度お試しください。', error)) }
   finally { commandPending = false; render(true) }
 }
-function showToast(text: string) {
-  toast = text; render()
+function setToast(text: string) {
+  toast = text
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => { toast = ''; render() }, 2400)
 }
+function showToast(text: string) { setToast(text); render() }
+function finishTraining(message: string) { trainingTarget = undefined; trainingFocus = false; trainingNotice = message }
 
 let swapDraft: { from: JobId; to: JobId } | undefined
 function swapPreview(member: MemberView) {
@@ -99,6 +106,8 @@ function memberCard(member: MemberView, index: number, order: JobId[]) {
     void command({ c: 'reorderParty', order: next })
   }
   const s = member.stats
+  const trainingCheck = trainingTarget?.job === member.job ? equipmentTrainingItem(view!, trainingTarget)?.equipable[member.job] : undefined
+  const missingAttributes = trainingCheck && !trainingCheck.ok ? trainingCheck.missing?.map(entry => entry.key) : undefined
   return h('article', { class: `card${focusJob === member.job ? ' focus' : ''}`, 'data-job': member.job, 'data-focus-scope': `member-${member.job}`, style: `--job:${member.color}` },
     h('div', { class: 'card-head' },
       spriteImage(member.job, 2),
@@ -119,10 +128,16 @@ function memberCard(member: MemberView, index: number, order: JobId[]) {
     h('ul', { class: 'skills' }, ...member.skills.map((skill) => h('li', { class: skill.unlocked ? '' : 'locked' },
       h('span', { class: 'kind' }, skill.kind), h('b', {}, skill.name), h('p', {}, skill.unlocked ? skill.desc : `Lv${skill.unlockLv}で解放`)))),
     h('section', { class: 'attribute-panel' },
+      trainingTarget?.job === member.job ? renderEquipmentTraining(view!, trainingTarget, () => {
+        if (!trainingTarget) return
+        const ended = equipmentTrainingEnd(view!, trainingTarget)
+        if (ended) { finishTraining(ended); render(); return }
+        gearJob = trainingTarget!.job; gearFilter = trainingTarget!.slot; compareItem = trainingTarget!.itemId; tab = 'gear'; render()
+      }, () => { finishTraining('育成目標を外しました。配分や装備は変更していません。'); render() }) : null,
       h('h4', {}, 'ステータス配分', h('span', {}, `未使用 ${member.availablePoints} pt`)),
       h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: member.autoStats, onchange: (event: Event) => void command({ c: 'setAutoStats', job: member.job, enabled: (event.target as HTMLInputElement).checked }) }), '自動振り'),
       h('p', { class: 'hint' }, `主属性：${attributeLabels[member.mainAttribute]}。自動配分 ${attributeKeys.map(key => `${attributeLabels[key]}${member.autoWeights[key]}`).join(' / ')}。手動にするには自動振りをOFFにします。`),
-      ...attributeKeys.map(key => h('div', { class: 'attribute-row' },
+      ...attributeKeys.map(key => h('div', { class: `attribute-row${missingAttributes?.includes(key) ? ' training-needed' : ''}` },
         h('label', {}, `${translatedLabel(attributeLabels[key])} ${member.attributes[key]}`, h('small', {}, `基礎${member.baseAttributes[key]}＋配分${member.allocated[key]}`)),
         h('button', { 'data-focus-key': `allocate-${member.job}-${key}-one`, 'aria-label': `${translatedLabel(member.name)}: ${translatedLabel(attributeLabels[key])} — ${translatedLabel('1ポイント追加')}`, disabled: member.autoStats || member.availablePoints < 1, onclick: () => void command({ c: 'allocateStats', job: member.job, key, points: 1 }) }, '+1'),
         h('button', { 'data-focus-key': `allocate-${member.job}-${key}-all`, 'aria-label': `${translatedLabel(member.name)}: ${translatedLabel(attributeLabels[key])} — ${translatedLabel('残りのポイントを全て追加')}`, disabled: member.autoStats || member.availablePoints < 1, title: `未使用ポイントを全て${attributeLabels[key]}へ`, onclick: () => void command({ c: 'allocateStats', job: member.job, key, points: member.availablePoints }) }, '全振り'))),
@@ -148,7 +163,7 @@ function partyTab(v: ProfileView) {
   return h('section', {},
     renderDefeatReview(v.lastDefeat, {
       formation: () => { const roster = root.querySelector<HTMLElement>('.deployed-roster'); roster?.scrollIntoView({ block: 'start', behavior: 'smooth' }); roster?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true }) },
-      equipment: job => { gearJob = job; gearFilter = 'armor'; compareItem = undefined; tab = 'gear'; render() },
+      equipment: (job, slot) => { gearJob = job; gearFilter = slot; compareItem = undefined; tab = 'gear'; render() },
       retry: record => { tab = 'stage'; void command({ c: 'selectStage', stageNo: record.floor, depthRank: record.depthRank }) },
     }, v.lastDefeatResolved, v.dungeon),
     renderNextChoice(v, (job, item) => { gearJob = job; gearFilter = item.slot; compareItem = item.id; tab = 'gear'; render() }, itemId => { void command({ c: 'markItemSeen', itemId }) }),
@@ -185,7 +200,9 @@ function itemCard(item: ItemView, job: JobId, worn: boolean) {
       h('span', { class: 'rarity' }, item.rarityName), h('b', {}, item.name), h('small', {}, `${item.slotName}・装備ランク${item.ilvl}`), item.isNew ? h('em', {}, 'NEW') : null, diff),
     h('p', { class: 'lines' }, item.lines.map(translatedLabel).join(' / ')),
     !worn && item.owner ? h('p', { class: 'hint' }, `${translatedLabel(view!.party.find(member => member.job === item.owner)!.name)}：${translatedLabel('控えで装備中・装着すると付け替えます')}`) : null,
-    worn ? null : renderEquipmentComparison(item, job),
+    worn ? null : renderEquipmentComparison(item, job, (item, job) => {
+      trainingTarget = equipmentTrainingTarget(item, job); trainingFocus = true; focusJob = undefined; reserveRole = 'all'; tab = 'party'; render()
+    }),
     h('div', { class: 'item-actions' },
       worn ? h('button', { onclick: () => void command({ c: 'equip', job, slot: item.slot, itemId: null }) }, '外す')
         : eligibility.ok ? h('button', { class: 'primary', onclick: () => void command({ c: 'equip', job, slot: item.slot, itemId: item.id }) }, '装備する') : null,
@@ -200,7 +217,7 @@ function gearTab(v: ProfileView) {
   const list = available.filter((item) => (gearFilter === 'all' || item.slot === gearFilter) && (!gearEquipableOnly || item.equipable[job].ok))
     .sort((a, z) => Number(z.id === compareItem) - Number(a.id === compareItem) || compareEquipmentChoices(a, z, job))
   const sellOptions = [null, 0, 1, 2] as const
-  const owned = v.inventory.length + v.party.reduce((sum, entry) => sum + Object.values(entry.equip).filter(Boolean).length, 0)
+  const owned = v.inventoryCount
   const sellableCount = v.inventory.filter(item => item.rarity === 0 && !item.locked).length
   return h('section', { class: 'gear' },
     h('details', { class: 'gear-management' }, h('summary', { 'data-focus-key': 'gear-management' }, '自動整理・まとめ売り'), h('div', { class: 'gear-options' },
@@ -273,7 +290,7 @@ function settingsTab() {
     state?.platform !== 'browser' ? h('button', { onclick: () => window.game.exportSave() }, 'セーブを書き出す') : null,
     h('p', { class: 'hint' }, state?.platform === 'browser' ? 'ブラウザーを閉じるとゲームも終了します。次回起動時にオフライン報酬を計算します。' : '一時停止・帯の表示切り替え・終了は、タスクトレイのアイコンから行います。'),
     renderSaveImport(saveImport, Boolean(state?.storageError || state?.runtimeError)),
-    renderCloudSettings())
+    renderCloudSettings({ profileReplaced, replacing: active => { profileReplacementPending = active } }))
 }
 function offlineModal(v: ProfileView) {
   const pending = v.pendingOffline
@@ -292,11 +309,21 @@ function offlineModal(v: ProfileView) {
 
 const panelPositions = new PanelPositions()
 const dungeonTravelDraft = new DungeonTravelDraft()
-const saveImport = new SaveImportController(window.game, () => render(true))
+function profileReplaced() {
+  if (trainingTarget || compareItem) finishTraining('セーブを復元したため、装備目標と比較選択を解除しました。')
+  compareItem = undefined; gearJob = undefined; gearFilter = 'all'; swapDraft = undefined; focusJob = undefined; trainingFocus = false
+  render(true)
+}
+const saveImport = new SaveImportController(window.game, () => render(true), false, profileReplaced)
 const modalFocus = new PanelModalFocus('[data-panel-dialog]', () => { void saveImport.cancel() })
 function render(force = false) {
   if (pointerGuard.blocked || rendering) return
+  if (view && trainingTarget && !saveImport.busy && !profileReplacementPending) {
+    const ended = equipmentTrainingEnd(view, trainingTarget)
+    if (ended) finishTraining(ended)
+  }
   if (!force && root.contains(document.activeElement) && document.activeElement?.matches('select,input[type="number"],input[type="text"],input[type="search"],input[type="password"]')) return
+  if (trainingNotice) { setToast(trainingNotice); trainingNotice = undefined }
   const v = artworkReady ? view : undefined
   modalFocus.beforeRender()
   document.documentElement.lang = getLocale()
@@ -328,6 +355,7 @@ function render(force = false) {
     if (details) details.open = true
     card?.scrollIntoView({ block: 'nearest' }); focusJob = tab === 'party' ? focusJob : undefined
   }
+  if (tab === 'party' && trainingFocus && trainingTarget) trainingFocus = !focusEquipmentTraining(root, trainingTarget.job)
   modalFocus.sync(root)
   } finally { rendering = false }
 }

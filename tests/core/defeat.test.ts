@@ -4,6 +4,7 @@ import { DefeatTracker, lastDefeatResolved, validateDefeatRecord } from '../../s
 import { recordAbyssClear } from '../../src/core/progress/abyss.ts'
 import type { DungeonId } from '../../src/core/data/dungeon.ts'
 import type { SimEvent, Unit } from '../../src/core/sim/types.ts'
+import { REAL_TICK_MS } from '../../src/core/data/timing.ts'
 import { prepareCloudRestore } from '../../src/shared/cloudProfile.ts'
 
 function setup() {
@@ -17,6 +18,50 @@ function setup() {
   return { game, allies, enemy, observe, wipe }
 }
 describe('last defeated wave', () => {
+  it('includes the first and last combat ticks through actual advance and keeps an unobserved start unknown', () => {
+    const game = createGame(newProfile('2026-11-01T00:00:00Z', 7), 7)
+    for (let n = 0; n < 100 && game.world.phase !== 'battle'; n++) advance(game)
+    expect(game.world.phase).toBe('battle')
+    const firstTick = game.world.tick
+    for (const ally of game.world.units.filter(unit => unit.side === 'ally')) ally.hp = 0
+    advance(game)
+    expect(game.profile.lastDefeat!.combatMs).toBe((game.world.tick - firstTick + 1) * REAL_TICK_MS)
+    const { game: partial, allies, enemy } = setup()
+    partial.world.phase = 'battle'
+    for (const ally of allies) ally.hp = 0
+    enemy.attackReadyTick = enemy.skillReadyTick = Number.MAX_SAFE_INTEGER
+    advance(partial)
+    expect(partial.profile.lastDefeat!.combatMs).toBeNull()
+  })
+  it('records only observed active battle time and surviving enemy HP including summons', () => {
+    const { game, enemy, observe, wipe } = setup()
+    game.world.tick = 10
+    observe([{ t: 'phase', phase: 'battle', stageNo: 30, depthRank: 0, wave: 10 }])
+    const summoned = { ...structuredClone(enemy), uid: 101, defId: 'kyubi_phantom', hp: 25, stats: { ...enemy.stats, maxHp: 100 } }
+    const dead = { ...structuredClone(enemy), uid: 102, hp: 0, alive: true }
+    enemy.hp = 50; enemy.stats.maxHp = 200
+    game.world.units.push(summoned, dead)
+    game.world.tick = 29; observe([wipe])
+    expect(game.profile.lastDefeat!.combatMs).toBe(20 * REAL_TICK_MS)
+    expect(game.profile.lastDefeat!.remainingEnemies).toEqual({ count: 2, hpRatio: 75 / 300 })
+    expect(validateDefeatRecord(JSON.parse(JSON.stringify(game.profile.lastDefeat)))).toEqual(game.profile.lastDefeat)
+    observe([{ t: 'phase', phase: 'walking', stageNo: 30, wave: 10 }, wipe])
+    expect(game.profile.lastDefeat!.combatMs).toBeNull()
+    enemy.hp = 0; summoned.alive = false
+    observe([wipe]); expect(game.profile.lastDefeat!.remainingEnemies).toEqual({ count: 0, hpRatio: 0 })
+  })
+  it('migrates omitted observation fields to null and refuses malformed present values', () => {
+    const { game, observe, wipe } = setup(); observe([wipe])
+    const raw = JSON.parse(JSON.stringify(game.profile.lastDefeat))
+    delete raw.combatMs; delete raw.remainingEnemies
+    const migrated = validateDefeatRecord(raw)!
+    expect(migrated.combatMs).toBeNull(); expect(migrated.remainingEnemies).toBeNull()
+    expect(raw).not.toHaveProperty('combatMs')
+    for (const combatMs of [-1, 0.5, '100', NaN]) expect(() => validateDefeatRecord({ ...raw, combatMs })).toThrow('combatMs')
+    for (const remainingEnemies of [false, [], { count: -1, hpRatio: 0 }, { count: 0, hpRatio: 0.5 }, { count: 1, hpRatio: 0 }, { count: 1, hpRatio: 1.1 }]) {
+      expect(() => validateDefeatRecord({ ...raw, remainingEnemies })).toThrow('remainingEnemies')
+    }
+  })
   it('distinguishes reaching a floor from having cleared it, independently of current difficulty', () => {
     const { game, observe, wipe } = setup()
     expect(buildView(game.profile, false).lastDefeatResolved).toBe(false)
@@ -63,7 +108,7 @@ describe('last defeated wave', () => {
     const { game, allies, enemy } = setup()
     game.world.phase = 'battle'
     for (const ally of allies) { ally.hp = 1; ally.stats.eva = 0; ally.base.eva = 0; ally.action = { kind: 'none', untilTick: 999 }; ally.attackReadyTick = 999; ally.skillReadyTick = 999 }
-    enemy.hp = 99999; enemy.stats.atk = 99999; enemy.base.atk = 99999
+    enemy.hp = enemy.base.maxHp = enemy.stats.maxHp = 99999; enemy.stats.atk = 99999; enemy.base.atk = 99999
     enemy.action = { kind: 'cast', untilTick: 0, skillId: 'kitsunebi', originX: enemy.x, targetUids: allies.map(ally => ally.uid) }
     const queued = [...game.profile.party.order].reverse()
     runCommand(game, { c: 'reorderParty', order: queued })

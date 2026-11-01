@@ -1,6 +1,6 @@
 import { reportRendererError } from './errors'
 /** Browser adapter for the shared panel and simulation. Electron's preload API remains authoritative when present. */
-import { addOffline, advance, balance, buildView, computeOffline, createGame, newProfile, PROFILE_VERSION, runCommand, snapshot, validateProfile,
+import { addOffline, advance, balance, buildView, computeOffline, createGame, newProfile, PROFILE_VERSION, runCommand, recoveryStatus, snapshot, validateProfile,
   type CommandResult, type Game, type Profile, type ProfileView, type SimEvent } from '../core/index.ts'
 import { catalog } from '../commerce/catalog.ts'
 import { defaultSettings, type Frame, type PanelTarget, type Settings, type ShellApi, type ShellState, type StripLayout } from '../shared/api'
@@ -91,7 +91,7 @@ export function initializePlatform(): ShellApi {
     }
   }
   const currentFrame = (events: SimEvent[] = []): Frame => ({ snapshot: snapshot(game.world, game.profile.koban), events })
-  const currentView = () => buildView(game.profile, game.world.loop, game.world.pending)
+  const currentView = () => buildView(game.profile, game.world.loop, game.world.pending, recoveryStatus(game))
   const currentLayout = (): StripLayout => ({ dotPx: Math.max(1, Math.round(window.devicePixelRatio || 1)), playDots: PLAY_DOTS,
     scaleFactor: window.devicePixelRatio || 1, headroomDip: 72 })
   const publishState = () => emit(subscribers.state, state)

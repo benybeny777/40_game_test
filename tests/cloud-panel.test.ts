@@ -29,6 +29,23 @@ beforeEach(() => { vi.stubGlobal('document', { createElement: (tag: string) => n
 afterEach(() => { vi.unstubAllGlobals(); setLocale('ja') })
 
 describe('cloud settings UI', () => {
+  it('invalidates profile selections only after successful confirmed download', async () => {
+    const initial = view({ account: { id: 'a1', username: 'test_user' }, revision: 7 })
+    const api: CloudSettingsApi = { getCloud: vi.fn(async () => initial), cloudCommand: vi.fn(async () => ({ ok: false, message: 'download rejected', view: initial })) }
+    const profileReplaced = vi.fn(), replacing = vi.fn()
+    const root = createCloudSettings(api, { profileReplaced, replacing })() as unknown as Element
+    await vi.waitFor(() => expect(keyed(root, 'download')).toBeTruthy())
+    keyed(root, 'download').fire('click'); keyed(root, 'cancel-download').fire('click')
+    expect(replacing).not.toHaveBeenCalled(); expect(profileReplaced).not.toHaveBeenCalled()
+    keyed(root, 'download').fire('click'); keyed(root, 'confirm-download').fire('click')
+    await vi.waitFor(() => expect(text(root)).toContain('download rejected'))
+    expect(replacing.mock.calls).toEqual([[true], [false]])
+    expect(profileReplaced).not.toHaveBeenCalled()
+    vi.mocked(api.cloudCommand).mockResolvedValueOnce({ ok: true, view: initial })
+    keyed(root, 'download').fire('click'); keyed(root, 'confirm-download').fire('click')
+    await vi.waitFor(() => expect(profileReplaced).toHaveBeenCalledOnce())
+    expect(replacing).toHaveBeenLastCalledWith(false)
+  })
   it('translates real connection and nested HTTP errors and keeps unknown server details intact', async () => {
     const cases: Array<{ fetcher: typeof fetch; expected: string; unknown?: boolean }> = [
       { fetcher: vi.fn(async () => { throw new Error('connection refused') }), expected: 'Could not connect to the cloud' },

@@ -1,4 +1,5 @@
 import { balance } from '../data/balance.ts'
+import { REAL_TICK_MS } from '../data/timing.ts'
 import { cappedAmount, dungeons, maxFloor, type Difficulty, type DungeonId } from '../data/dungeon.ts'
 import { enemies } from '../data/enemies.ts'
 import { bossSkillById } from '../data/bossPatterns.ts'
@@ -16,7 +17,13 @@ export interface DefeatMember {
   /** Last positive enemy damage in the death tick; null when attribution is unavailable. */
   fatalSource: DefeatSource | null
 }
-export interface DefeatRecord { dungeonId: DungeonId; floor: number; depthRank: Difficulty; wave: number; party: DefeatMember[] }
+export interface DefeatRecord {
+  dungeonId: DungeonId; floor: number; depthRank: Difficulty; wave: number; party: DefeatMember[]
+  /** Observed active battle ticks at the standard real-time tempo; null if its start was not observed. */
+  combatMs: number | null
+  /** Surviving enemies only, including summons. Zero survivors implies zero HP ratio. */
+  remainingEnemies: { count: number; hpRatio: number } | null
+}
 /** Proves that this floor has been cleared; it does not claim the clear happened after the defeat. */
 export function lastDefeatResolved(profile: Profile): boolean {
   const record = profile.lastDefeat
@@ -37,12 +44,15 @@ interface MemberTrace { damageTaken: number; fallTick: number | null; fatalSourc
 /** Bounded current-wave trace; only the last completed defeat is persisted. */
 export class DefeatTracker {
   private readonly members = new Map<number, MemberTrace>()
+  private battleStartTick: number | null = null
   observe(profile: Profile, world: World, events: readonly SimEvent[]): void {
     const lethalCandidates = new Map<number, DefeatSource | null>()
     for (const event of events) {
       if (event.t === 'phase' && (event.phase === 'walking' || event.phase === 'town')) {
-        this.members.clear(); lethalCandidates.clear()
+        this.members.clear(); lethalCandidates.clear(); this.battleStartTick = null
       }
+      // observe runs after step increments world.tick; the first combat tick is included.
+      if (event.t === 'phase' && event.phase === 'battle') this.battleStartTick = world.tick - 1
       if (event.t === 'damage' || event.t === 'death' || event.t === 'revive') {
         const unit = world.units.find(unit => unit.uid === event.uid && unit.side === 'ally')
         if (!unit) continue
@@ -63,11 +73,16 @@ export class DefeatTracker {
       }
       if (event.t === 'phase' && event.phase === 'wipe') {
         const allies = world.units.filter(unit => unit.side === 'ally')
+        const survivors = world.units.filter(unit => unit.side === 'enemy' && unit.alive && unit.hp > 0)
+        const totalMaxHp = survivors.reduce((sum, unit) => sum + unit.stats.maxHp, 0)
+        const remainingEnemies = { count: survivors.length, hpRatio: survivors.length
+          ? survivors.reduce((sum, unit) => sum + unit.hp, 0) / totalMaxHp : 0 }
         const deathTicks = [...new Set(allies.flatMap(unit => {
           const tick = this.members.get(unit.uid)?.fallTick
           return tick === undefined || tick === null ? [] : [tick]
         }))].sort((a, b) => a - b)
         profile.lastDefeat = { dungeonId: profile.dungeonId, floor: event.stageNo, depthRank: event.depthRank ?? world.depthRank, wave: event.wave,
+          combatMs: this.battleStartTick === null ? null : (world.tick - this.battleStartTick) * REAL_TICK_MS, remainingEnemies,
           party: allies.map(unit => {
             const member = this.members.get(unit.uid)
             return { job: unit.defId as JobId, lv: unit.lv, damageTaken: member?.damageTaken ?? 0,
@@ -89,6 +104,17 @@ export function validateDefeatRecord(raw: unknown): DefeatRecord | null {
   if (!integer(raw.depthRank, 0, 2)) return fail('depthRank', 'must be an integer from 0 to 2')
   if (!integer(raw.floor, 1, maxFloor(raw.depthRank as Difficulty))) return fail('floor', 'is outside the recorded difficulty')
   if (!integer(raw.wave, 1, balance.waves)) return fail('wave', `must be an integer from 1 to ${balance.waves}`)
+  const combatMs = raw.combatMs === undefined ? null : raw.combatMs
+  if (combatMs !== null && !integer(combatMs, 0, Number.MAX_SAFE_INTEGER)) return fail('combatMs', 'must be null or a nonnegative safe integer')
+  let remainingEnemies: DefeatRecord['remainingEnemies'] = null
+  if (raw.remainingEnemies !== undefined && raw.remainingEnemies !== null) {
+    const remaining = raw.remainingEnemies
+    if (!object(remaining)) return fail('remainingEnemies', 'must be an object or null')
+    if (!integer(remaining.count, 0, Number.MAX_SAFE_INTEGER)) return fail('remainingEnemies.count', 'must be a nonnegative safe integer')
+    if (typeof remaining.hpRatio !== 'number' || !Number.isFinite(remaining.hpRatio) || remaining.hpRatio < 0 || remaining.hpRatio > 1
+      || (remaining.count === 0 ? remaining.hpRatio !== 0 : remaining.hpRatio <= 0)) return fail('remainingEnemies.hpRatio', 'must be in (0,1] for survivors, or 0 when count is 0')
+    remainingEnemies = { count: remaining.count, hpRatio: remaining.hpRatio }
+  }
   if (!Array.isArray(raw.party) || raw.party.length !== partySize) return fail('party', `must contain exactly ${partySize} members`)
   const seen = new Set<string>(), ranks = new Set<number>(), party: DefeatMember[] = []
   for (const [index, member] of raw.party.entries()) {
@@ -115,5 +141,5 @@ export function validateDefeatRecord(raw: unknown): DefeatRecord | null {
   }
   if ([...ranks].sort((a, b) => a - b).some((rank, index) => rank !== index + 1)) return fail('party.fallOrder', 'must form consecutive ranks starting at 1; ties are allowed')
   // Retain the validated schema only; forward extension keys are not trusted save payload.
-  return { dungeonId: raw.dungeonId as DungeonId, floor: raw.floor, depthRank: raw.depthRank as Difficulty, wave: raw.wave, party }
+  return { dungeonId: raw.dungeonId as DungeonId, floor: raw.floor, depthRank: raw.depthRank as Difficulty, wave: raw.wave, party, combatMs, remainingEnemies }
 }

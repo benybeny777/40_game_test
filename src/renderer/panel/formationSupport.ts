@@ -1,10 +1,27 @@
 import { jobs, roleLabels } from '../../core/data/jobs.ts'
-import { formationSupport, type FormationMember } from '../../core/progress/formationSupport.ts'
+import { formationSupport, type FormationCapability, type FormationMember } from '../../core/progress/formationSupport.ts'
 import { formatNumber, registerTranslations, registerTranslationTemplates, translatedLabel as tr } from '../../shared/i18n'
 import { h } from './dom'
 import './formationSupport.css'
 
 registerTranslations({
+  '編成の特徴': 'Formation profile',
+  '技能と守りの詳細': 'Skills and protection details',
+  'なし': 'None',
+  '攻撃役': 'Attackers',
+  '仲間の回復': 'Ally healing',
+  '守りと妨害': 'Protection and disruption',
+  '変更前': 'Before',
+  '変更後': 'After',
+  '該当する通常技能なし': 'No matching regular skill',
+  '攻撃役なし。守り・支援に寄る編成です。他の役割も通常攻撃を行います。': 'No attacker-role companion. This trio leans toward protection and support; other roles still make normal attacks.',
+  '仲間を回復する通常技能なし。連戦では残りHPと移動中の回復を確認してください。': 'No regular ally-healing skill. Watch remaining HP and recovery between waves.',
+  '仲間を守る・敵を弱める': 'Protect allies or weaken enemies',
+  '本人を守る': 'Personal protection',
+  '自己復活': 'Self-revival',
+  '解放済みの自己復活なし': 'No unlocked self-revival',
+  '自己復活のみ。仲間の回復・蘇生はできません。1戦に1回です。': 'Self-revival only, once per battle. This does not heal or revive companions.',
+  '装備・ステ振りでも戦い方が変わります。': 'Equipment and attribute choices also change how this trio fights.',
   '現在戦う3人の連携': 'Synergies of the three currently fighting',
   '交換後の3人': 'Your trio after this swap',
   '条件を満たすと発動': 'Available when the combat condition is met',
@@ -38,12 +55,51 @@ export function formationOption(member: FormationMember) {
   return tr(`${tr(job.name)}・${tr(roleLabels[job.role])}・Lv${member.lv}`)
 }
 
+const capabilityNames = (entries: readonly FormationCapability[]) => entries.map(entry => `${tr(jobs[entry.job].name)} / ${tr(entry.skill.name)}`).join(' · ')
+function traitRows(support: ReturnType<typeof formationSupport>) {
+  const traits = support.traits
+  const protection = [
+    traits.partyProtection.length ? `${tr('仲間を守る・敵を弱める')}: ${capabilityNames(traits.partyProtection)}` : '',
+    traits.selfProtection.length ? `${tr('本人を守る')}: ${capabilityNames(traits.selfProtection)}` : '',
+  ].filter(Boolean).join(' / ')
+  return [
+    { key: 'attack', label: '攻撃役', text: traits.attackers.length ? traits.attackers.map(job => tr(jobs[job].name)).join(' · ') : tr('攻撃役なし。守り・支援に寄る編成です。他の役割も通常攻撃を行います。') },
+    { key: 'heal', label: '仲間の回復', text: traits.allyHealing.length ? capabilityNames(traits.allyHealing) : tr('仲間を回復する通常技能なし。連戦では残りHPと移動中の回復を確認してください。') },
+    { key: 'guard', label: '守りと妨害', text: protection || tr('該当する通常技能なし') },
+  ]
+}
+
 export function renderFormationSupport(members: readonly FormationMember[], preview = false, previous?: readonly FormationMember[]) {
   const support = formationSupport(members)
-  const lost = previous ? formationSupport(previous).synergies.filter(old => old.ready && !support.synergies.some(next => next.id === old.id && next.ready)) : []
+  const before = previous ? formationSupport(previous) : undefined
+  const oldRows = before ? traitRows(before) : undefined
+  const revival = capabilityNames(support.traits.selfRevival)
+  const oldRevival = before ? capabilityNames(before.traits.selfRevival) : undefined
+  const rows = traitRows(support)
+  const changed = (index: number) => Boolean(preview && oldRows && oldRows[index].text !== rows[index].text)
+  const rowElement = (row: typeof rows[number], index: number) => h('div', { class: 'formation-trait', 'data-trait': row.key },
+    h('strong', {}, row.label),
+    changed(index) ? h('p', { class: 'formation-before' }, `${tr('変更前')}: ${oldRows![index].text}`) : null,
+    h('p', {}, changed(index) ? `${tr('変更後')}: ` : '', row.text))
+  const revivalChanged = preview && oldRevival !== undefined && oldRevival !== revival
+  const revivalElement = revival || oldRevival ? h('div', { class: 'formation-trait' },
+    h('strong', {}, '自己復活'),
+    revivalChanged ? h('p', { class: 'formation-before' }, `${tr('変更前')}: ${oldRevival || tr('解放済みの自己復活なし')}`) : null,
+    h('p', {}, revivalChanged ? `${tr('変更後')}: ` : '', revival || tr('解放済みの自己復活なし')),
+    revival ? h('p', { class: 'hint' }, '自己復活のみ。仲間の回復・蘇生はできません。1戦に1回です。') : null) : null
+  const lost = before ? before.synergies.filter(old => old.ready && !support.synergies.some(next => next.id === old.id && next.ready)) : []
   return h('section', { class: 'formation-support' },
     h('h3', {}, preview ? '交換後の3人' : '現在戦う3人の連携'),
     preview ? h('p', {}, members.map(formationOption).join(' / ')) : null,
+    h('div', { class: 'formation-traits' },
+      h('h4', {}, '編成の特徴'),
+      h('p', { class: 'formation-summary' }, `${tr('攻撃役')}: ${support.traits.attackers.map(job => tr(jobs[job].name)).join(' · ') || tr('なし')} / ${tr('仲間の回復')}: ${support.traits.allyHealing.map(entry => tr(jobs[entry.job].name)).join(' · ') || tr('なし')}`),
+      ...rows.flatMap((row, index) => changed(index) ? [rowElement(row, index)] : []),
+      revivalChanged ? revivalElement : null,
+      h('details', {}, h('summary', { 'data-focus-key': preview ? 'preview-formation-details' : 'current-formation-details' }, '技能と守りの詳細'),
+        ...rows.flatMap((row, index) => changed(index) ? [] : [rowElement(row, index)]),
+        revivalChanged ? null : revivalElement,
+        h('p', { class: 'hint' }, '装備・ステ振りでも戦い方が変わります。'))),
     ...support.synergies.map(link => h('div', { class: `formation-link${link.ready ? '' : ' locked'}` },
       h('strong', {}, link.requirements.map(entry => tr(entry.skill.name)).join(' → ')),
       h('small', {}, link.ready ? '条件を満たすと発動' : '育成で解放'),

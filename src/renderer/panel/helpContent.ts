@@ -56,8 +56,9 @@ export function getHelpContent() {
     { id: 'equipment', title: text('装備選びと、装備できないとき', 'Equipment and requirements'), blocks: [
       paragraph(text('装備条件はジョブと属性値だけ。キャラのレベル制限はありません。「装備ランク」は品の等級で、装着に必要なキャラLvではありません。', 'Equipment requires the correct job and attribute values. There is no character level requirement. Item rank describes quality, not a required character level.')),
       list([
-        text('地下1階の初回突破でもらう武器は、自動装備せず持ち物に残ります。「装備」で比較して、自分で装備してみましょう。', 'The weapon awarded for your first clear of B1 stays in the bag instead of being auto-equipped. Open Equipment, compare it and equip it yourself.'),
+        text('地下1階の初回突破武器は自動装備せず、比較して選べます。持ち物が満杯なら整理売却の対象になるため、空きを用意しましょう。', 'The weapon awarded for your first clear of B1 is held for comparison rather than auto-equipped. Make room in your bag: full-inventory sales can include this reward.'),
         text('装備できない品は、表示されたジョブ・種類・属性の条件を確認します。同じジョブでも配分によって扱える品が変わります。', 'If an item cannot be equipped, read its job, type and attribute requirements. Builds of the same job may qualify for different items.'),
+        text('属性だけが足りない品は「この装備に向けて育成」から対象キャラへ移れます。不足値を見て配分し、「比較へ戻る」で装備を選びます。目標はいつでも外せます。', 'When only attributes are missing, use Train for this equipment to open that companion. Allocate points, then return to comparison to choose the item. You can remove the goal anytime.'),
         text(`基礎性能には${Math.round(itemBalance.baseRollMin * 100)}〜${Math.round(itemBalance.baseRollMax * 100)}%の幅があり、追加効果も変わります。色や評価値だけでなく、各能力と自分の組み方を比べます。`, `Base stats vary from ${Math.round(itemBalance.baseRollMin * 100)}% to ${Math.round(itemBalance.baseRollMax * 100)}%, with different extra effects. Compare individual stats with your build, not just color or the overall score.`),
         text(`レア度は${rarities.map(rarity => tr(rarity.name)).join('・')}の${rarities.length}段階。${tr(rarities[itemBalance.uniqueRarity].name)}には固有の名前と効果を持つユニーク装備もあります。`, `There are ${rarities.length} rarities: ${rarities.map(rarity => tr(rarity.name)).join(', ')}. ${tr(rarities[itemBalance.uniqueRarity].name)} includes unique items with special names and effects.`),
         text('自動装備は、出撃中の仲間にとって能力が下がらない上位品を選びます。固有装備や、装備中のロックした品は勝手に入れ替えません。性能に交換条件がある品は自分で比べて選びます。', 'Auto equip chooses upgrades that do not lower stats for deployed companions. It does not automatically equip unique items or replace worn unique or locked gear. Choose items with tradeoffs yourself.'),
@@ -72,6 +73,7 @@ export function getHelpContent() {
         text(`${dungeonBalance.bossEvery}階ごとに大きなボスが待ちます。それ以外の階も最後のウェーブには精鋭が出ます。`, `A major boss appears every ${dungeonBalance.bossEvery} floors. Other floors end with an elite wave.`),
         text('「街へ帰還」で探索を止めて全快できます。装備や育成は失いません。到達済みの階と解放済みの難度から再出発できます。', 'Return to town stops exploration and restores HP without losing gear or growth. Resume from a reached floor in an unlocked difficulty.'),
         text('周回モードは今の階を繰り返して装備を探す設定です。先へ進みたいときはOFFにします。', 'Repeat mode farms the current floor for equipment. Turn it off to descend.'),
+        text('3回続けて全滅すると前の階で育成します。同じ壁への再挑戦に敗れると、育成周回が2回から4回、最大8回へ増えます。迷宮画面から待たずに再挑戦することもできます。', 'Three consecutive defeats trigger farming on an earlier floor. Losing a prepared retry increases farming from two clears to four, then eight at most. You can queue a retry without waiting from the Dungeon screen.'),
         text('宝箱や祭壇のある階もあります。同じ発見から繰り返し報酬は受け取れません。', 'Some floors contain a chest or altar. Repeating the same discovery does not grant its reward again.'),
       ]),
     ] },

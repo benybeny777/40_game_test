@@ -13,7 +13,15 @@ import type { JobId, SimEvent, World } from './sim/types.ts'
 import { createWorld, refreshParty, requestOrder, requestStage, returnToTown, step } from './sim/world.ts'
 
 /** World + Profile wired together. Shared by the Electron main loop and the headless simulator. */
-export interface Game { world: World; profile: Profile; autoFarmClears: number; playMsRemainder: number; defeatTracker: DefeatTracker }
+interface AutoFarmState { depthRank: Difficulty; wallStage: number; requiredClears: number; retrying: boolean }
+export interface Game { world: World; profile: Profile; autoFarmClears: number; autoFarmState: AutoFarmState | null; playMsRemainder: number; defeatTracker: DefeatTracker }
+export function recoveryStatus(game: Game) {
+  const state = game.autoFarmState
+  return state && state.depthRank === game.world.depthRank
+    ? { wallStage: state.wallStage, requiredClears: state.requiredClears, completedClears: game.autoFarmClears, retrying: state.retrying }
+    : undefined
+}
+function resetAutoFarm(game: Game) { game.autoFarmClears = 0; game.autoFarmState = null }
 export type Command =
   | { c: 'setLoop'; loop: boolean }
   | { c: 'selectStage'; stageNo: number; depthRank?: Difficulty }
@@ -43,7 +51,7 @@ export function createGame(profile: Profile, seed: number): Game {
     dojo: profile.dojo, gear: gearMap(profile), allocated: allocationMap(profile), loop: profile.progress.loop, depthRank: profile.progress.depthRank, dungeonSeed: profile.dungeonSeed, eventDepths: profile.progress.eventDepths })
   if (profile.progress.inTown) returnToTown(world)
   profile.offlineJobs = actualJobs(world)
-  return { world, profile, autoFarmClears: 0, playMsRemainder: 0, defeatTracker: new DefeatTracker() }
+  return { world, profile, autoFarmClears: 0, autoFarmState: null, playMsRemainder: 0, defeatTracker: new DefeatTracker() }
 }
 export function advance(game: Game, elapsedMs = REAL_TICK_MS): { events: SimEvent[]; changed: boolean; stageCleared: boolean } {
   if (!Number.isFinite(elapsedMs) || elapsedMs <= 0 || elapsedMs > pb.minuteMs) throw new Error('Invalid simulation step elapsed time')
@@ -56,16 +64,34 @@ export function advance(game: Game, elapsedMs = REAL_TICK_MS): { events: SimEven
   }
   const result = applyRewards(profile, events, profile.offlineJobs)
   if (result.levelsChanged) refresh(game)
-  // 3 wipes in a row turn on world.loop; step back to the last cleared stage to farm, then retry.
-  const autoLoop = world.loop && !profile.progress.loop
-  if (autoLoop && events.some((event) => event.t === 'phase' && event.phase === 'wipe')) {
+  // The first retreat still needs three wipes. A failed prepared retry extends farming immediately.
+  const state = game.autoFarmState
+  const retryFailed = state?.retrying && state.depthRank === world.depthRank && state.wallStage === world.stageNo
+  if (!profile.progress.loop && (world.loop || retryFailed) && events.some((event) => event.t === 'phase' && event.phase === 'wipe')) {
     if (world.pending.stageNo !== undefined) {
       // A deliberate destination also takes priority over the emergency farming mode.
-      world.loop = profile.progress.loop; game.autoFarmClears = 0
-    } else if (world.stageNo > 1) requestStage(world, world.stageNo - 1)
+      world.loop = profile.progress.loop; resetAutoFarm(game)
+    } else if (world.stageNo > 1) {
+      if (retryFailed) state.requiredClears = Math.min(pb.autoFarmMaxClears, state.requiredClears * 2)
+      else if (!state || state.depthRank !== world.depthRank) game.autoFarmState = {
+        depthRank: world.depthRank, wallStage: world.stageNo, requiredClears: pb.autoFarmClears, retrying: false,
+      }
+      game.autoFarmState!.retrying = false; game.autoFarmClears = 0; world.loop = true
+      requestStage(world, world.stageNo - 1)
+    } else {
+      // B1 has no farming floor. Keep normal attempts, so its first clear can advance to B2.
+      world.loop = false; world.wipeStreak = 0; resetAutoFarm(game)
+    }
   }
-  if (result.stageCleared && world.loop && !profile.progress.loop && world.stageNo < profile.progress.unlockedStage) {
-    if (++game.autoFarmClears >= pb.autoFarmClears) { world.loop = false; world.wipeStreak = 0; game.autoFarmClears = 0 }
+  if (result.stageCleared && game.autoFarmState && !profile.progress.loop) {
+    const recovery = game.autoFarmState
+    if (world.depthRank === recovery.depthRank && world.stageNo >= recovery.wallStage) {
+      world.loop = false; resetAutoFarm(game)
+    } else if (world.loop && world.depthRank === recovery.depthRank && world.pending.stageNo === undefined) {
+      if (++game.autoFarmClears >= recovery.requiredClears) {
+        world.loop = false; world.wipeStreak = 0; recovery.retrying = true
+      }
+    }
   }
   accountElapsed(game, elapsedMs)
   return { events: result.events.length ? [...events, ...result.events] : events, changed: result.changed || result.levelsChanged, stageCleared: result.stageCleared }
@@ -87,22 +113,33 @@ export function runCommand(game: Game, command: Command): CommandResult & { even
   const { world, profile } = game
   switch (command.c) {
     case 'setLoop':
-      profile.progress.loop = command.loop; world.loop = command.loop; world.wipeStreak = 0; game.autoFarmClears = 0
+      if (game.autoFarmState && world.pending.stageNo !== undefined) {
+        // This pending retreat belongs to recovery; a user-selected destination already resets that state.
+        delete world.pending.stageNo; delete world.pending.depthRank
+      }
+      profile.progress.loop = command.loop; world.loop = command.loop; world.wipeStreak = 0; resetAutoFarm(game)
       return { ok: true }
     case 'returnTown': {
       const events = returnToTown(world)
       game.defeatTracker.observe(profile, world, events)
       profile.offlineJobs = actualJobs(world)
-      applyRewards(profile, events, profile.offlineJobs); game.autoFarmClears = 0
+      applyRewards(profile, events, profile.offlineJobs); world.loop = profile.progress.loop; resetAutoFarm(game)
       return { ok: true, events }
     }
     case 'selectStage': {
       const rank = command.depthRank ?? profile.progress.depthRank
       if (!Number.isInteger(rank) || rank < 0 || rank >= difficulties.length || !Number.isSafeInteger(command.stageNo)
         || command.stageNo < 1 || command.stageNo > Math.min(maxFloor(rank), profile.progress.unlockedDepths[rank])) return { ok: false, reason: 'まだ解放されていない階層・難易度です' }
-      if (world.phase !== 'town' && command.stageNo === world.stageNo && rank === world.depthRank) return { ok: true }
+      if (world.phase !== 'town' && command.stageNo === world.stageNo && rank === world.depthRank) {
+        if (game.autoFarmState && world.pending.stageNo !== undefined) {
+          // Retry this wall now: cancel only the automatic retreat, without restarting the current wave.
+          delete world.pending.stageNo; delete world.pending.depthRank
+          world.loop = profile.progress.loop; world.wipeStreak = 0; resetAutoFarm(game)
+        }
+        return { ok: true }
+      }
       const immediate = world.phase === 'town' || world.phase === 'walking'
-      requestStage(world, command.stageNo, rank); world.loop = profile.progress.loop; game.autoFarmClears = 0
+      requestStage(world, command.stageNo, rank); world.loop = profile.progress.loop; resetAutoFarm(game)
       if (immediate) { profile.progress.depthRank = rank; profile.progress.currentStage = command.stageNo; profile.progress.unlockedStage = profile.progress.unlockedDepths[rank]; profile.progress.inTown = false }
       return { ok: true }
     }

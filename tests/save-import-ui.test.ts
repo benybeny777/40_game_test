@@ -14,6 +14,21 @@ function fixture() {
 beforeEach(() => { setLocale('en'); vi.spyOn(console, 'error').mockImplementation(() => {}) })
 afterEach(() => { setLocale('ja'); vi.restoreAllMocks() })
 
+it('clears profile-specific selections only after a successful import, never on cancellation or failure', async () => {
+  const { api, file } = fixture()
+  let selection: string | undefined = 'i1'
+  const restored = vi.fn(() => { selection = undefined })
+  const controller = new SaveImportController(api, vi.fn(), false, restored)
+  await controller.selectFile(file); await controller.cancel()
+  expect(selection).toBe('i1'); expect(restored).not.toHaveBeenCalled()
+  await controller.selectFile(file)
+  vi.mocked(api.confirmSaveImport).mockRejectedValueOnce(new Error('quota exceeded'))
+  await controller.confirm()
+  expect(selection).toBe('i1'); expect(restored).not.toHaveBeenCalled()
+  await controller.confirm()
+  expect(selection).toBeUndefined(); expect(restored).toHaveBeenCalledOnce()
+})
+
 it('previews without restoring, allows cancellation, then requires an explicit confirmation', async () => {
   const { api, controller, file } = fixture()
   await controller.selectFile(file)

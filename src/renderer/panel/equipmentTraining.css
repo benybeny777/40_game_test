@@ -1,0 +1,4 @@
+.equipment-training { padding: 10px; margin: 8px 0; border: 1px solid #ba9756; background: #302b22; overflow-wrap: anywhere; }
+.equipment-training p { margin: 5px 0; }
+.equipment-training button, .equipment-training-open { min-height: 44px; padding: 6px 12px; background: #3b3023; border: 1px solid #ba9756; color: #f8e4bb; cursor: pointer; }
+.attribute-row.training-needed { border-left: 3px solid #e0bc72; padding-left: 6px; }

@@ -13,6 +13,7 @@ import { dropChance, lootRank, partyLuk, receiveItem, reconcileEquipment, requir
 import { random } from '../sim/rng.ts'
 import { validateAbyssRecords, type AbyssRecord } from './abyss.ts'
 import { validateDefeatRecord, type DefeatRecord } from './defeat.ts'
+import { isFirstClear, bossClearReward } from './clearRewards.ts'
 
 export const PROFILE_VERSION = 3
 export interface Gain { koban: number; exp: number }
@@ -133,13 +134,13 @@ export function applyRewards(profile: Profile, events: readonly SimEvent[], acti
       profile.progress.currentStage = event.stageNo
       profile.progress.unlockedStage = profile.progress.unlockedDepths[rank]
       if (event.phase === 'stageClear') {
-        const firstClear = event.stageNo >= profile.progress.unlockedDepths[rank]
-          && (rank === 2 ? event.stageNo < Number.MAX_SAFE_INTEGER : event.stageNo < maxFloor(rank) || profile.progress.unlockedDepths[(rank + 1) as Difficulty] === 0)
+        const firstClear = isFirstClear(event.stageNo, rank, profile.progress.unlockedDepths)
+        const reward = bossClearReward(event.stageNo)
         if (firstClear && rank === 0 && event.stageNo === 1) {
           const job = activeJobs.find(id => !profile.party.members[id].equip.weapon) ?? activeJobs[0]
           dropItem(profile, 1, 0, out, { min: 1, max: 1, slot: 'weapon', job, holdForReview: true, difficulty: rank }, activeJobs)
-        } else if (firstClear && event.stageNo % 10 === 0) {
-          const result = dropItem(profile, event.stageNo, 0, out, { min: event.stageNo % 100 === 0 ? 4 : 3, holdForReview: true, difficulty: rank }, activeJobs)
+        } else if (firstClear && reward !== null) {
+          const result = dropItem(profile, event.stageNo, 0, out, { min: reward, holdForReview: true, difficulty: rank }, activeJobs)
           gearChanged ||= Boolean(result.equippedBy)
         }
         profile.stats.stageClears++; stageCleared = true

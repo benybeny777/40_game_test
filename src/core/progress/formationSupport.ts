@@ -5,6 +5,26 @@ import { experienceSupportMultiplier } from './experienceSupport.ts'
 
 export interface FormationMember { job: JobId; lv: number }
 type SkillKind = 'skill' | 'passive'
+export interface FormationCapability { job: JobId; skill: typeof jobs[JobId]['skill'] }
+// Target scope comes from the implementations in skills.ts/actions.ts, not role
+// labels: Otaku heals allies, while Jiangshi's revival only saves itself.
+const healingSkills = new Set(['sashiire', 'prayer', 'kekkai'])
+const partyProtectionSkills = new Set(['kekkai', 'ikaku', 'salvage', 'nanmon', 'harite'])
+const selfProtectionSkills = new Set(['tanka', 'harite', 'kage', 'hoppalm'])
+
+function formationTraits(members: readonly FormationMember[]) {
+  const available = members.filter(member => member.lv >= balance.skillLv)
+    .map(member => ({ job: member.job, skill: jobs[member.job].skill }))
+  const selfRevival = members.filter(member => member.lv >= balance.passiveLv && jobs[member.job].passive.id === 'fukkatsu')
+    .map(member => ({ job: member.job, skill: jobs[member.job].passive }))
+  return {
+    attackers: members.filter(member => jobs[member.job].role === 'attacker').map(member => member.job),
+    allyHealing: available.filter(entry => healingSkills.has(entry.skill.id)),
+    partyProtection: available.filter(entry => partyProtectionSkills.has(entry.skill.id)),
+    selfProtection: available.filter(entry => selfProtectionSkills.has(entry.skill.id)),
+    selfRevival,
+  }
+}
 // Pair identities link the producer and consumer implemented in skills.ts/actions.ts.
 // Skill names, descriptions, effects and level gates are read from their existing authorities.
 const links = [
@@ -25,7 +45,7 @@ export function formationSupport(members: readonly FormationMember[]) {
     ]
     return [{ id: link.id, requirements, ready: requirements.every(entry => entry.level >= entry.requiredLevel) }]
   })
-  return { synergies, training: members.map(member => ({ ...member, multiplier: experienceSupportMultiplier(member.lv, veteran) })) }
+  return { synergies, traits: formationTraits(members), training: members.map(member => ({ ...member, multiplier: experienceSupportMultiplier(member.lv, veteran) })) }
 }
 
 export function previewReplacement(party: readonly FormationMember[], from: JobId, to: JobId) {

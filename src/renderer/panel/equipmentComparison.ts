@@ -3,6 +3,7 @@ import type { Stats } from '../../core/sim/types.ts'
 import { formatNumber, registerTranslations } from '../../shared/i18n'
 import { h } from './dom'
 import { realTickSeconds } from '../../core/sim/time'
+import './equipmentTraining'
 
 registerTranslations({
   '評価が上がる装備 → 刻印の選択肢 → その他の順。通常の改善品は評価差の大きい順です。': 'Order: higher-score equipment, engraving choices, then other items. Ordinary upgrades are ordered by estimated score gain.',
@@ -57,8 +58,10 @@ export function equipmentChanges(item: ItemView, job: JobId) {
   })
 }
 
-export function renderEquipmentComparison(item: ItemView, job: JobId) {
-  if (!item.equipable[job].ok) return null
+export function renderEquipmentComparison(item: ItemView, job: JobId, train?: (item: ItemView, job: JobId) => void) {
+  const check = item.equipable[job]
+  if (!check.ok) return check.missing?.length && train ? h('section', { class: 'equipment-comparison' },
+    h('button', { type: 'button', class: 'equipment-training-open', 'data-focus-key': `train-equipment-${item.id}-${job}`, onclick: () => train(item, job) }, 'この装備に向けて育成')) : null
   const changes = equipmentChanges(item, job)
   return h('section', { class: 'equipment-comparison', 'aria-label': '装備後の変化' },
     h('small', {}, '装備後の変化'), renderSkillTradeoff(item, job),

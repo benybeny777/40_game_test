@@ -98,11 +98,12 @@ export function requirementsOf(item: Item): Attributes {
 /** Class-only compatibility; use equipCheck for the complete attribute check. */
 export const canEquip = (job: JobId, item: Item) => (item.slot !== 'weapon' || item.job === job)
   && (item.equipmentClass !== 'heavy' || attributeDefs[job].main === 'str') && (item.equipmentClass !== 'robe' || attributeDefs[job].main === 'int')
-type EquipmentEligibility = { ok: true } | { ok: false; reason: string }
+export type EquipmentEligibility = { ok: true } | { ok: false; reason: string; missing?: Array<{ key: keyof Attributes; current: number; required: number }> }
 function checkAttributes(job: JobId, item: Item, attrs: Attributes, req: Attributes): EquipmentEligibility {
   if (!canEquip(job, item)) return { ok: false, reason: 'このジョブでは扱えない種類の装備です' }
   const missing = attributeKeys.filter((key) => attrs[key] < req[key])
-  return missing.length ? { ok: false, reason: missing.map((key) => attributeLabels[key] + req[key] + '必要（現在' + attrs[key] + '）').join('、') } : { ok: true }
+  return missing.length ? { ok: false, reason: missing.map((key) => attributeLabels[key] + req[key] + '必要（現在' + attrs[key] + '）').join('、'),
+    missing: missing.map(key => ({ key, current: attrs[key], required: req[key] })) } : { ok: true }
 }
 export function equipCheck(profile: Profile, job: JobId, item: Item): EquipmentEligibility {
   return checkAttributes(job, item, attributesOf(job, profile.party.members[job].allocated), requirementsOf(item))

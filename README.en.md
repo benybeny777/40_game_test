@@ -8,6 +8,8 @@ Normal and Nightmare each have 100 floors. Only the highest difficulty, Abyss, c
 
 The current dungeon cycles through three regions, twelve enemy types and three major bosses. Abyss goals mark B100, 250, 500 and 1000, then every 1000 floors. An expedition journal records the three companions, allocated attributes and gear names used for those clears.
 
+Version 0.7.5 connects equipment requirements to a training goal and back to the same comparison. Party swaps show changes in healing and protection, bosses preview their first-clear reward, and recovery farming shows progress with a manual retry option. [Changes and validation (Japanese)](docs/reviews/2026-11-01-quality-loop-resolution.md).
+
 ![Party management in the running game](docs/images/play-panel-en.png)
 
 ![Battle above the Windows taskbar](docs/images/play-strip.png)

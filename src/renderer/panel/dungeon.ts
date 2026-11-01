@@ -20,6 +20,9 @@ registerTranslations({
   '他の種類も出ます。確定報酬ではありません。': 'Other equipment types still drop. These are tendencies, not guaranteed rewards.',
   '未到達': 'Not reached',
   '次のウェーブから移動します。': 'Travel begins with the next wave.',
+  '立て直して再挑戦': 'Recover and retry',
+  '今すぐ再挑戦を予約': 'Queue a retry now',
+  '同じ階で再び敗れた場合は、育成周回を増やします。編成や装備を変えたら、待たずに再挑戦できます。': 'Another defeat at the same wall increases the farming runs. After changing your party or gear, you can retry without waiting.',
 })
 registerTranslationTemplates([
   { ja: '移動予約：{difficulty} B{depth}', en: 'Travel queued: {difficulty} B{depth}' },
@@ -27,6 +30,9 @@ registerTranslationTemplates([
   { ja: 'B{depth}へ移動', en: 'Travel to B{depth}' },
   { ja: '現在より{n}階浅い・基礎性能は低い傾向', en: '{n} floors shallower · generally lower base stats' },
   { ja: '現在より{n}階深い・基礎性能は高い傾向', en: '{n} floors deeper · generally higher base stats' },
+  { ja: 'B{floor}への再挑戦まで、育成周回 {done}/{total}', en: 'Farming runs before retrying B{floor}: {done}/{total}' },
+  { ja: 'B{floor}に再挑戦中', en: 'Retrying B{floor}' },
+  { ja: 'B{floor}への再挑戦に向かっています', en: 'Returning to retry B{floor}' },
 ])
 
 export function renderDungeon(v: ProfileView, command: (command: Command) => Promise<unknown>, draft = new DungeonTravelDraft()) {
@@ -44,6 +50,12 @@ export function renderDungeon(v: ProfileView, command: (command: Command) => Pro
     h('div', { class: 'difficulty-tabs' }, ...difficulties.map(difficulty => h('button', { class: d.difficulty === difficulty.id ? 'active' : '', disabled: difficulty.id > d.unlockedDifficulty || difficulty.id === d.difficulty || (d.pendingTravel?.difficulty === difficulty.id && d.pendingTravel.depth === 1), onclick: () => void command({ c: 'selectStage', stageNo: 1, depthRank: difficulty.id }) },
       `${difficulty.name}${difficulty.floorLimit === null ? ' ∞' : ' 100階'}${difficulty.id > d.unlockedDifficulty ? '（未解放）' : ''}`))),
     d.pendingTravel ? h('p', { class: 'travel-pending', role: 'status' }, `移動予約：${translatedLabel(difficulties[d.pendingTravel.difficulty].name)} B${d.pendingTravel.depth}`, ' — ', '次のウェーブから移動します。') : null,
+    d.recovery ? h('aside', { class: 'recovery-progress', 'aria-label': '立て直して再挑戦' },
+      h('strong', {}, d.recovery.retrying ? (d.depth === d.recovery.wallStage ? `B${d.recovery.wallStage}に再挑戦中` : `B${d.recovery.wallStage}への再挑戦に向かっています`)
+        : `B${d.recovery.wallStage}への再挑戦まで、育成周回 ${d.recovery.completedClears}/${d.recovery.requiredClears}`),
+      h('p', {}, '同じ階で再び敗れた場合は、育成周回を増やします。編成や装備を変えたら、待たずに再挑戦できます。'),
+      !d.recovery.retrying ? h('button', { 'data-focus-key': 'recovery-retry', disabled: d.pendingTravel?.depth === d.recovery.wallStage,
+        onclick: () => void command({ c: 'selectStage', stageNo: d.recovery!.wallStage, depthRank: d.difficulty }) }, '今すぐ再挑戦を予約') : null) : null,
     renderNextBoss(v),
     h('section', { class: 'loot-destinations' }, h('h3', {}, '狙う装備で行き先を選ぶ'),
       ...favoredLootSlots.map((_, index) => {

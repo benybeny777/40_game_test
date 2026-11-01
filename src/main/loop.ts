@@ -1,4 +1,4 @@
-import { addOffline, advance, balance, buildView, computeOffline, createGame, runCommand, snapshot,
+import { addOffline, advance, balance, buildView, computeOffline, createGame, runCommand, recoveryStatus, snapshot,
   type Command, type CommandResult, type Game, type Profile, type ProfileView, type SimEvent } from '../core/index.ts'
 import type { Frame } from '../shared/api'
 import { GAME_SPEED } from '../core/data/timing.ts'
@@ -66,7 +66,7 @@ export class GameHost {
     return true
   }
   recoverPreparedProfile(game: Game) { this.failure = undefined; this.replacePreparedProfile(game) }
-  view(): ProfileView { return this.unwrap(this.attempt(() => buildView(this.game.profile, this.game.world.loop, this.game.world.pending))) }
+  view(): ProfileView { return this.unwrap(this.attempt(() => buildView(this.game.profile, this.game.world.loop, this.game.world.pending, recoveryStatus(this.game)))) }
   frame(events: SimEvent[] = []): Frame { return this.unwrap(this.attempt(() => ({ snapshot: snapshot(this.game.world, this.game.profile.koban), events }))) }
   setPaused(paused: boolean) { this.paused = paused || Boolean(this.failure); this.accumulated = 0; this.last = performance.now() }
 
