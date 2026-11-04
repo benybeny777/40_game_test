@@ -295,10 +295,12 @@ function settingsTab() {
       h('input', { type: 'checkbox', checked: settings.autoStart, onchange: (event: Event) => void update({ autoStart: (event.target as HTMLInputElement).checked }) })) : null,
     h('label', {}, h('span', {}, '描画のFPS上限'), h('select', { onchange: (event: Event) => void update({ fpsCap: Number((event.target as HTMLSelectElement).value) as 30 }) },
       ...[30, 15].map((fps) => h('option', { value: String(fps), selected: settings.fpsCap === fps }, `${fps}`)))),
-    h('div', { class: 'row-line' }, h('span', {}, `データ：${state?.platform === 'browser' ? 'このブラウザー内（Windows版とは別）' : state?.profile === 'dev' ? '開発用（.dev-data）' : '利用者用'}`), h('button', { onclick: () => window.game.openSaveFolder() }, state?.platform === 'browser' ? 'セーブを書き出す' : 'セーブのフォルダを開く')),
-    state?.platform !== 'browser' ? h('button', { onclick: () => window.game.exportSave() }, 'セーブを書き出す') : null,
+    h('p', { class: 'hint' }, `データ：${state?.platform === 'browser' ? 'このブラウザー内（Windows版とは別）' : state?.profile === 'dev' ? '開発用（.dev-data）' : '利用者用'}`),
+    state?.profile === 'dev' ? h('div', { class: 'row-line' },
+      h('button', { onclick: () => window.game.openSaveFolder() }, state.platform === 'browser' ? 'セーブを書き出す' : 'セーブのフォルダを開く'),
+      state.platform !== 'browser' ? h('button', { onclick: () => window.game.exportSave() }, 'セーブを書き出す') : null) : null,
     h('p', { class: 'hint' }, state?.platform === 'browser' ? 'ブラウザーを閉じるとゲームも終了します。次回起動時にオフライン報酬を計算します。' : '一時停止・帯の表示切り替え・終了は、タスクトレイのアイコンから行います。'),
-    renderSaveImport(saveImport, Boolean(state?.storageError || state?.runtimeError)),
+    state?.profile === 'dev' ? renderSaveImport(saveImport, Boolean(state.storageError || state.runtimeError)) : null,
     renderCloudSettings({ profileReplaced, replacing: active => { profileReplacementPending = active } }))
 }
 function offlineModal(v: ProfileView) {

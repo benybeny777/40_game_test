@@ -162,6 +162,9 @@ Windowsの`PersistenceGuard`は書込例外を保持し、`ShellState.storageErr
 
 ### JSON取り込みと起動時の明示復旧
 
+通常の設定画面ではexport/importを描画しない。開発プロファイルに限り既存のJSON検証UIを表示し、保存障害と起動時障害の復旧用経路は残す。これは不正防止機構ではない。ローカル保存・ブラウザーAPIは利用者が改変可能なため、装備のmarketEligible: falseを維持し、外部取引に使う場合は別の信頼できる発行・所有台帳を必須とする。
+
+
 `shared/saveImport.ts`の`SaveImportSession`が候補の検証・事前構築・確認tokenを保持する。`MAX_SAVE_IMPORT_BYTES`（1MiB）をrendererのファイルサイズ検査とホストのUTF-8バイト数検査で共有する。`prepareSaveImport(text)`はJSON解析、共通の`validateProfile`と`prepareCloudRestore`によるオフライン報酬計算、Game構築を済ませ、保存日時・難度・階・小判・プレイ時間・出撃3人を返す。書込みはしない。候補は一つだけで、選び直しで古いtokenを失効させる。
 
 `confirmSaveImport(token)`は現在の保存／runtime障害・終了状態を再確認してから候補を保存し、実行状態へ置き換えて一時停止する。Windowsは既存の原子的保存とチェックポイント管理、ブラウザーは生データ一致の検査と単一`setItem`を利用する。確認tokenは使い切りで、失敗後に勝手に再送しない。`cancelSaveImport(token)`は候補を捨てるだけで現在の進行を書き換えない。JSONの原ファイル、設定、購入した外観を正常時の取り込みで変更しない。

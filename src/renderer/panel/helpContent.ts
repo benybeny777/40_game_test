@@ -90,7 +90,7 @@ export function getHelpContent() {
         ])] },
         { className: 'help-platform-card', title: text('ブラウザー版', 'Browser'), blocks: [list([
           text('ゲームのタブを閉じると終了します。Windowsのタスクトレイには常駐しません。', 'Closing the game tab ends the game. It does not stay in the Windows system tray.'),
-          text('セーブはブラウザーとサイトごとに別です。サイトのデータ削除で消えることがあるため、必要ならセーブを書き出してください。', 'Each browser and site has separate saves. Clearing site data can erase them; export your save when needed.'),
+          text('セーブはブラウザーとサイトごとに別です。サイトのデータを削除すると端末内の進行は消えます。クラウド保存を使う場合は、削除前に保存状態を確認してください。', 'Each browser and site has separate saves. Clearing site data deletes local progress. If you use cloud saves, confirm the cloud save before clearing it.'),
         ])] },
       ] },
       paragraph(text('Windowsとブラウザーの端末内セーブは別です。同じアカウントのクラウドセーブを使うと、手動で進行を移せます。', 'Local Windows and browser saves are separate. Use the same cloud account to transfer progress manually.')),
@@ -98,7 +98,7 @@ export function getHelpContent() {
     { id: 'cloud', title: text('クラウドセーブ', 'Cloud saves'), blocks: [
       paragraph(text('接続先が設定されている場合、「設定」から登録・ログインして手動で保存・読込できます。自動同期ではありません。', 'When a server is configured, register or log in from Settings to save and load manually. This is not automatic sync.')),
       list([
-        text('読込はこの端末の進行を置き換えます。残したい進行は先に書き出してください。読込後は一時停止します。', 'Loading replaces progress on this device. Export any progress you want to keep first. The game pauses after loading.'),
+        text('読込はこの端末の進行を置き換えます。読込内容を確認してから置き換えてください。読込後は一時停止します。', 'Loading replaces progress on this device. Check the cloud save before replacing your local progress. The game pauses after loading.'),
         text('別端末の保存と競合したら、上書きせず最新状態を確認します。通信結果が不明なときは保存を繰り返さないでください。', 'If another device saves first, refresh the cloud state instead of overwriting it. Do not repeat a save while its result is unknown.'),
         text('再起動後は再ログインします。クラウド未接続でも端末内に保存して遊べます。', 'Log in again after restarting. You can still play with local saves when cloud saving is unavailable.'),
       ]),
